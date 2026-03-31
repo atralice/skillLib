@@ -1,0 +1,9 @@
+# Check for deleted files and run type-check if deletions exist
+# (lint-staged can't type-check deleted files)
+DELETED_FILES=$(git diff --cached --name-only --diff-filter=D)
+if [ -n "$DELETED_FILES" ]; then
+  yarn type-check
+  exit $?
+fi
+
+yarn lint-staged --continue-on-error

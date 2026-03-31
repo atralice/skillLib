@@ -1,0 +1,73 @@
+{
+  "name": "skillLib",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port ${PORT:-3001}",
+    "build": "next build",
+    "start": "next start",
+    "test": "./script/test-with-lock.sh",
+    "test:parallel": "./script/bun-test.sh",
+    "test:watch:failed": "./test/watchFailed.sh",
+    "test:watch:changed": "./test/watchChanged.sh",
+    "test:e2e": "npx playwright test",
+    "lint": "eslint . --cache --cache-location .eslintcache --cache-strategy content",
+    "type-check": "tsc",
+    "prepare": "husky",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.10.1",
+    "clsx": "^2.1.1",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.25.42"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^17.4.4",
+    "@playwright/test": "^1.56.1",
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/typography": "^0.5.15",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^14.2.1",
+    "@types/bun": "^1.2.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/uuid": "^10.0.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "16.2.1",
+    "eslint-plugin-jest": "^28.11.0",
+    "eslint-plugin-no-loops": "^0.4.0",
+    "eslint-plugin-no-only-tests": "^3.3.0",
+    "fetch-mock": "^12.5.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "oxfmt": "^0.28.0",
+    "postcss": "^8.4.49",
+    "prisma": "^6.10.1",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.17.0",
+    "uuid": "^11.1.0"
+  },
+  "lint-staged": {
+    "*.{css,json}": "oxfmt --no-error-on-unmatched-pattern",
+    "*.{ts,tsx}": "sh -c 'tsc -b --noEmit'",
+    "**/*.{js,jsx,ts,tsx}": [
+      "oxfmt --no-error-on-unmatched-pattern",
+      "yarn lint"
+    ]
+  },
+  "engines": {
+    "node": "22"
+  }
+}

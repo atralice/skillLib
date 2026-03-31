@@ -1,0 +1,32 @@
+name: Lint
+
+on:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - name: Cache ESLint
+        uses: actions/cache@v5
+        with:
+          path: .eslintcache
+          key: eslint-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            eslint-${{ github.ref }}-
+            eslint-
+
+      - run: yarn install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Type Check
+        run: yarn type-check

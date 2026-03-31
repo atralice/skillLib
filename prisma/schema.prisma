@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SystemRole {
+  admin
+  staff
+}
+
+model User {
+  id                String      @id @default(uuid())
+  email             String      @unique
+  firstName         String
+  lastName          String
+  systemRole        SystemRole?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  sessions          Session[]
+}
+
+model Session {
+  id                  String   @id @default(uuid())
+  token               String   @unique
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  impersonateUserId   String?
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+}
+
+enum ExchangeStatus {
+  notStarted
+  inProgress
+  completed
+  cancelled
+}
+
+enum ExchangeType {
+  standard
+  reverse
+}
+
+model Exchange {
+  id              String          @id @default(uuid())
+  name            String
+  status          ExchangeStatus  @default(notStarted)
+  type            ExchangeType    @default(standard)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  exchangeUsers   ExchangeUser[]
+}
+
+model ExchangeUser {
+  id          String   @id @default(uuid())
+  exchangeId  String
+  exchange    Exchange @relation(fields: [exchangeId], references: [id])
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@unique([exchangeId, userId])
+}

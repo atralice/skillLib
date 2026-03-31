@@ -1,0 +1,8 @@
+[test]
+root = "./src"
+preload = [
+  "./test/happydom.ts",
+  "./test/testing-library.ts",
+  "./test/bun-test-setup.ts",
+  "./test/customMatchers",
+]
