@@ -53,3 +53,9 @@ export function clearToken() {
 export function getRegistryUrl(): string {
   return readConfig().registryUrl;
 }
+
+export function setRegistryUrl(url: string) {
+  const config = readConfig();
+  config.registryUrl = url;
+  writeConfig(config);
+}

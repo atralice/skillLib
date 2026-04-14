@@ -18,7 +18,7 @@ Usage:
   skilllib <command> [options]
 
 Commands:
-  login                     Authenticate with your API key
+  login [--registry URL]    Set registry and authenticate with your API key
   logout                    Remove stored credentials
   whoami                    Show current authenticated user
   publish [dir] [version]   Publish a skill from a directory
@@ -32,6 +32,7 @@ Commands:
 
 Examples:
   skilllib login
+  skilllib login --registry https://skilllib.example.com
   skilllib publish . 1.0.0
   skilllib install @alice/react-patterns
   skilllib install @alice/react-patterns --save
@@ -45,7 +46,7 @@ async function main() {
 
   switch (command) {
     case "login":
-      await login();
+      await login(commandArgs);
       break;
     case "logout":
       logout();
