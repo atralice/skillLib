@@ -16,6 +16,7 @@ const eslintConfig = [
       ".next-playwright/**",
       ".trigger/**",
       "generated/prisma/**",
+      "packages/**",
     ],
   },
   {

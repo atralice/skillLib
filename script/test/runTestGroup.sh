@@ -36,4 +36,4 @@ while IFS= read -r line; do
 done < <(echo "$TEST_FILES")
 
 # Run tests for this group with TEST_GROUP environment variable set
-TEST_GROUP=${GROUP_INDEX} yarn test "${TEST_FILES_ARRAY[@]}"
+TEST_GROUP=${GROUP_INDEX} pnpm test "${TEST_FILES_ARRAY[@]}"

@@ -1,67 +1,220 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
   output   = "../generated/prisma/client"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
+
+// ─── Enums ───────────────────────────────────────────────
 
 enum SystemRole {
   admin
   staff
 }
 
+enum SkillVisibility {
+  public
+  unlisted
+  private
+}
+
+enum SkillVersionStatus {
+  draft
+  published
+  yanked
+}
+
+enum TeamMemberRole {
+  owner
+  admin
+  member
+}
+
+enum StackVisibility {
+  public
+  unlisted
+  private
+}
+
+// ─── Auth ────────────────────────────────────────────────
+
 model User {
-  id                String      @id @default(uuid())
-  email             String      @unique
-  firstName         String
-  lastName          String
-  systemRole        SystemRole?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  sessions          Session[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  username      String?        @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  systemRole    SystemRole?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  sessions      Session[]
+  apiKeys       ApiKey[]
+  skills        Skill[]
+  installations Installation[]
+  stacks        Stack[]
+  teamMembers   TeamMember[]
+  inviteCode    InviteCode?
 }
 
 model Session {
-  id                  String   @id @default(uuid())
-  token               String   @unique
-  userId              String
-  user                User     @relation(fields: [userId], references: [id])
-  impersonateUserId   String?
-  expiresAt           DateTime
-  createdAt           DateTime @default(now())
+  id                String   @id @default(uuid())
+  token             String   @unique
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  impersonateUserId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
 }
 
-enum ExchangeStatus {
-  notStarted
-  inProgress
-  completed
-  cancelled
+model InviteCode {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  usedById  String?   @unique
+  usedBy    User?     @relation(fields: [usedById], references: [id])
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
 }
 
-enum ExchangeType {
-  standard
-  reverse
+model ApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  keyPrefix  String
+  keyHash    String    @unique
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([keyHash])
 }
 
-model Exchange {
-  id              String          @id @default(uuid())
-  name            String
-  status          ExchangeStatus  @default(notStarted)
-  type            ExchangeType    @default(standard)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  exchangeUsers   ExchangeUser[]
+// ─── Skills ──────────────────────────────────────────────
+
+model Skill {
+  id            String          @id @default(uuid())
+  name          String
+  displayName   String
+  description   String          @default("")
+  visibility    SkillVisibility @default(public)
+  ownerId       String
+  owner         User            @relation(fields: [ownerId], references: [id])
+  teamId        String?
+  team          Team?           @relation(fields: [teamId], references: [id])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  versions      SkillVersion[]
+  installations Installation[]
+  stackItems    StackItem[]
+
+  @@unique([ownerId, name])
+  @@index([name])
+  @@index([teamId])
 }
 
-model ExchangeUser {
-  id          String   @id @default(uuid())
-  exchangeId  String
-  exchange    Exchange @relation(fields: [exchangeId], references: [id])
-  userId      String
-  createdAt   DateTime @default(now())
+model SkillVersion {
+  id            String             @id @default(uuid())
+  skillId       String
+  skill         Skill              @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version       String
+  status        SkillVersionStatus @default(draft)
+  changelog     String             @default("")
+  publishedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  files         SkillFile[]
+  installations Installation[]
 
-  @@unique([exchangeId, userId])
+  @@unique([skillId, version])
+  @@index([skillId])
+}
+
+model SkillFile {
+  id             String       @id @default(uuid())
+  skillVersionId String
+  skillVersion   SkillVersion @relation(fields: [skillVersionId], references: [id], onDelete: Cascade)
+  path           String
+  content        String
+  size           Int
+  createdAt      DateTime     @default(now())
+
+  @@unique([skillVersionId, path])
+  @@index([skillVersionId])
+}
+
+model Installation {
+  id                String       @id @default(uuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId           String
+  skill             Skill        @relation(fields: [skillId], references: [id])
+  skillVersionId    String
+  skillVersion      SkillVersion @relation(fields: [skillVersionId], references: [id])
+  versionConstraint String       @default("*")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([userId, skillId])
+  @@index([userId])
+}
+
+// ─── Teams & Stacks (Phase 2, schema ready) ─────────────
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  displayName String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  members     TeamMember[]
+  skills      Skill[]
+  stacks      Stack[]
+}
+
+model TeamMember {
+  id        String         @id @default(uuid())
+  teamId    String
+  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamMemberRole @default(member)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([teamId, userId])
+}
+
+model Stack {
+  id          String          @id @default(uuid())
+  name        String
+  displayName String
+  description String          @default("")
+  visibility  StackVisibility @default(public)
+  ownerId     String
+  owner       User            @relation(fields: [ownerId], references: [id])
+  teamId      String?
+  team        Team?           @relation(fields: [teamId], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  items       StackItem[]
+
+  @@unique([ownerId, name])
+  @@index([name])
+}
+
+model StackItem {
+  id                String   @id @default(uuid())
+  stackId           String
+  stack             Stack    @relation(fields: [stackId], references: [id], onDelete: Cascade)
+  skillId           String
+  skill             Skill    @relation(fields: [skillId], references: [id])
+  versionConstraint String   @default("*")
+  position          Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  @@unique([stackId, skillId])
 }

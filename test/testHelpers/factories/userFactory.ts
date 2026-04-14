@@ -1,12 +1,14 @@
 import createFactory from "./createFactory";
 import createTrait from "./createTrait";
-import type { User, Prisma } from "generated/prisma/client";
+import type { User, Prisma } from "generated/prisma/client/client";
 import { v4 as uuidv4 } from "uuid";
 
 function buildAttributes(): User {
   return {
     id: uuidv4(),
     email: `test-${uuidv4()}@example.com`,
+    username: `user-${uuidv4().slice(0, 8)}`,
+    passwordHash: "hashed-password-placeholder",
     firstName: "Test",
     lastName: "User",
     systemRole: null,
@@ -18,6 +20,8 @@ function buildAttributes(): User {
 function createAttributes(attributes: Partial<Prisma.UserCreateInput>): Prisma.UserCreateInput {
   return {
     email: `test-${uuidv4()}@example.com`,
+    username: `user-${uuidv4().slice(0, 8)}`,
+    passwordHash: "hashed-password-placeholder",
     firstName: "Test",
     lastName: "User",
     ...attributes,

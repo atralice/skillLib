@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import type { User } from "generated/prisma/client";
+import type { User } from "generated/prisma/client/client";
 
 export type SessionUser =
   | (User & {

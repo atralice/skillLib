@@ -2,8 +2,8 @@
 # (lint-staged can't type-check deleted files)
 DELETED_FILES=$(git diff --cached --name-only --diff-filter=D)
 if [ -n "$DELETED_FILES" ]; then
-  yarn type-check
+  pnpm type-check
   exit $?
 fi
 
-yarn lint-staged --continue-on-error
+pnpm lint-staged --continue-on-error

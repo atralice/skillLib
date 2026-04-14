@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import prisma from "@/lib/prisma";
-import type { PrismaClient } from "generated/prisma/client";
+import type { PrismaClient } from "generated/prisma/client/client";
 
 type BuildAttributes<TBuild> = () => TBuild;
 type CreateAttributes<TCreate, Input> = (attributes: Input) => TCreate | Promise<TCreate>;

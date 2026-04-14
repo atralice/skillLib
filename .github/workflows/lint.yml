@@ -9,10 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: "yarn"
+          cache: "pnpm"
 
       - name: Cache ESLint
         uses: actions/cache@v5
@@ -23,10 +25,10 @@ jobs:
             eslint-${{ github.ref }}-
             eslint-
 
-      - run: yarn install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: yarn lint
+        run: pnpm lint
 
       - name: Type Check
-        run: yarn type-check
+        run: pnpm type-check

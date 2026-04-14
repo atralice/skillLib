@@ -42,5 +42,8 @@ Thumbs.db
 
 # Debug
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
+
+# Local scratch / planning notes
+tmp/
+prisma/Untitled

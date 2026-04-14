@@ -1,0 +1,28 @@
+{
+  "name": "skilllib",
+  "version": "0.0.1",
+  "description": "CLI for the skillLib skill registry",
+  "type": "module",
+  "bin": {
+    "skilllib": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --target node22 --clean",
+    "dev": "tsx src/index.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.7.1",
+    "semver": "^7.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/semver": "^7.5.8",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

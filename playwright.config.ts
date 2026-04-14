@@ -32,7 +32,7 @@ export default defineConfig({
   ],
   outputDir: "playwright-results/",
   webServer: {
-    command: `yarn dev --port ${PORT}`,
+    command: `pnpm dev --port ${PORT}`,
     port: parseInt(PORT, 10),
     reuseExistingServer: !process.env.CI,
   },
