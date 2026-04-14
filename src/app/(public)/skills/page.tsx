@@ -2,7 +2,7 @@ import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function ExplorePage() {
+export default async function SkillsPage() {
   const skills = await prisma.skill.findMany({
     where: { visibility: "public" },
     include: {
@@ -15,7 +15,7 @@ export default async function ExplorePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Explore Skills</h1>
+      <h1 className="text-2xl font-bold">Skills</h1>
       <p className="mt-2 text-gray-600">Browse published skills from the community.</p>
       {skills.length === 0 ? (
         <p className="mt-8 text-center text-gray-400">No skills published yet.</p>

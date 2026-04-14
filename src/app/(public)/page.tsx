@@ -16,10 +16,10 @@ export default function HomePage() {
           Get started
         </Link>
         <Link
-          href="/explore"
+          href="/skills"
           className="rounded-md border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          Explore skills
+          Browse skills
         </Link>
       </div>
       <div className="mt-16 w-full max-w-2xl rounded-lg border bg-gray-900 p-6 text-left font-mono text-sm text-green-400">

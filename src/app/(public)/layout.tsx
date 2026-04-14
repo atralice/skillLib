@@ -9,8 +9,8 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             skillLib
           </Link>
           <div className="flex gap-4">
-            <Link href="/explore" className="text-sm text-gray-600 hover:text-gray-900">
-              Explore
+            <Link href="/skills" className="text-sm text-gray-600 hover:text-gray-900">
+              Skills
             </Link>
             <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900">
               Log in
