@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export default async function ExplorePage() {
   const skills = await prisma.skill.findMany({
     where: { visibility: "public" },
@@ -27,11 +29,11 @@ export default async function ExplorePage() {
                     <span className="text-gray-400">@{skill.owner.username ?? "anonymous"}/</span>
                     {skill.name}
                   </h2>
-                  <p className="mt-1 text-sm text-gray-600">{skill.description || skill.displayName}</p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {skill.description || skill.displayName}
+                  </p>
                 </div>
-                <span className="text-xs text-gray-400">
-                  {skill._count.installations} installs
-                </span>
+                <span className="text-xs text-gray-400">{skill._count.installations} installs</span>
               </div>
             </div>
           ))}
