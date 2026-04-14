@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import semver from "semver";
 import { getToken } from "../lib/config.js";
-import { post, get } from "../lib/client.js";
+import { post, get, ApiRequestError } from "../lib/client.js";
 import { parseSkillMd, collectSkillFiles } from "../lib/skillParser.js";
 import { success, error, info, warn } from "../lib/output.js";
 
@@ -53,8 +53,11 @@ export async function publish(args: string[]) {
     if (skill.versions.length > 0) {
       latestVersion = skill.versions[0]!.version;
     }
-  } catch {
-    // Skill doesn't exist yet — we'll create it
+  } catch (err) {
+    if (!(err instanceof ApiRequestError) || err.code !== "NOT_FOUND") {
+      throw err;
+    }
+    // Skill doesn't exist yet — we'll create it below
   }
 
   // Determine version
@@ -62,7 +65,9 @@ export async function publish(args: string[]) {
   if (!version) {
     const rl = createInterface({ input: stdin, output: stdout });
     const suggested = latestVersion ? semver.inc(latestVersion, "patch") : "1.0.0";
-    version = await rl.question(`Version${latestVersion ? ` (current: ${latestVersion})` : ""} [${suggested}]: `);
+    version = await rl.question(
+      `Version${latestVersion ? ` (current: ${latestVersion})` : ""} [${suggested}]: `,
+    );
     rl.close();
     if (!version) version = suggested!;
   }
@@ -81,8 +86,11 @@ export async function publish(args: string[]) {
         displayName: frontmatter.name ?? skillName,
         description,
       });
-    } catch {
-      // May already exist — that's fine
+    } catch (err) {
+      if (!(err instanceof ApiRequestError) || err.code !== "CONFLICT") {
+        throw err;
+      }
+      // Already exists — that's fine
     }
   }
 

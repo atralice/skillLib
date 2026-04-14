@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { ApiRequestError } from "./lib/client.js";
+import { error } from "./lib/output.js";
 import { login } from "./commands/login.js";
 import { logout } from "./commands/logout.js";
 import { whoami } from "./commands/whoami.js";
@@ -90,6 +92,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  if (err instanceof ApiRequestError) {
+    error(err.message);
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });

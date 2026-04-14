@@ -1,5 +1,4 @@
 import { getToken, getRegistryUrl } from "./config.js";
-import { error } from "./output.js";
 
 type ApiResponse<T> = {
   data: T;
@@ -14,6 +13,20 @@ type ApiError = {
   error: { code: string; message: string; details?: unknown };
 };
 
+export class ApiRequestError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+  public readonly details: unknown;
+
+  constructor(status: number, code: string, message: string, details?: unknown) {
+    super(`${code}: ${message}`);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
 function headers(): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
@@ -26,12 +39,16 @@ function headers(): Record<string, string> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  const body = await res.json();
+  const body = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const err = body as ApiError;
-    error(`${err.error.code}: ${err.error.message}`);
-    process.exit(1);
+    const err = body as ApiError | null;
+    throw new ApiRequestError(
+      res.status,
+      err?.error?.code ?? "HTTP_ERROR",
+      err?.error?.message ?? res.statusText,
+      err?.error?.details,
+    );
   }
 
   return body as T;
