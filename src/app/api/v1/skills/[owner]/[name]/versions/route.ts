@@ -1,8 +1,17 @@
 import type { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { authenticateApiKey } from "@/lib/api/authenticateApiKey";
-import { apiSuccess, unauthorized, validationError, notFound, forbidden, conflict } from "@/lib/api/apiResponse";
+import {
+  apiSuccess,
+  unauthorized,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+} from "@/lib/api/apiResponse";
 import { PublishVersionSchema } from "@/lib/api/schemas/skillVersion";
+import { ensureBucket, putBlob } from "@/lib/blob";
+import { contentTypeForPath } from "@/lib/mime";
 
 export async function POST(
   request: NextRequest,
@@ -37,6 +46,16 @@ export async function POST(
     return conflict(`Version ${version} already exists`);
   }
 
+  await ensureBucket();
+
+  const uploadedFiles = await Promise.all(
+    files.map(async (f) => {
+      const contentType = contentTypeForPath(f.path);
+      const { sha256, size } = await putBlob(f.content, contentType);
+      return { path: f.path, sha256, size, contentType };
+    }),
+  );
+
   const skillVersion = await prisma.skillVersion.create({
     data: {
       skillId: skill.id,
@@ -45,15 +64,11 @@ export async function POST(
       changelog: changelog ?? "",
       publishedAt: new Date(),
       files: {
-        create: files.map((f) => ({
-          path: f.path,
-          content: f.content,
-          size: Buffer.byteLength(f.content),
-        })),
+        create: uploadedFiles,
       },
     },
     include: {
-      files: { select: { path: true, size: true } },
+      files: { select: { path: true, size: true, sha256: true, contentType: true } },
     },
   });
 

@@ -138,12 +138,14 @@ model SkillFile {
   skillVersionId String
   skillVersion   SkillVersion @relation(fields: [skillVersionId], references: [id], onDelete: Cascade)
   path           String
-  content        String
+  sha256         String
   size           Int
+  contentType    String       @default("application/octet-stream")
   createdAt      DateTime     @default(now())
 
   @@unique([skillVersionId, path])
   @@index([skillVersionId])
+  @@index([sha256])
 }
 
 model Installation {

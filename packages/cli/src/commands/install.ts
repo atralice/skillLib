@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { createHash } from "node:crypto";
 import { getToken } from "../lib/config.js";
 import { post, get } from "../lib/client.js";
 import { success, error, info } from "../lib/output.js";
@@ -7,7 +8,13 @@ import { success, error, info } from "../lib/output.js";
 type DownloadResponse = {
   skill: { name: string; owner: string };
   version: string;
-  files: { path: string; content: string }[];
+  files: {
+    path: string;
+    size: number;
+    sha256: string;
+    contentType: string;
+    url: string;
+  }[];
 };
 
 type VersionInfo = {
@@ -46,7 +53,12 @@ export async function install(args: string[]) {
   await installSkill(owner, name, version, save);
 }
 
-async function installSkill(owner: string, name: string, version: string | undefined, save: boolean) {
+async function installSkill(
+  owner: string,
+  name: string,
+  version: string | undefined,
+  save: boolean,
+) {
   // Resolve version
   let resolvedVersion = version;
   if (!resolvedVersion) {
@@ -72,7 +84,21 @@ async function installSkill(owner: string, name: string, version: string | undef
   for (const file of data.files) {
     const filePath = join(skillDir, file.path);
     mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, file.content);
+
+    const res = await fetch(file.url);
+    if (!res.ok) {
+      error(`Failed to download ${file.path}: ${res.status} ${res.statusText}`);
+      process.exit(1);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+
+    const actualSha = createHash("sha256").update(buf).digest("hex");
+    if (actualSha !== file.sha256) {
+      error(`Hash mismatch for ${file.path}: expected ${file.sha256}, got ${actualSha}`);
+      process.exit(1);
+    }
+
+    writeFileSync(filePath, buf);
   }
 
   // Record installation on server

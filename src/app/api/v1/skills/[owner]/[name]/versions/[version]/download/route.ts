@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { apiSuccess, notFound } from "@/lib/api/apiResponse";
+import { getPresignedDownloadUrl } from "@/lib/blob";
+
+const PRESIGN_EXPIRES_IN_SECONDS = 3600;
 
 export async function GET(
   _request: NextRequest,
@@ -22,15 +25,33 @@ export async function GET(
   const skillVersion = await prisma.skillVersion.findUnique({
     where: { skillId_version: { skillId: skill.id, version } },
     include: {
-      files: { select: { path: true, content: true, size: true } },
+      files: {
+        select: { path: true, size: true, sha256: true, contentType: true },
+      },
     },
   });
   if (!skillVersion) return notFound("Version not found");
+
+  const files = await Promise.all(
+    skillVersion.files.map(async (f) => ({
+      path: f.path,
+      size: f.size,
+      sha256: f.sha256,
+      contentType: f.contentType,
+      url: await getPresignedDownloadUrl(
+        f.sha256,
+        f.path.split("/").pop() ?? "file",
+        f.contentType,
+        PRESIGN_EXPIRES_IN_SECONDS,
+      ),
+    })),
+  );
 
   return apiSuccess({
     skill: { name: skill.name, owner },
     version: skillVersion.version,
     status: skillVersion.status,
-    files: skillVersion.files,
+    expiresIn: PRESIGN_EXPIRES_IN_SECONDS,
+    files,
   });
 }
