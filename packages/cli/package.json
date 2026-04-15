@@ -1,19 +1,48 @@
 {
-  "name": "skilllib",
-  "version": "0.0.1",
+  "name": "@atralice/skilllib",
+  "version": "0.1.0",
   "description": "CLI for the skillLib skill registry",
-  "type": "module",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "package-manager",
+    "registry",
+    "skilllib",
+    "skills"
+  ],
+  "homepage": "https://github.com/atralice/skillLib#readme",
+  "bugs": {
+    "url": "https://github.com/atralice/skillLib/issues"
+  },
+  "license": "MIT",
+  "author": "atralice",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atralice/skillLib.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "skilllib": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --target node22 --clean",
     "dev": "tsx src/index.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "yaml": "^2.7.1",
-    "semver": "^7.7.2"
+    "semver": "^7.7.2",
+    "yaml": "^2.7.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
