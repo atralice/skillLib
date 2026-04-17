@@ -7,6 +7,8 @@ function buildAttributes(): InviteCode {
     id: uuidv4(),
     code: `invite-${uuidv4().slice(0, 8)}`,
     usedById: null,
+    createdById: null,
+    revokedAt: null,
     expiresAt: null,
     createdAt: new Date(),
   };

@@ -28,7 +28,7 @@ async function signUp(
       where: { code: inviteCode },
     });
 
-    if (!invite || invite.usedById) {
+    if (!invite || invite.usedById || invite.revokedAt) {
       return serverActionError({ formErrors: ["Invalid or already used invite code"] });
     }
 
@@ -54,9 +54,7 @@ async function signUp(
       passwordHash,
       firstName,
       lastName,
-      ...(isBootstrap
-        ? { systemRole: "admin" as const, username: email.split("@")[0] }
-        : {}),
+      ...(isBootstrap ? { systemRole: "admin" as const, username: email.split("@")[0] } : {}),
     },
   });
 

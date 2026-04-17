@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import type { FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import signUp from "@/actions/auth/signUp";
 import { isServerActionError } from "@/lib/serverActions/isServerActionError";
 
 export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-sm pt-16">Loading…</div>}>
+      <SignUpForm />
+    </Suspense>
+  );
+}
+
+function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefilledCode = searchParams.get("code") ?? "";
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
@@ -48,22 +58,14 @@ export default function SignUpPage() {
         <div className="flex gap-3">
           <label className="flex flex-1 flex-col gap-1">
             <span className="text-sm font-medium">First name</span>
-            <input
-              name="firstName"
-              required
-              className="rounded-md border px-3 py-2 text-sm"
-            />
+            <input name="firstName" required className="rounded-md border px-3 py-2 text-sm" />
             {fieldErrors.firstName && (
               <span className="text-xs text-red-600">{fieldErrors.firstName[0]}</span>
             )}
           </label>
           <label className="flex flex-1 flex-col gap-1">
             <span className="text-sm font-medium">Last name</span>
-            <input
-              name="lastName"
-              required
-              className="rounded-md border px-3 py-2 text-sm"
-            />
+            <input name="lastName" required className="rounded-md border px-3 py-2 text-sm" />
             {fieldErrors.lastName && (
               <span className="text-xs text-red-600">{fieldErrors.lastName[0]}</span>
             )}
@@ -99,6 +101,7 @@ export default function SignUpPage() {
           <input
             name="inviteCode"
             required
+            defaultValue={prefilledCode}
             className="rounded-md border px-3 py-2 text-sm"
           />
           {fieldErrors.inviteCode && (

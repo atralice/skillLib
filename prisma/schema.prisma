@@ -56,7 +56,8 @@ model User {
   installations Installation[]
   stacks        Stack[]
   teamMembers   TeamMember[]
-  inviteCode    InviteCode?
+  inviteCode    InviteCode?  @relation("InviteUsedBy")
+  invitesCreated InviteCode[] @relation("InviteCreatedBy")
 }
 
 model Session {
@@ -70,12 +71,15 @@ model Session {
 }
 
 model InviteCode {
-  id        String    @id @default(uuid())
-  code      String    @unique
-  usedById  String?   @unique
-  usedBy    User?     @relation(fields: [usedById], references: [id])
-  expiresAt DateTime?
-  createdAt DateTime  @default(now())
+  id          String    @id @default(uuid())
+  code        String    @unique
+  usedById    String?   @unique
+  usedBy      User?     @relation("InviteUsedBy", fields: [usedById], references: [id])
+  createdById String?
+  createdBy   User?     @relation("InviteCreatedBy", fields: [createdById], references: [id])
+  revokedAt   DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
 }
 
 model ApiKey {
