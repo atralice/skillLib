@@ -118,6 +118,17 @@ export async function putBlob(
   return { sha256, size, alreadyExisted: false };
 }
 
+export async function getBlobContent(sha256: string): Promise<Buffer> {
+  const res = await internalClient().send(
+    new GetObjectCommand({ Bucket: bucket(), Key: keyFor(sha256) }),
+  );
+  if (!res.Body) {
+    throw new Error(`Blob ${sha256} has no body`);
+  }
+  const bytes = await res.Body.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 export async function getPresignedDownloadUrl(
   sha256: string,
   filename: string,
