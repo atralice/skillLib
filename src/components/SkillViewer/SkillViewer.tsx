@@ -23,6 +23,7 @@ type FileEntry = {
 
 type Props = {
   skill: {
+    id: string;
     name: string;
     displayName: string;
     description: string;
@@ -48,7 +49,7 @@ export default function SkillViewer({ skill, versions, selectedVersion, skillMd,
         installCount={skill.installCount}
       />
       <SkillVersionSelector
-        skillName={skill.name}
+        skillId={skill.id}
         versions={versions}
         selectedVersion={selectedVersion}
       />

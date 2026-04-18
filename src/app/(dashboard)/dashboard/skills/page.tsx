@@ -37,7 +37,7 @@ export default async function MySkillsPage() {
             return (
               <Link
                 key={skill.id}
-                href={`/dashboard/skills/${encodeURIComponent(skill.name)}`}
+                href={`/dashboard/skills/${skill.id}`}
                 className="rounded-lg border bg-white p-4 hover:border-gray-400"
               >
                 <div className="flex items-start justify-between">

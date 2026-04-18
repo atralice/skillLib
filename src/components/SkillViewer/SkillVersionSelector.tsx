@@ -8,12 +8,12 @@ type VersionInfo = {
 };
 
 type Props = {
-  skillName: string;
+  skillId: string;
   versions: VersionInfo[];
   selectedVersion: string;
 };
 
-export default function SkillVersionSelector({ skillName, versions, selectedVersion }: Props) {
+export default function SkillVersionSelector({ skillId, versions, selectedVersion }: Props) {
   return (
     <div className="rounded-lg border bg-white p-4">
       <h2 className="text-sm font-semibold text-gray-500">Versions</h2>
@@ -23,7 +23,7 @@ export default function SkillVersionSelector({ skillName, versions, selectedVers
           return (
             <Link
               key={v.id}
-              href={`/dashboard/skills/${encodeURIComponent(skillName)}?version=${encodeURIComponent(v.version)}`}
+              href={`/dashboard/skills/${skillId}?version=${encodeURIComponent(v.version)}`}
               className={`rounded-md border px-3 py-1 text-sm ${
                 isSelected
                   ? "border-gray-900 bg-gray-900 text-white"

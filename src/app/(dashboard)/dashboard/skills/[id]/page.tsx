@@ -13,7 +13,7 @@ const MAX_INLINE_BYTES = 256 * 1024;
 
 type SearchParams = Promise<{ version?: string }>;
 
-type RouteParams = Promise<{ name: string }>;
+type RouteParams = Promise<{ id: string }>;
 
 export default async function SkillDetailPage({
   params,
@@ -25,11 +25,11 @@ export default async function SkillDetailPage({
   const user = await getUser();
   if (!user) return null;
 
-  const { name } = await params;
+  const { id } = await params;
   const { version: versionParam } = await searchParams;
 
   const skill = await prisma.skill.findUnique({
-    where: { ownerId_name: { ownerId: user.id, name } },
+    where: { id },
     include: {
       owner: { select: { username: true } },
       _count: { select: { installations: true } },
@@ -44,7 +44,7 @@ export default async function SkillDetailPage({
     },
   });
 
-  if (!skill) notFound();
+  if (!skill || skill.ownerId !== user.id) notFound();
 
   const fallbackVersion = skill.versions.find((v) => v.status === "published") ?? skill.versions[0];
 
@@ -120,6 +120,7 @@ export default async function SkillDetailPage({
       <div className="mt-4">
         <SkillViewer
           skill={{
+            id: skill.id,
             name: skill.name,
             displayName: skill.displayName,
             description: skill.description,
