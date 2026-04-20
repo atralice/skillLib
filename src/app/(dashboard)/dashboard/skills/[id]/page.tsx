@@ -1,16 +1,15 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import prisma from "@/lib/prisma";
 import getUser from "@/utils/loaders/server/user/getUser";
-import { getBlobContent, getPresignedDownloadUrl } from "@/lib/blob";
-import { parseSkillMd } from "@/lib/skills/parseSkillMd";
-import isTextContentType from "@/lib/skills/isTextContentType";
-import SkillViewer from "@/components/SkillViewer/SkillViewer";
+import SkillHeader from "@/components/SkillViewer/SkillHeader";
+import SkillVersionSelector from "@/components/SkillViewer/SkillVersionSelector";
+import SkillContent from "@/components/SkillViewer/SkillContent";
+import SkillContentLoading from "@/components/SkillViewer/SkillContentLoading";
 import SkillAccess from "@/components/SkillViewer/SkillAccess";
 
 export const dynamic = "force-dynamic";
-
-const MAX_INLINE_BYTES = 256 * 1024;
 
 type SearchParams = Promise<{ version?: string }>;
 
@@ -68,12 +67,14 @@ export default async function SkillDetailPage({
     skill.visibility === "public" ||
     (skill.teamId !== null && userTeamIds.has(skill.teamId)) ||
     skill.grants.some(
-      (g) => g.userId === user.id || (g.teamId !== null && userTeamIds.has(g.teamId)),
+      (g) =>
+        g.userId === user.id || (g.teamId !== null && userTeamIds.has(g.teamId)),
     );
 
   if (!hasAccess) notFound();
 
-  const fallbackVersion = skill.versions.find((v) => v.status === "published") ?? skill.versions[0];
+  const fallbackVersion =
+    skill.versions.find((v) => v.status === "published") ?? skill.versions[0];
 
   const preferredVersion = versionParam
     ? (skill.versions.find((v) => v.version === versionParam) ?? fallbackVersion)
@@ -93,68 +94,22 @@ export default async function SkillDetailPage({
     );
   }
 
-  const versionFiles = preferredVersion.files;
-  const skillMdFile = versionFiles.find(
-    (f) => f.path === "SKILL.md" || f.path.endsWith("/SKILL.md"),
-  );
-
-  const fileEntries = await Promise.all(
-    versionFiles.map(async (f) => {
-      const downloadUrl = await getPresignedDownloadUrl(
-        f.sha256,
-        f.path.split("/").pop() ?? f.path,
-        f.contentType,
-      );
-      let content: string | null = null;
-      let truncated = false;
-      if (isTextContentType(f.contentType)) {
-        const buf = await getBlobContent(f.sha256);
-        if (buf.byteLength > MAX_INLINE_BYTES) {
-          content = buf.subarray(0, MAX_INLINE_BYTES).toString("utf8");
-          truncated = true;
-        } else {
-          content = buf.toString("utf8");
-        }
-      }
-      return {
-        path: f.path,
-        sha256: f.sha256,
-        size: f.size,
-        contentType: f.contentType,
-        downloadUrl,
-        content,
-        truncated,
-      };
-    }),
-  );
-
-  fileEntries.sort((a, b) => {
-    if (a.path === "SKILL.md") return -1;
-    if (b.path === "SKILL.md") return 1;
-    return a.path.localeCompare(b.path);
-  });
-
-  const skillMdContent = skillMdFile
-    ? (fileEntries.find((f) => f.path === skillMdFile.path)?.content ?? null)
-    : null;
-  const skillMd = skillMdContent ? parseSkillMd(skillMdContent) : null;
-
   return (
     <div>
       <Link href="/dashboard/skills" className="text-sm text-gray-500 hover:underline">
         ← My Skills
       </Link>
-      <div className="mt-4">
-        <SkillViewer
-          skill={{
-            id: skill.id,
-            name: skill.name,
-            displayName: skill.displayName,
-            description: skill.description,
-            visibility: skill.visibility,
-            ownerUsername: skill.owner.username,
-            installCount: skill._count.installations,
-          }}
+      <div className="mt-4 space-y-6">
+        <SkillHeader
+          displayName={skill.displayName}
+          ownerUsername={skill.owner.username}
+          name={skill.name}
+          description={skill.description}
+          visibility={skill.visibility}
+          installCount={skill._count.installations}
+        />
+        <SkillVersionSelector
+          skillId={skill.id}
           versions={skill.versions.map((v) => ({
             id: v.id,
             version: v.version,
@@ -162,24 +117,23 @@ export default async function SkillDetailPage({
             publishedAt: v.publishedAt,
           }))}
           selectedVersion={preferredVersion.version}
-          skillMd={skillMd}
-          files={fileEntries}
         />
+        <Suspense key={preferredVersion.id} fallback={<SkillContentLoading />}>
+          <SkillContent versionFiles={preferredVersion.files} />
+        </Suspense>
         {isOwner && (
-          <div className="mt-6">
-            <SkillAccess
-              skillId={skill.id}
-              visibility={skill.visibility}
-              grants={skill.grants.map((g) => ({
-                id: g.id,
-                user: g.user,
-                team: g.team,
-              }))}
-              ownedTeams={teamMemberships
-                .filter((m) => m.role === "owner" || m.role === "admin")
-                .map((m) => m.team)}
-            />
-          </div>
+          <SkillAccess
+            skillId={skill.id}
+            visibility={skill.visibility}
+            grants={skill.grants.map((g) => ({
+              id: g.id,
+              user: g.user,
+              team: g.team,
+            }))}
+            ownedTeams={teamMemberships
+              .filter((m) => m.role === "owner" || m.role === "admin")
+              .map((m) => m.team)}
+          />
         )}
       </div>
     </div>
