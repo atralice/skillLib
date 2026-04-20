@@ -6,6 +6,7 @@ import { getBlobContent, getPresignedDownloadUrl } from "@/lib/blob";
 import { parseSkillMd } from "@/lib/skills/parseSkillMd";
 import isTextContentType from "@/lib/skills/isTextContentType";
 import SkillViewer from "@/components/SkillViewer/SkillViewer";
+import SkillAccess from "@/components/SkillViewer/SkillAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +42,23 @@ export default async function SkillDetailPage({
           },
         },
       },
+      grants: {
+        include: {
+          user: { select: { username: true, firstName: true, lastName: true } },
+          team: { select: { name: true, displayName: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
   if (!skill || skill.ownerId !== user.id) notFound();
+
+  const ownedTeamMemberships = await prisma.teamMember.findMany({
+    where: { userId: user.id, role: { in: ["owner", "admin"] } },
+    include: { team: { select: { id: true, name: true, displayName: true } } },
+    orderBy: { team: { displayName: "asc" } },
+  });
 
   const fallbackVersion = skill.versions.find((v) => v.status === "published") ?? skill.versions[0];
 
@@ -138,6 +152,18 @@ export default async function SkillDetailPage({
           skillMd={skillMd}
           files={fileEntries}
         />
+        <div className="mt-6">
+          <SkillAccess
+            skillId={skill.id}
+            visibility={skill.visibility}
+            grants={skill.grants.map((g) => ({
+              id: g.id,
+              user: g.user,
+              team: g.team,
+            }))}
+            ownedTeams={ownedTeamMemberships.map((m) => m.team)}
+          />
+        </div>
       </div>
     </div>
   );

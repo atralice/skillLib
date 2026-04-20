@@ -41,23 +41,25 @@ enum StackVisibility {
 // ─── Auth ────────────────────────────────────────────────
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  username      String?        @unique
-  passwordHash  String
-  firstName     String
-  lastName      String
-  systemRole    SystemRole?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  sessions      Session[]
-  apiKeys       ApiKey[]
-  skills        Skill[]
-  installations Installation[]
-  stacks        Stack[]
-  teamMembers   TeamMember[]
-  inviteCode    InviteCode?  @relation("InviteUsedBy")
-  invitesCreated InviteCode[] @relation("InviteCreatedBy")
+  id              String         @id @default(uuid())
+  email           String         @unique
+  username        String?        @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  systemRole      SystemRole?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  sessions        Session[]
+  apiKeys         ApiKey[]
+  skills          Skill[]
+  installations   Installation[]
+  stacks          Stack[]
+  teamMembers     TeamMember[]
+  inviteCode      InviteCode?    @relation("InviteUsedBy")
+  invitesCreated  InviteCode[]   @relation("InviteCreatedBy")
+  skillGrants     SkillGrant[]   @relation("SkillGrantUser")
+  grantsGranted   SkillGrant[]   @relation("SkillGrantGrantor")
 }
 
 model Session {
@@ -114,6 +116,7 @@ model Skill {
   versions      SkillVersion[]
   installations Installation[]
   stackItems    StackItem[]
+  grants        SkillGrant[]
 
   @@unique([ownerId, name])
   @@index([name])
@@ -179,6 +182,7 @@ model Team {
   members     TeamMember[]
   skills      Skill[]
   stacks      Stack[]
+  skillGrants SkillGrant[] @relation("SkillGrantTeam")
 }
 
 model TeamMember {
@@ -210,6 +214,25 @@ model Stack {
 
   @@unique([ownerId, name])
   @@index([name])
+}
+
+model SkillGrant {
+  id          String   @id @default(uuid())
+  skillId     String
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation("SkillGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?    @relation("SkillGrantTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  grantedById String
+  grantedBy   User     @relation("SkillGrantGrantor", fields: [grantedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([skillId, userId])
+  @@unique([skillId, teamId])
+  @@index([userId])
+  @@index([teamId])
+  @@index([skillId])
 }
 
 model StackItem {
