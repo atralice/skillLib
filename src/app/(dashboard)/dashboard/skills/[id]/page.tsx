@@ -29,36 +29,38 @@ export default async function SkillDetailPage({
   const { id } = await params;
   const { version: versionParam } = await searchParams;
 
-  const skill = await prisma.skill.findUnique({
-    where: { id },
-    include: {
-      owner: { select: { username: true } },
-      _count: { select: { installations: true } },
-      versions: {
-        orderBy: { createdAt: "desc" },
-        include: {
-          files: {
-            orderBy: { path: "asc" },
+  const [skill, teamMemberships] = await Promise.all([
+    prisma.skill.findUnique({
+      where: { id },
+      include: {
+        owner: { select: { username: true } },
+        _count: { select: { installations: true } },
+        versions: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            files: {
+              orderBy: { path: "asc" },
+            },
           },
         },
-      },
-      grants: {
-        include: {
-          user: { select: { username: true, firstName: true, lastName: true } },
-          team: { select: { name: true, displayName: true } },
+        grants: {
+          include: {
+            user: { select: { username: true, firstName: true, lastName: true } },
+            team: { select: { name: true, displayName: true } },
+          },
+          orderBy: { createdAt: "desc" },
         },
-        orderBy: { createdAt: "desc" },
       },
-    },
-  });
+    }),
+    prisma.teamMember.findMany({
+      where: { userId: user.id },
+      include: { team: { select: { id: true, name: true, displayName: true } } },
+    }),
+  ]);
 
   if (!skill) notFound();
 
   const isOwner = skill.ownerId === user.id;
-  const teamMemberships = await prisma.teamMember.findMany({
-    where: { userId: user.id },
-    include: { team: { select: { id: true, name: true, displayName: true } } },
-  });
   const userTeamIds = new Set(teamMemberships.map((m) => m.team.id));
 
   const hasAccess =

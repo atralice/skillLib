@@ -24,38 +24,36 @@ export default async function AvailableSkillsPage() {
   const user = await getUser();
   if (!user) return null;
 
-  const where = await accessibleSkillsWhere(user.id);
+  const memberships = await prisma.teamMember.findMany({
+    where: { userId: user.id },
+    select: { teamId: true },
+  });
+  const teamIdArray = memberships.map((m) => m.teamId);
+  const teamIds = new Set(teamIdArray);
 
-  const [skills, memberships] = await Promise.all([
+  const [skills, grantsToMe, grantsToMyTeams] = await Promise.all([
     prisma.skill.findMany({
-      where,
+      where: accessibleSkillsWhere({ userId: user.id, teamIds: teamIdArray }),
       include: {
         owner: { select: { username: true } },
         team: { select: { name: true, displayName: true } },
         versions: { orderBy: { createdAt: "desc" }, take: 1 },
         _count: { select: { installations: true, versions: true } },
-        grants: { where: { OR: [{ userId: user.id }] }, select: { skillId: true } },
       },
       orderBy: { updatedAt: "desc" },
     }),
-    prisma.teamMember.findMany({
+    prisma.skillGrant.findMany({
       where: { userId: user.id },
-      select: { teamId: true },
+      select: { skillId: true },
     }),
-  ]);
-
-  const teamIds = new Set(memberships.map((m) => m.teamId));
-  const grantsToMe = await prisma.skillGrant.findMany({
-    where: { userId: user.id },
-    select: { skillId: true },
-  });
-  const grantsToMyTeams =
-    teamIds.size > 0
-      ? await prisma.skillGrant.findMany({
-          where: { teamId: { in: Array.from(teamIds) } },
+    teamIdArray.length > 0
+      ? prisma.skillGrant.findMany({
+          where: { teamId: { in: teamIdArray } },
           select: { skillId: true },
         })
-      : [];
+      : Promise.resolve([]),
+  ]);
+
   const grantedUserIds = new Set(grantsToMe.map((g) => g.skillId));
   const grantedTeamIds = new Set(grantsToMyTeams.map((g) => g.skillId));
 
