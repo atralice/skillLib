@@ -52,13 +52,24 @@ export default async function SkillDetailPage({
     },
   });
 
-  if (!skill || skill.ownerId !== user.id) notFound();
+  if (!skill) notFound();
 
-  const ownedTeamMemberships = await prisma.teamMember.findMany({
-    where: { userId: user.id, role: { in: ["owner", "admin"] } },
+  const isOwner = skill.ownerId === user.id;
+  const teamMemberships = await prisma.teamMember.findMany({
+    where: { userId: user.id },
     include: { team: { select: { id: true, name: true, displayName: true } } },
-    orderBy: { team: { displayName: "asc" } },
   });
+  const userTeamIds = new Set(teamMemberships.map((m) => m.team.id));
+
+  const hasAccess =
+    isOwner ||
+    skill.visibility === "public" ||
+    (skill.teamId !== null && userTeamIds.has(skill.teamId)) ||
+    skill.grants.some(
+      (g) => g.userId === user.id || (g.teamId !== null && userTeamIds.has(g.teamId)),
+    );
+
+  if (!hasAccess) notFound();
 
   const fallbackVersion = skill.versions.find((v) => v.status === "published") ?? skill.versions[0];
 
@@ -152,18 +163,22 @@ export default async function SkillDetailPage({
           skillMd={skillMd}
           files={fileEntries}
         />
-        <div className="mt-6">
-          <SkillAccess
-            skillId={skill.id}
-            visibility={skill.visibility}
-            grants={skill.grants.map((g) => ({
-              id: g.id,
-              user: g.user,
-              team: g.team,
-            }))}
-            ownedTeams={ownedTeamMemberships.map((m) => m.team)}
-          />
-        </div>
+        {isOwner && (
+          <div className="mt-6">
+            <SkillAccess
+              skillId={skill.id}
+              visibility={skill.visibility}
+              grants={skill.grants.map((g) => ({
+                id: g.id,
+                user: g.user,
+                team: g.team,
+              }))}
+              ownedTeams={teamMemberships
+                .filter((m) => m.role === "owner" || m.role === "admin")
+                .map((m) => m.team)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

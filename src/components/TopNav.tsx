@@ -25,6 +25,12 @@ export default async function TopNav() {
                 >
                   My Skills
                 </Link>
+                <Link
+                  href="/dashboard/available"
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                >
+                  Available
+                </Link>
                 <Link href="/dashboard/teams" className="text-sm text-gray-600 hover:text-gray-900">
                   Teams
                 </Link>
