@@ -1,6 +1,7 @@
 import getUser from "@/utils/loaders/server/user/getUser";
 import hasSystemRole from "@/lib/user/hasSystemRole";
 import Link from "next/link";
+import UsernameForm from "@/components/UsernameForm";
 
 export default async function SettingsPage() {
   const user = await getUser();
@@ -26,7 +27,7 @@ export default async function SettingsPage() {
             </div>
             <div>
               <p className="text-gray-500">Username</p>
-              <p>{user.username ?? "Not set"}</p>
+              <UsernameForm currentUsername={user.username} />
             </div>
           </div>
         </div>
