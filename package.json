@@ -1,81 +1,41 @@
 {
-  "name": "skillLib",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@atralice/skilllib",
+  "version": "0.3.0",
+  "description": "Keep a library of Claude Code skills and choose which ones each project gets",
+  "keywords": ["claude", "claude-code", "cli", "skills"],
+  "license": "MIT",
+  "author": "atralice",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atralice/skillLib.git"
+  },
+  "type": "module",
+  "bin": {
+    "skilllib": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
   "scripts": {
-    "dev": "next dev --port ${PORT:-3001}",
-    "build": "next build",
-    "start": "next start",
-    "test": "./script/test-with-lock.sh",
-    "test:parallel": "./script/bun-test.sh",
-    "test:watch:failed": "./test/watchFailed.sh",
-    "test:watch:changed": "./test/watchChanged.sh",
-    "test:e2e": "npx playwright test",
-    "lint": "eslint . --cache --cache-location .eslintcache --cache-strategy content",
-    "type-check": "tsc",
-    "prepare": "husky",
-    "postinstall": "prisma generate",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "build": "tsup src/index.ts --format esm --target node22 --clean",
+    "dev": "tsx src/index.ts",
+    "type-check": "tsc --noEmit",
+    "test": "bun test src",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1030.0",
-    "@aws-sdk/s3-request-presigner": "^3.1030.0",
-    "@node-rs/argon2": "^2.0.2",
-    "@prisma/adapter-pg": "^7.7.0",
-    "@prisma/client": "^7.7.0",
-    "clsx": "^2.1.1",
-    "next": "16.2.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "server-only": "^0.0.1",
-    "tailwind-merge": "^2.6.0",
-    "yaml": "^2.8.3",
-    "zod": "^3.25.42"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^17.4.4",
-    "@playwright/test": "^1.56.1",
-    "@tailwindcss/container-queries": "^0.1.1",
-    "@tailwindcss/typography": "^0.5.15",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^14.2.1",
     "@types/bun": "^1.2.0",
     "@types/node": "^22.10.2",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@types/uuid": "^10.0.0",
-    "autoprefixer": "^10.4.20",
-    "dotenv": "^17.4.2",
-    "eslint": "^9.39.0",
-    "eslint-config-next": "16.2.1",
-    "eslint-plugin-jest": "^28.11.0",
-    "eslint-plugin-no-loops": "^0.4.0",
-    "eslint-plugin-no-only-tests": "^3.3.0",
-    "fetch-mock": "^12.5.2",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
-    "oxfmt": "^0.28.0",
-    "postcss": "^8.4.49",
-    "prisma": "^7.7.0",
-    "tailwindcss": "^3.4.17",
-    "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.17.0",
-    "uuid": "^11.1.0"
-  },
-  "lint-staged": {
-    "*.{css,json}": "oxfmt --no-error-on-unmatched-pattern",
-    "*.{ts,tsx}": "sh -c 'tsc -b --noEmit'",
-    "**/*.{js,jsx,ts,tsx}": [
-      "oxfmt --no-error-on-unmatched-pattern",
-      "pnpm lint"
-    ]
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
   },
   "engines": {
-    "node": "22"
+    "node": ">=22"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
 }
