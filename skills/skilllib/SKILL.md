@@ -8,13 +8,13 @@ allowed-tools: Bash(skilllib:*)
 
 The user manages agent skills with the `skilllib` CLI. Their **library** (`~/.skilllib/library`, "my skills", "the registry") holds versioned skills that load nowhere until added to a repo. A repo pins its skills in `skilllib.json`.
 
-Always pass `--json` (one line of JSON on stdout; messages go to stderr). Never run bare `skilllib` or `skilllib ui`: that's an interactive app. If `skilllib` isn't on PATH, use `npx -y skilllib`.
+Always pass `--json` (one line of JSON on stdout; messages go to stderr). Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
 
 ## Reading
 
 The **Now** section at the end has this repo's `status` and `list` output. Answer from it and don't run them again. If it shows the commands instead of their output, run both in parallel.
 
-`status --json`: `skills` are this repo's own; `global` groups load in every repo; `issues` are everything skilllib finds wrong (out-of-date or missing skills, broken links, skills loaded twice), with the `fix` that `skilllib doctor --fix` applies. When asked what's out of date or broken, `issues` and each skill's `state` are the answer. Don't audit skill contents unless asked.
+`status --json`: `skills` are this repo's own; `global` groups load in every repo; `issues` are everything skilllib finds wrong (out-of-date or missing skills, broken links, skills loaded twice), with its `fix` (`skilllib doctor --fix` applies every fix, across all the user's projects). When asked what's out of date or broken, `issues` and each skill's `state` are the answer. Don't audit skill contents unless asked.
 
 - `source`: `library` (added with skilllib) · `repo` (committed to `.agents/skills` by the team) · `local` (unmanaged folder) · `global` (`~/.claude/skills` or `~/.agents/skills`) · `skills.sh` (`npx skills add`; `from` is the source repo) · `plugin` (Claude Code plugin; turn off with `/plugin`) · `claude.ai` (synced from the account) · `built-in` (bundled with an agent).
 - Missing fields mean the usual: loaded by all of `agents`, state ok, in `.claude/skills`. `usesHere` counts Claude Code uses in this repo.

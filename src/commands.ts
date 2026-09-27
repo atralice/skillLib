@@ -25,7 +25,7 @@ import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } 
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, readConfig, removeRoot, setHarnesses, setHidden, visibleProjects } from "./config.js";
-import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
+import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues } from "./health.js";
 
 const USAGE_DAYS = 30;
@@ -119,7 +119,8 @@ export async function status(args: Args) {
   if (args.json) {
     const usage = await usageBySkill(args.days, root);
     json(usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
-    rememberProjects([root]);
+    // The skilllib skill runs this wherever an agent is; only remember real repos.
+    if (currentProject()) rememberProjects([root]);
     return;
   }
   const skills = projectStatus(root);
@@ -535,6 +536,7 @@ export function agentSkill(args: Args) {
     }
     if (args.json) return json({ state: agentSkillState(), dirs: r.dirs });
     success(`Installed in ${r.dirs.map((d) => tildify(d)).join(" and ")}`);
+    if (!onPath("skilllib")) warn("`skilllib` isn't on your PATH, so agents can't run it. Install it: npm install -g skilllib");
     info(dim("New agent sessions can now answer questions like “which skills can you use here?”"));
     return;
   }
