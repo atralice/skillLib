@@ -116,14 +116,20 @@ export function findIssues(
       run: () => removePlugin(plugin, "delete").message,
     };
     const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => removePlugin(plugin, "off").message };
+    const notLoaded = dupes.filter((n) => !loadedYours.has(n));
     issues.push({
       id: `plugin:${plugin.id}`,
-      severity: "problem",
+      severity: notLoaded.length === dupes.length ? "suggestion" : "problem",
       title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}`,
       detail: [
-        `Claude Code loads both (the plugin's as /${pluginName}:${dupes[0]}). Your skill wins.`,
+        notLoaded.length < dupes.length ? `Claude Code loads both (the plugin's as /${pluginName}:${dupes[0]}). Your skill wins.` : "",
+        notLoaded.length
+          ? `Your ${notLoaded.join(", ")} ${notLoaded.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notLoaded.length === 1 ? "it" : "them"} where you need ${notLoaded.length === 1 ? "it" : "them"}.`
+          : "",
         others ? `The plugin's other ${plural(others, "skill")} are copied into Your skills first, so nothing is lost.` : "",
-        plugin.extras.length ? `It also brings ${plugin.extras.join(", ")}: removing it drops those, turning it off pauses them.` : "",
+        plugin.extras.length
+          ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
+          : "",
         plugin.synced ? "It's synced from claude.ai, so it can only be turned off here." : "",
       ]
         .filter(Boolean)

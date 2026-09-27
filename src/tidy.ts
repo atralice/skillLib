@@ -49,8 +49,13 @@ function entriesOf(dirs: string[], name: string): Entry[] {
     const real = realpathOrNull(path);
     const skill = existsSync(join(path, "SKILL.md"));
     if (!link && !skill) return []; // some other folder; never touched
-    return [{ dir, path, link, real, hash: link || !skill ? null : treeHash(path) }];
+    return [{ dir, path, link, real, hash: null }];
   });
+}
+
+/** Hashes real copies only when there's more than one to compare: hashing reads every file. */
+function hashReals(reals: Entry[]) {
+  if (reals.length > 1) for (const r of reals) r.hash = treeHash(r.path);
 }
 
 function namesIn(dirs: string[]): string[] {
@@ -106,6 +111,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     }
     const reals = entries.filter((e) => !e.link);
     if (reals.length === 0) continue;
+    hashReals(reals);
 
     const dep = skills[name];
     const chosen = keep[name];
@@ -176,6 +182,7 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
     }
     const reals = entries.filter((e) => !e.link);
     if (reals.length < 2) continue;
+    hashReals(reals);
     const primary = reals.find((r) => r.dir === keep[name]) ?? reals.find((r) => r.dir === agents) ?? reals[0]!;
     if (!keep[name] && reals.some((r) => r.hash !== primary.hash)) {
       report.conflicts.push(conflictOf(name, null, reals, enabled, globalReadsOf));
@@ -210,7 +217,8 @@ export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep"
   const held = git === "keep" ? gitVisibleSteps(plan, info) : [];
   const applied: TidyStep[] = [];
   for (const step of plan.steps) {
-    if (held.includes(step)) continue;
+    // Planned earlier (Health builds plans on load); skip what changed since.
+    if (held.includes(step) || !entryExists(step.path) || ("target" in step && !entryExists(step.target))) continue;
     if (step.kind === "link" || step.kind === "unlink") {
       if (isLink(step.path)) unlinkSync(step.path);
     } else stash(step.path, "tidy-backup");

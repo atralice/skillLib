@@ -13,6 +13,8 @@ export type ClaudePlugin = {
   id: string;
   /** Install scope (user, project, local); null for plugins synced from claude.ai. */
   scope: string | null;
+  /** For project and local scope: the project it's installed in (`claude plugin` must run there). */
+  projectPath?: string;
   synced: boolean;
   /** Skill folders it ships. */
   skills: string[];
@@ -48,26 +50,50 @@ function extrasOf(root: string): string[] {
 
 /** Claude Code plugins behind the plugin skills machineSkills found. */
 export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
-  const installed = readJson<{ plugins?: Record<string, { scope?: string }[]> }>(join(claudeDir(), "plugins", "installed_plugins.json"))?.plugins ?? {};
+  const installed =
+    readJson<{ plugins?: Record<string, { scope?: string; projectPath?: string }[]> }>(join(claudeDir(), "plugins", "installed_plugins.json"))?.plugins ?? {};
   const byOrigin = new Map<string, string[]>();
   for (const m of machine) if (m.kind === "plugin") byOrigin.set(m.origin, [...(byOrigin.get(m.origin) ?? []), m.path]);
   return [...byOrigin].map(([origin, skills]) => {
     const synced = origin.endsWith(" (claude.ai)");
     const id = synced ? `${origin.replace(" (claude.ai)", "")}@synced` : origin;
-    return { id, scope: synced ? null : (installed[origin]?.[0]?.scope ?? "user"), synced, skills, extras: extrasOf(dirname(dirname(skills[0]!))) };
+    const entry = installed[origin]?.[0];
+    return {
+      id,
+      scope: synced ? null : (entry?.scope ?? "user"),
+      ...(entry?.projectPath ? { projectPath: entry.projectPath } : {}),
+      synced,
+      skills,
+      extras: extrasOf(dirname(dirname(skills[0]!))),
+    };
   });
 }
 
 /** Runs the Claude Code CLI; its own commands keep its settings and caches right. */
-function claude(args: string[]): { ok: true } | { ok: false; reason: string } {
+function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reason: string } {
   try {
-    execFileSync("claude", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, encoding: "utf-8" });
+    execFileSync("claude", args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, encoding: "utf-8" });
     return { ok: true };
   } catch (err) {
     const e = err as { code?: string; stderr?: string; stdout?: string; message?: string };
     if (e.code === "ENOENT") return { ok: false, reason: `run \`claude ${args.join(" ")}\` yourself (the claude command isn't on your PATH)` };
     return { ok: false, reason: (e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]! };
   }
+}
+
+/**
+ * Plugins synced from claude.ai aren't installed, so `claude plugin` can't
+ * touch them; Claude Code's documented switch is "<name>@synced": false in
+ * enabledPlugins (~/.claude/settings.json).
+ */
+function turnOffSynced(id: string): { ok: true } | { ok: false; reason: string } {
+  const file = join(claudeDir(), "settings.json");
+  const settings = existsSync(file) ? readJson<Record<string, unknown>>(file) : {};
+  if (!settings) return { ok: false, reason: `can't read ${file}` };
+  const enabled = (settings.enabledPlugins as Record<string, boolean> | undefined) ?? {};
+  mkdirSync(claudeDir(), { recursive: true });
+  writeFileSync(file, JSON.stringify({ ...settings, enabledPlugins: { ...enabled, [id]: false } }, null, 2) + "\n");
+  return { ok: true };
 }
 
 function removedFile(): string {
@@ -82,9 +108,14 @@ type Removed = { id: string; scope: string; at: string };
  * "delete" uninstalls it (restorable from Health); "off" only disables it.
  */
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
+  if (plugin.scope && plugin.scope !== "user" && !plugin.projectPath) {
+    return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
+  }
   const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];
-  const r = how === "delete" && !plugin.synced ? claude(["plugin", "uninstall", plugin.id, ...scope]) : claude(["plugin", "disable", plugin.id, ...scope]);
+  const r = plugin.synced
+    ? turnOffSynced(plugin.id)
+    : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
   if (how === "delete" && !plugin.synced) {
