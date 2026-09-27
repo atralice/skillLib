@@ -1,32 +1,53 @@
 {
-  "name": "@atralice/skilllib",
-  "version": "0.3.0",
-  "description": "Keep a library of Claude Code skills and choose which ones each project gets",
-  "keywords": ["claude", "claude-code", "cli", "skills"],
-  "license": "MIT",
-  "author": "atralice",
+  "name": "skilllib",
+  "version": "1.0.0",
+  "description": "Manage agent skills like dependencies: one versioned library, and each repo picks what it needs. Works with Claude Code, Cursor, Codex and Zed.",
+  "keywords": [
+    "agent-skills",
+    "skills",
+    "claude-code",
+    "cursor",
+    "codex",
+    "zed",
+    "skill-md",
+    "cli",
+    "tui"
+  ],
+  "homepage": "https://github.com/atralice/skillLib#readme",
+  "bugs": {
+    "url": "https://github.com/atralice/skillLib/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/atralice/skillLib.git"
   },
+  "license": "MIT",
+  "author": "Toni Tralice",
   "type": "module",
   "bin": {
     "skilllib": "./dist/index.js"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --target node22 --clean",
     "dev": "tsx src/index.ts",
     "type-check": "tsc --noEmit",
     "test": "bun test src",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "npm run type-check && npm run build"
   },
   "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19.3.0",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
     "@types/node": "^22.10.2",
+    "@types/react": "^19.3.0",
     "tsup": "^8.5.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.3"
@@ -34,8 +55,14 @@
   "engines": {
     "node": ">=22"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

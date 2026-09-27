@@ -15,9 +15,9 @@ const BUILTIN_COMMANDS = new Set([
   "resume", "rewind", "status", "statusline", "terminal-setup", "todos", "upgrade", "usage", "vim",
 ]);
 
-/** Skill folder name for a path inside some `.claude/skills/<name>/`, if any. */
+/** Skill folder name for a path inside some `.claude/skills/<name>/` or `.agents/skills/<name>/`, if any. */
 export function skillNameFromPath(filePath: string): string | null {
-  const match = filePath.replace(/\\/g, "/").match(/\/\.claude\/skills\/([^/]+)\//);
+  const match = filePath.replace(/\\/g, "/").match(/\/\.(?:claude|agents)\/skills\/([^/]+)\//);
   return match ? match[1]! : null;
 }
 
@@ -31,7 +31,7 @@ type TranscriptLine = {
 
 /** Skill uses in one line of a Claude Code transcript (~/.claude/projects/<project>/<session>.jsonl). */
 export function usesFromTranscriptLine(line: string): SkillUse[] {
-  if (!line.includes('"Skill"') && !line.includes("<command-name>") && !line.includes(".claude/skills/")) return [];
+  if (!line.includes('"Skill"') && !line.includes("<command-name>") && !line.includes("/skills/")) return [];
   let record: TranscriptLine;
   try {
     record = JSON.parse(line) as TranscriptLine;

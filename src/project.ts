@@ -1,14 +1,24 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { versionForHash } from "./versions.js";
 
 /**
- * skilllib.json: the library skills this project uses, each with the hash of
- * the copy that was installed. Comparing that hash with the project folder
- * shows local edits; comparing it with the library shows available updates.
+ * skilllib.json: the library skills this project depends on, each with the
+ * version installed and that version's content hash. Comparing the hash with
+ * the project folder shows local edits; comparing the version with the
+ * library's newest shows available updates.
  */
-export type Manifest = { skills: Record<string, string> };
+export type Dependency = {
+  version: number;
+  hash: string;
+  /** Folder with the real copy; default ".claude/skills". */
+  dir?: string;
+  /** Other harness folders holding a link to it (e.g. ".agents/skills" for Codex). */
+  links?: string[];
+};
+export type Manifest = { skills: Record<string, Dependency> };
 
 /** Nearest ancestor with skilllib.json, else the git root, else `from`. */
 export function findProjectRoot(from: string = process.cwd()): string {
@@ -27,12 +37,37 @@ export function projectSkillsDir(root: string): string {
   return join(root, PROJECT_SKILLS_DIR);
 }
 
+export function agentsSkillsDir(root: string): string {
+  return join(root, AGENTS_SKILLS_DIR);
+}
+
 export function readManifest(root: string): Manifest {
   const path = join(root, MANIFEST_FILE);
   if (!existsSync(path)) return { skills: {} };
-  const data = JSON.parse(readFileSync(path, "utf-8")) as Partial<Manifest>;
-  // Older skilllib.json files listed "@owner/name" refs with version ranges; they don't map to the library.
-  const skills = Object.fromEntries(Object.entries(data.skills ?? {}).filter(([name]) => !name.startsWith("@")));
+  const data = JSON.parse(readFileSync(path, "utf-8")) as { skills?: Record<string, unknown> };
+  const skills = Object.fromEntries(
+    Object.entries(data.skills ?? {}).flatMap(([name, value]): [string, Dependency][] => {
+      // Registry-era refs ("@owner/name": "^1.0.0") don't map to the library.
+      if (name.startsWith("@")) return [];
+      // 0.3 manifests stored just the hash.
+      if (typeof value === "string") return [[name, { version: versionForHash(name, value)?.version ?? 0, hash: value }]];
+      if (value && typeof value === "object" && "hash" in value) {
+        const dep = value as Partial<Dependency>;
+        return [
+          [
+            name,
+            {
+              version: Number(dep.version ?? 0),
+              hash: String(dep.hash),
+              ...(typeof dep.dir === "string" ? { dir: dep.dir } : {}),
+              ...(Array.isArray(dep.links) ? { links: dep.links.map(String) } : {}),
+            },
+          ],
+        ];
+      }
+      return [];
+    }),
+  );
   return { ...data, skills };
 }
 

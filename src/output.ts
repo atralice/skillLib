@@ -1,3 +1,4 @@
+import { sep } from "node:path";
 import { homedir } from "node:os";
 
 const color = (code: number) => (s: string) => (process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -14,7 +15,7 @@ export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 /** Home-relative path for display. */
 export function tildify(path: string): string {
   const home = homedir();
-  return path === home || path.startsWith(home + "/") ? "~" + path.slice(home.length) : path;
+  return path === home || path.startsWith(home + sep) ? "~" + path.slice(home.length) : path;
 }
 
 export function truncate(s: string, max: number): string {
