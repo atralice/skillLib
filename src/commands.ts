@@ -20,7 +20,7 @@ import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { dim, error, green, info, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
-import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, readConfig, removeRoot, setHarnesses, setHidden, visibleProjects } from "./config.js";
+import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { findIssues } from "./health.js";
 
@@ -444,4 +444,27 @@ export function link(args: Args) {
     else if (!args.all) success("Every skill here is already usable by all your agents");
     if (res.blocked.length) warn(`${label}git tracks ${res.blocked.join(", ")}; re-run with --allow-tracked to link there too`);
   }
+}
+
+/** Your global skills, and which you keep global on purpose: skilllib global [keep|unkeep <name>...] */
+export function globalCommand(args: Args) {
+  const [action, ...names] = args.positional;
+  const yours = machineSkills().filter((m) => m.movable && !m.broken);
+  if (action === "keep" || action === "unkeep") {
+    const unknown = names.filter((n) => !yours.some((m) => m.name === n));
+    if (!names.length || unknown.length) {
+      error(names.length ? `Not one of your global skills: ${unknown.join(", ")}` : `Usage: skilllib global ${action} <name>...`);
+      process.exit(1);
+    }
+    setKeepGlobal(names, action === "keep");
+    success(action === "keep" ? `Keeping ${names.join(", ")} global on purpose` : `${names.join(", ")} will show up in cleanup again`);
+  } else if (action) {
+    error("Usage: skilllib global [keep|unkeep <name>...]");
+    process.exit(1);
+  }
+  const kept = keptGlobal();
+  if (!yours.length) return info("None of your skills load globally.");
+  for (const m of yours) info(`${kept.has(m.name) ? green("✓") : yellow("⚠")} ${m.name.padEnd(32)} ${dim(tildify(m.path))}`);
+  const unreviewed = yours.filter((m) => !kept.has(m.name)).length;
+  if (unreviewed) info(dim(`\n${unreviewed} not reviewed. Keep one global on purpose: skilllib global keep <name>`));
 }
