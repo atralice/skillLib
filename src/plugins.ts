@@ -69,6 +69,15 @@ export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
   });
 }
 
+/** Where `claude` resolves on this PATH, for error messages (a different binary than your shell's explains a lot). */
+function whichClaude(): string {
+  try {
+    return execFileSync(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim().split("\n")[0]!;
+  } catch {
+    return "claude";
+  }
+}
+
 /** Runs the Claude Code CLI; its own commands keep its settings and caches right. */
 function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reason: string } {
   try {
@@ -77,7 +86,7 @@ function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reaso
   } catch (err) {
     const e = err as { code?: string; stderr?: string; stdout?: string; message?: string };
     if (e.code === "ENOENT") return { ok: false, reason: `run \`claude ${args.join(" ")}\` yourself (the claude command isn't on your PATH)` };
-    return { ok: false, reason: (e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]! };
+    return { ok: false, reason: `${(e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]!} (ran ${whichClaude()})` };
   }
 }
 
@@ -110,6 +119,11 @@ type Removed = { id: string; scope: string; at: string };
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
   if (plugin.scope && plugin.scope !== "user" && !plugin.projectPath) {
     return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
+  }
+  // Check the CLI works before changing anything.
+  if (!plugin.synced) {
+    const probe = claude(["--version"], plugin.projectPath);
+    if (!probe.ok) return { ok: false, message: `${plugin.id}: nothing changed; \`claude --version\` failed: ${probe.reason}` };
   }
   const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];

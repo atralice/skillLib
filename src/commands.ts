@@ -22,7 +22,7 @@ import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
-import { findIssues } from "./health.js";
+import { findIssues, runFix } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -388,7 +388,10 @@ export function doctor(args: Args) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
     if (issue.choices) info(dim(`  choose in skilllib → Health: ${issue.choices.map((c) => c.label).join(" / ")}`));
-    if (args.fix && issue.fix) info(`  ${green("✓")} ${issue.fix.run()}`);
+    if (args.fix && issue.fix) {
+      const r = runFix(issue.fix);
+      info(`  ${r.ok ? green("✓") : red("✗")} ${r.message}`);
+    }
   }
   if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → Health."));
 }

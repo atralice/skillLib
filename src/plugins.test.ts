@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { findIssues } from "./health.js";
+import { findIssues, runFix } from "./health.js";
 import { importSkill } from "./library.js";
 import { removePlugin, type ClaudePlugin } from "./plugins.js";
 import { machineSkills } from "./sources.js";
@@ -62,4 +62,24 @@ test("a plugin that repeats a skill only in Your skills is a suggestion that doe
   expect(issue?.detail).not.toContain("loads both");
   expect(issue?.detail).toContain("only in Your skills");
   expect(issue?.choices?.map((c) => c.label)).toEqual(["Remove the plugin pt@mk", "Turn the plugin pt@mk off"]);
+});
+
+test("when claude can't run, nothing changes and the fix reports a failure", () => {
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "beta"));
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+
+  const path = process.env.PATH;
+  process.env.PATH = join(tmp, "empty");
+  try {
+    const issue = findIssues([], machineSkills(), new Set(["alpha"])).find((i) => i.id === "plugin:pt@mk");
+    const r = runFix(issue!.choices![0]!);
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("nothing changed");
+  } finally {
+    process.env.PATH = path;
+  }
+  expect(existsSync(join(tmp, "home", "library", "beta"))).toBe(false);
 });

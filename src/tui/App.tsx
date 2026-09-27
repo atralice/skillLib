@@ -28,6 +28,7 @@ import {
   type Visibility,
 } from "../library.js";
 import { restorePlugin } from "../plugins.js";
+import { runFix, type Choice } from "../health.js";
 import { KeyBar, ListPanel, Panel, wrap, type Cell, type Hint, type Row } from "./components.js";
 import {
   loadSnapshot,
@@ -1526,9 +1527,13 @@ export function App() {
         title: "Issues",
         items: snapshot.issues.map((issue): Item => {
           const fix = issue.fix;
-          const choices = (issue.choices ?? []).map((c): Action => ({ label: c.label, hint: c.hint, run: () => act(() => ok(c.run())) }));
+          const result = (c: Choice): Result => {
+            const r = runFix(c);
+            return r.ok ? ok(r.message) : warn(r.message);
+          };
+          const choices = (issue.choices ?? []).map((c): Action => ({ label: c.label, hint: c.hint, run: () => act(() => result(c)) }));
           const run = fix
-            ? () => confirm(`${fix.label}?`, () => ok(fix.run()))
+            ? () => confirm(`${fix.label}?`, () => result(fix))
             : choices.length
               ? () => setOverlay({ type: "menu", title: issue.title, index: 0, build: () => choices })
               : undefined;

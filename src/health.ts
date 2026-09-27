@@ -8,8 +8,22 @@ import { projectSkillsDir } from "./project.js";
 import type { SourcedSkill } from "./sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
-/** One way to fix an issue; returns a message describing what happened. */
+/** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
 export type Choice = { label: string; hint?: string; run: () => string };
+
+/** Runs a fix: its message, and whether it worked. */
+export function runFix(choice: Choice): { ok: boolean; message: string } {
+  try {
+    return { ok: true, message: choice.run() };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function orThrow(r: { ok: boolean; message: string }): string {
+  if (!r.ok) throw new Error(r.message);
+  return r.message;
+}
 
 export type Issue = {
   id: string;
@@ -113,9 +127,9 @@ export function findIssues(
     const remove: Choice = {
       label: `Remove the plugin ${plugin.id}`,
       hint: plugin.extras.length ? `also removes its ${plugin.extras.join(", ")}` : "restorable from Health",
-      run: () => removePlugin(plugin, "delete").message,
+      run: () => orThrow(removePlugin(plugin, "delete")),
     };
-    const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => removePlugin(plugin, "off").message };
+    const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => orThrow(removePlugin(plugin, "off")) };
     const notLoaded = dupes.filter((n) => !loadedYours.has(n));
     issues.push({
       id: `plugin:${plugin.id}`,
