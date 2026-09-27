@@ -506,8 +506,12 @@ export function createSkill(name: string, description: string): { ok: true; dir:
   return { ok: true, dir };
 }
 
-/** trash: deleted from the library · global-backup: unloaded from global · tidy-backup: a duplicate copy replaced by a link */
-export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup"; path: string; movedAt: string; from: string };
+/**
+ * trash: deleted from the library · global-backup: unloaded from global ·
+ * tidy-backup: a duplicate copy replaced by a link · plugin: a Claude Code
+ * plugin skilllib removed (path holds its scope; see plugins.ts)
+ */
+export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "plugin"; path: string; movedAt: string; from: string };
 
 /** Everything skilllib moved out of the way, newest first. */
 export function listBackups(): Backup[] {

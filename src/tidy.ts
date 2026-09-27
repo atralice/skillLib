@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
-import { gitInfo, relativeTo } from "./git.js";
+import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
 import { PROJECT_SKILLS_DIR, userHome } from "./paths.js";
@@ -94,6 +94,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   const abs = (dir: string) => join(root, dir);
   const rel = (dir: string) => relativeTo(root, dir);
   const readsOf = (id: HarnessId) => HARNESSES.find((h) => h.id === id)!.projectDirs.map(abs);
+  let git: GitInfo | null | undefined; // looked up once, only if needed
 
   for (const name of namesIn(ALL_PROJECT_DIRS.map(abs))) {
     const entries = entriesOf(ALL_PROJECT_DIRS.map(abs), name);
@@ -115,7 +116,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       primary = reals.find((r) => r.dir === chosen);
     } else {
       // The copy teammates get (committed), else the one in the folder your agents need most.
-      const git = gitInfo(root);
+      if (git === undefined) git = gitInfo(root);
       const planned = installDirs(enabled).map(abs);
       const rank = (e: Entry) =>
         (git && ["committed", "changed"].includes(git.of(rel(e.path))) ? 0 : 100) + (planned.includes(e.dir) ? planned.indexOf(e.dir) : 50);
@@ -193,10 +194,8 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
  * anything new in a folder git doesn't ignore (it would show in `git status`).
  * Removing an uncommitted file from view is fine.
  */
-export function gitVisibleSteps(plan: TidyPlan): TidyStep[] {
-  if (!plan.root) return [];
-  const git = gitInfo(plan.root);
-  if (!git) return [];
+export function gitVisibleSteps(plan: TidyPlan, git: GitInfo | null = plan.root ? gitInfo(plan.root) : null): TidyStep[] {
+  if (!plan.root || !git) return [];
   return plan.steps.filter((s) => {
     const state = git.of(relativeTo(plan.root!, s.path));
     if (state === "committed" || state === "changed") return true;
@@ -211,8 +210,8 @@ export type TidyResult = { name: string; root: string | null; applied: TidyStep[
  * (see gitVisibleSteps) and reported instead. Links skilllib.json should know
  * about are recorded there.
  */
-export function applyTidy(plan: TidyPlan, { git = "keep" }: { git?: "keep" | "go" } = {}): TidyResult {
-  const held = git === "keep" ? gitVisibleSteps(plan) : [];
+export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep" | "go"; info?: GitInfo | null } = {}): TidyResult {
+  const held = git === "keep" ? gitVisibleSteps(plan, info) : [];
   const applied: TidyStep[] = [];
   for (const step of plan.steps) {
     if (held.includes(step)) continue;

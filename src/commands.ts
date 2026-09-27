@@ -386,9 +386,10 @@ export function doctor(args: Args) {
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
+    if (issue.choices) info(dim(`  choose in skilllib → Health: ${issue.choices.map((c) => c.label).join(" / ")}`));
     if (args.fix && issue.fix) info(`  ${green("✓")} ${issue.fix.run()}`);
   }
-  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → 5 Health."));
+  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → Health."));
 }
 
 /** Skill usage across all Claude Code sessions, from transcripts. */
