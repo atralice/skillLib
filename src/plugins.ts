@@ -69,24 +69,35 @@ export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
   });
 }
 
-/** Where `claude` resolves on this PATH, for error messages (a different binary than your shell's explains a lot). */
-function whichClaude(): string {
-  try {
-    return execFileSync(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim().split("\n")[0]!;
-  } catch {
-    return "claude";
-  }
+/**
+ * The Claude Code CLI to run: `claude` on PATH if it works, else the native
+ * installer's ~/.local/bin/claude (or the older ~/.claude/local/claude).
+ * Terminals like cmux put a `claude` wrapper first on PATH that can fail to
+ * find the real one. Null if none runs.
+ */
+function claudeBinary(): string | null {
+  const candidates = ["claude", join(userHome(), ".local", "bin", "claude"), join(userHome(), ".claude", "local", "claude")];
+  return (
+    candidates.find((bin) => {
+      try {
+        return execFileSync(bin, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: 30_000, encoding: "utf-8" }).includes("Claude Code");
+      } catch {
+        return false;
+      }
+    }) ?? null
+  );
 }
 
 /** Runs the Claude Code CLI; its own commands keep its settings and caches right. */
 function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reason: string } {
+  const bin = claudeBinary();
+  if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
   try {
-    execFileSync("claude", args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, encoding: "utf-8" });
+    execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, encoding: "utf-8" });
     return { ok: true };
   } catch (err) {
-    const e = err as { code?: string; stderr?: string; stdout?: string; message?: string };
-    if (e.code === "ENOENT") return { ok: false, reason: `run \`claude ${args.join(" ")}\` yourself (the claude command isn't on your PATH)` };
-    return { ok: false, reason: `${(e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]!} (ran ${whichClaude()})` };
+    const e = err as { stderr?: string; stdout?: string; message?: string };
+    return { ok: false, reason: `${(e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]!} (ran ${bin})` };
   }
 }
 
@@ -121,9 +132,8 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
     return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
   }
   // Check the CLI works before changing anything.
-  if (!plugin.synced) {
-    const probe = claude(["--version"], plugin.projectPath);
-    if (!probe.ok) return { ok: false, message: `${plugin.id}: nothing changed; \`claude --version\` failed: ${probe.reason}` };
+  if (!plugin.synced && !claudeBinary()) {
+    return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   }
   const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];

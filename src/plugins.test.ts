@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
@@ -82,4 +82,25 @@ test("when claude can't run, nothing changes and the fix reports a failure", () 
     process.env.PATH = path;
   }
   expect(existsSync(join(tmp, "home", "library", "beta"))).toBe(false);
+});
+
+test.skipIf(process.platform === "win32")("when a broken `claude` wrapper comes first on PATH (cmux), the real one in ~/.local/bin is used", () => {
+  const script = (dir: string, body: string) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "claude"), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(dir, "claude"), 0o755);
+  };
+  script(join(tmp, "shim"), 'echo "Error: claude not found in PATH" >&2; exit 1');
+  script(join(tmp, ".local", "bin"), `if [ "$1" = "--version" ]; then echo "2.1.283 (Claude Code)"; else echo "$@" >> "${join(tmp, "calls")}"; fi`);
+  skill(join(tmp, "p", "skills", "alpha"));
+  const plugin: ClaudePlugin = { id: "pt@mk", scope: "user", synced: false, skills: [join(tmp, "p", "skills", "alpha")], extras: [] };
+
+  const path = process.env.PATH;
+  process.env.PATH = `${join(tmp, "shim")}:/usr/bin:/bin`;
+  try {
+    expect(removePlugin(plugin, "off")).toMatchObject({ ok: true });
+  } finally {
+    process.env.PATH = path;
+  }
+  expect(readFileSync(join(tmp, "calls"), "utf-8")).toBe("plugin disable pt@mk --scope user\n");
 });
