@@ -28,7 +28,7 @@
   "author": "Toni Tralice",
   "type": "module",
   "bin": {
-    "skilllib": "./dist/index.js"
+    "skilllib": "dist/index.js"
   },
   "files": [
     "dist",
