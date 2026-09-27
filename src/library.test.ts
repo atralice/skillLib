@@ -210,11 +210,12 @@ describe("harnesses", () => {
     expect(existsSync(repo("team-flow"))).toBe(true);
   });
 
-  test("with Codex on, installs keep the real copy in .claude/skills and link it into .agents/skills", () => {
+  test("with Claude Code and Codex, the real copy goes in .agents/skills and Claude Code gets a link, like npx skills", () => {
     setHarnesses(["claude-code", "codex"]);
     expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", to: 1 });
-    expect(readManifest(project).skills.alpha).toMatchObject({ links: [".agents/skills"] });
-    expect(lstatSync(join(project, ".agents", "skills", "alpha")).isSymbolicLink()).toBe(true);
+    expect(readManifest(project).skills.alpha).toMatchObject({ dir: ".agents/skills", links: [".claude/skills"] });
+    expect(lstatSync(join(project, ".agents", "skills", "alpha")).isDirectory()).toBe(true);
+    expect(lstatSync(local("alpha")).isSymbolicLink()).toBe(true);
     expect(projectStatus(project)[0]?.visibility).toEqual([
       { id: "claude-code", paths: 1 },
       { id: "codex", paths: 1 },
@@ -222,18 +223,19 @@ describe("harnesses", () => {
 
     removeSkill(project, "alpha");
     expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+    expect(existsSync(local("alpha"))).toBe(false);
   });
 
   test("won't write links into a git-tracked folder without consent", () => {
     execFileSync("git", ["init", "-q"], { cwd: project });
-    writeSkill(join(project, ".agents", "skills", "team"), "t");
+    writeSkill(local("team"), "t");
     execFileSync("git", ["add", "."], { cwd: project });
     setHarnesses(["claude-code", "codex"]);
 
-    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", blocked: [".agents/skills"] });
-    expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", blocked: [".claude/skills"] });
+    expect(existsSync(local("alpha"))).toBe(false);
     expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "updated" });
-    expect(existsSync(join(project, ".agents", "skills", "alpha", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
   });
 
   test("without Claude Code, the one real copy goes in .agents/skills, which Cursor and Codex both read", () => {
@@ -301,7 +303,7 @@ describe("harnesses", () => {
     expect(installDirs(["codex"])).toEqual([".agents/skills"]);
     expect(installDirs(["cursor", "codex", "zed"])).toEqual([".agents/skills"]);
     // Claude Code reads only .claude/skills, Codex only .agents/skills: both are unavoidable.
-    expect(installDirs(["claude-code", "cursor", "codex", "zed"])).toEqual([".claude/skills", ".agents/skills"]);
+    expect(installDirs(["claude-code", "cursor", "codex", "zed"])).toEqual([".agents/skills", ".claude/skills"]);
     expect(installDirs([])).toEqual([".claude/skills"]);
   });
 
@@ -322,10 +324,10 @@ describe("harnesses", () => {
     expect(linkAll(project).linked).toEqual([]);
   });
 
-  test("Zed only reads .agents/skills, so it gets a link there like Codex", () => {
+  test("Zed only reads .agents/skills, so the copy goes there and Claude Code gets a link", () => {
     setHarnesses(["claude-code", "zed"]);
     addSkill(project, "alpha");
-    expect(readManifest(project).skills.alpha?.links).toEqual([".agents/skills"]);
+    expect(readManifest(project).skills.alpha).toMatchObject({ dir: ".agents/skills", links: [".claude/skills"] });
     expect(projectStatus(project)[0]?.visibility).toEqual([
       { id: "claude-code", paths: 1 },
       { id: "zed", paths: 1 },

@@ -57,9 +57,9 @@ export const HELP_TOPICS: HelpTopic[] = [
       {
         heading: "In a repo (only agents working in that repo see them)",
         lines: [
-          ".claude/skills   Claude Code (Cursor reads it too). skilllib installs here when you use Claude Code.",
           ".agents/skills   the shared folder: Codex, Cursor, Zed and most other agents. Repos often commit their team skills here.",
-          "                 skilllib installs here when you don't use Claude Code, and links here for Codex and Zed when you do.",
+          "                 skilllib (like `npx skills`) keeps the real copy here whenever one of your agents needs it.",
+          ".claude/skills   Claude Code (Cursor reads it too). A link to .agents/skills, or the copy itself if only Claude Code needs it.",
           ".cursor/skills   Cursor only.     .codex/skills   Cursor only (compatibility).",
         ],
       },
@@ -165,7 +165,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "User     ~/.agents/skills",
           "Admin    /etc/codex/skills",
           "System   skills bundled by OpenAI",
-          "It does NOT read .claude/skills — skilllib puts your skills in .agents/skills (a link, if you also use Claude Code).",
+          "It does NOT read .claude/skills — skilllib keeps your skills' real copies in .agents/skills.",
         ],
       },
       {

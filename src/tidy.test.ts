@@ -44,16 +44,16 @@ describe("project tidy", () => {
     writeSkill(at(".agents", "flow"), "same");
 
     const [plan] = planProjectTidy(project).plans;
-    expect(plan?.steps).toEqual([{ kind: "replace", path: at(".agents", "flow"), target: at(".claude", "flow") }]);
+    expect(plan?.steps).toEqual([{ kind: "replace", path: at(".claude", "flow"), target: at(".agents", "flow") }]);
     applyTidy(plan!, { git: "go" });
-    expect(isLink(at(".agents", "flow"))).toBe(true);
-    expect(isLink(at(".claude", "flow"))).toBe(false);
+    expect(isLink(at(".claude", "flow"))).toBe(true);
+    expect(isLink(at(".agents", "flow"))).toBe(false);
     expect(planProjectTidy(project).plans).toEqual([]);
 
     const backup = listBackups().find((b) => b.kind === "tidy-backup");
-    expect(backup?.from).toBe(at(".agents", "flow"));
+    expect(backup?.from).toBe(at(".claude", "flow"));
     expect(restoreBackup(backup!)).toMatchObject({ ok: true });
-    expect(isLink(at(".agents", "flow"))).toBe(false);
+    expect(isLink(at(".claude", "flow"))).toBe(false);
   });
 
   test("a skill `npx skills` installed keeps its .agents/skills copy, matching its symlink layout", () => {
@@ -117,8 +117,8 @@ describe("project tidy", () => {
     const [plan] = planProjectTidy(project).plans;
     expect(plan?.steps).toEqual([{ kind: "remove", path: at(".cursor", "alpha") }]);
     applyTidy(plan!, { git: "go" });
-    expect(isLink(at(".agents", "alpha"))).toBe(true);
-    expect(readManifest(project).skills.alpha?.links).toEqual([".agents/skills"]);
+    expect(isLink(at(".claude", "alpha"))).toBe(true);
+    expect(readManifest(project).skills.alpha?.links).toEqual([".claude/skills"]);
   });
 
   test("a managed skill's duplicate becomes a link skilllib.json records, so sync keeps it", () => {
@@ -170,11 +170,11 @@ describe("git", () => {
     git("add", "-f", ".");
 
     const [plan] = planProjectTidy(project).plans;
-    expect(gitVisibleSteps(plan!)).toEqual([{ kind: "replace", path: at(".agents", "both"), target: at(".claude", "both") }]);
+    expect(gitVisibleSteps(plan!)).toEqual([{ kind: "replace", path: at(".claude", "both"), target: at(".agents", "both") }]);
     expect(applyTidy(plan!).held).toHaveLength(1);
-    expect(isLink(at(".agents", "both"))).toBe(false);
+    expect(isLink(at(".claude", "both"))).toBe(false);
     applyTidy(plan!, { git: "go" });
-    expect(isLink(at(".agents", "both"))).toBe(true);
+    expect(isLink(at(".claude", "both"))).toBe(true);
   });
 });
 

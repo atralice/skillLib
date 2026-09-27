@@ -143,10 +143,10 @@ If some skills aren't visible to every agent you use, the top row offers **⇄ M
 
 ### Adding and removing skills
 
-- **Adding** (`space` in *Add skills*) copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session.
+- **Adding** (`space` in *Add skills*) copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link.
   - Claude Code (with or without Cursor): `.claude/skills/<name>`.
-  - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`, which all three read.
-  - Claude Code plus Codex or Zed: the copy goes in `.claude/skills`, with a link in `.agents/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed only read `.agents/skills`.
+  - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`.
+  - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed only read `.agents/skills`.
 - **Removing** (`space` again) deletes that copy and its links. Your library and other repos aren't touched. If you edited it here, skilllib asks first; Enter → *Save local edits to Your skills* keeps them.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
 - **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
@@ -341,7 +341,7 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 
 **Does it change my repos?** Only when you tell it to: adding, removing, linking or tidying a skill, which updates `skilllib.json`. It asks before linking into a folder git tracks, and before tidy changes a committed file. It never deletes the only copy of a repo's own skill.
 
-**Can I share skills with my team?** Commit `skilllib.json` along with the copies in `.claude/skills`. Or keep your library in a git repo and point `SKILLLIB_HOME` at it.
+**Can I share skills with my team?** Commit `skilllib.json` along with the skill folders (`.agents/skills`, and `.claude/skills` if you use Claude Code). Or keep your library in a git repo and point `SKILLLIB_HOME` at it.
 
 **Why does usage only count Claude Code?** It's the only agent here with local transcripts to read. Cursor doesn't keep them locally, and Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 

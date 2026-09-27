@@ -108,9 +108,10 @@ function cost(dirs: string[]): number {
  * reach every enabled harness, so no folder is written just to be read twice.
  * Cursor + Codex → .agents/skills; Claude Code + Cursor → .claude/skills;
  * Claude Code + Codex needs both (Claude Code reads only .claude/skills).
- * The real copy goes in .claude/skills when Claude Code is on, keeping where
- * existing installs live. With `keep`, the real copy is already in that
- * folder and only the links are planned. Returns [real copy, ...links].
+ * Like `npx skills`, the real copy goes in .agents/skills whenever that folder
+ * is used (nearly every agent reads it), and Claude Code gets a link. With
+ * `keep`, the real copy is already in that folder and only the links are
+ * planned. Returns [real copy, ...links].
  */
 export function installDirs(enabled: HarnessId[], keep?: string): string[] {
   if (enabled.length === 0) return [keep ?? PROJECT_SKILLS_DIR];
@@ -121,6 +122,6 @@ export function installDirs(enabled: HarnessId[], keep?: string): string[] {
     if (!enabled.every((id) => harness(id).projectDirs.some((d) => dirs.includes(d)))) continue;
     if (best.length === 0 || cost(dirs) < cost(best)) best = dirs;
   }
-  const primary = keep ?? (enabled.includes("claude-code") ? PROJECT_SKILLS_DIR : best[0]!);
+  const primary = keep ?? best[0]!; // sorted by preference: .agents/skills first
   return [primary, ...best.filter((d) => d !== primary)];
 }
