@@ -35,6 +35,8 @@ export type ProjectRow = {
   path: string;
   /** Which of your harnesses load it here. */
   visibility: Visibility;
+  /** Where `npx skills add` got it, for skills in the project's skills-lock.json. */
+  source?: string;
 };
 
 export type Snapshot = {
@@ -125,6 +127,7 @@ export function projectRows(root: string, library: LibraryRow[], status: Project
       location: s.location,
       path: s.path,
       visibility: s.visibility,
+      ...(s.source ? { source: s.source } : {}),
       description:
         library.find((l) => l.name === s.name)?.description ??
         readSkillInfo(s.path).description,

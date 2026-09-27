@@ -119,6 +119,7 @@ A repo has two lists:
 | Group | What it is | `space` |
 |---|---|---|
 | *From your skills* | Versioned skills you added from your library | Remove it from this repo |
+| *From npx skills* | Skills `npx skills add` installed into this repo (listed in its `skills-lock.json`), with their source | Copy it into your skills; `npx skills` keeps managing this copy |
 | *The repo's own* | Skills committed to the repo (e.g. your team's `.agents/skills`) | Copy it into your skills, so other repos can use it |
 | *⚠ Global · yours, not reviewed* | Your global skills you haven't decided about: they load in every repo | Open the cleanup wizard |
 | *✓ Global · yours, on purpose* | Your global skills you chose to keep global | Open the cleanup wizard |

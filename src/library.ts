@@ -5,7 +5,7 @@ import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibH
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
-import { globalSkillDirs, originFor, recordOrigin } from "./sources.js";
+import { globalSkillDirs, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
@@ -35,7 +35,8 @@ export type SkillState =
   | "local only"
   | "repo skill"
   | "repo skill, in library"
-  | "repo skill, differs from library";
+  | "repo skill, differs from library"
+  | "from npx skills";
 
 /** Which of your harnesses load a skill, and through how many paths (2+ may mean it's listed twice). */
 export type Visibility = { id: HarnessId; paths: number }[];
@@ -52,6 +53,8 @@ export type ProjectSkill = {
   location: string;
   path: string;
   visibility: Visibility;
+  /** Where `npx skills add` got it (from the project's skills-lock.json), e.g. "genmedia-labs/skills". */
+  source?: string;
 };
 
 export function realpathOrNull(path: string): string | null {
@@ -159,6 +162,7 @@ export function projectStatus(root: string): ProjectSkill[] {
 
   // Unmanaged skills: group entries by name, keep the real folder (links point at it).
   const seen = new Set(Object.keys(skills));
+  const lock = projectSkillsLock(root);
   const unmanaged: ProjectSkill[] = [];
   const byName = new Map<string, string[]>();
   for (const dir of ALL_PROJECT_DIRS) {
@@ -175,17 +179,20 @@ export function projectStatus(root: string): ProjectSkill[] {
     const local = treeHash(real);
     const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
     const committed = location === AGENTS_SKILLS_DIR;
-    const state: SkillState = committed
-      ? latest === null
-        ? "repo skill"
-        : sameAsLibrary
-          ? "repo skill, in library"
-          : "repo skill, differs from library"
-      : latest === null
-        ? "local only"
-        : sameAsLibrary
-          ? "untracked copy of library skill"
-          : "untracked, differs from library";
+    const source = lock[name]?.source;
+    const state: SkillState = source
+      ? "from npx skills"
+      : committed
+        ? latest === null
+          ? "repo skill"
+          : sameAsLibrary
+            ? "repo skill, in library"
+            : "repo skill, differs from library"
+        : latest === null
+          ? "local only"
+          : sameAsLibrary
+            ? "untracked copy of library skill"
+            : "untracked, differs from library";
     unmanaged.push({
       name,
       managed: false,
@@ -195,6 +202,7 @@ export function projectStatus(root: string): ProjectSkill[] {
       location,
       path: real,
       visibility: visibilityOf(root, name, enabled),
+      ...(source ? { source } : {}),
     });
   }
 

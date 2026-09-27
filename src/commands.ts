@@ -63,7 +63,7 @@ export function parseArgs(argv: string[]): Args {
 function colorState(state: SkillState): string {
   if (state === "ok") return green(state);
   if (state === "folder missing" || state === "not in library") return red(state);
-  if (state === "local only") return dim(state);
+  if (state === "local only" || state === "from npx skills") return dim(state);
   return yellow(state);
 }
 
@@ -123,7 +123,7 @@ export async function status(args: Args) {
   table(
     skills.map((s) => ({
       Skill: s.name,
-      Status: colorState(s.state),
+      Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
       [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
       "Last used": lastUsed(usage.get(s.name)),
     })),
