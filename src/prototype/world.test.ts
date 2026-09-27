@@ -3,8 +3,9 @@ import { addRows, issuesOf, machineActions, machineIssues, projectIssues, sample
 
 const ids = (w: ReturnType<typeof sampleWorld>, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
-test("sample web-app shows every kind of issue", () => {
-  const found = new Set(ids(sampleWorld(), "web-app").map((id) => id.split(":")[0]));
+test("sample data shows every kind of issue", () => {
+  const w = sampleWorld();
+  const found = new Set([...ids(w, "web-app"), ...w.machine.flatMap((m) => machineIssues(w, m).map((i) => i.id))].map((id) => id.split(":")[0]));
   for (const kind of ["missing", "twice-g", "twice-p", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "broken"]) expect(found).toContain(kind);
 });
 

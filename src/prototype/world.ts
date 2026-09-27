@@ -31,7 +31,7 @@ export type MachineSkill = {
   broken?: boolean;
 };
 
-export type LibrarySkill = { name: string; description: string; latest: number };
+export type LibrarySkill = { name: string; latest: number };
 export type Project = {
   name: string;
   path: string;
@@ -145,7 +145,7 @@ export function dailyUses(w: World, name: string, onlyRepo?: string): number[] {
 /** Adds a brand-new skill to your library as v1. */
 export function createSkill(w: World, name: string) {
   w.descriptions[name] = "New skill: say when an agent should use it.";
-  w.library.push({ name, description: w.descriptions[name], latest: 1 });
+  w.library.push({ name, latest: 1 });
 }
 
 /** Everything agents can use in a project: its own skills plus what loads everywhere. */
@@ -173,7 +173,7 @@ function lib(w: World, name: string): LibrarySkill | undefined {
 }
 
 export function importToLibrary(w: World, name: string) {
-  if (!lib(w, name)) w.library.push({ name, description: w.descriptions[name] ?? "", latest: 1 });
+  if (!lib(w, name)) w.library.push({ name, latest: 1 });
 }
 
 function removeMachine(w: World, m: MachineSkill, why: string): string {
@@ -196,7 +196,6 @@ export function removeFromProject(w: World, projectName: string, name: string): 
 }
 
 export function moveGlobalToRepos(w: World, m: MachineSkill, repos: string[]): string {
-  if (!repos.length) throw new Error("Tick at least one repo");
   importToLibrary(w, m.name);
   for (const r of repos) addToProject(w, r, m.name);
   removeMachine(w, m, "");
@@ -292,9 +291,8 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
   return issues;
 }
 
-/** Issues for one skill as seen from a project. */
+/** Issues of a repo's own copy of a skill; what loads everywhere is Global's (see machineIssues). */
 export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
-  if (u.machine) return machineIssues(w, u.machine);
   const s = u.local!;
   // Fixes look the skill up in the world they're given, not the render-time copy.
   const here = (w: World) => localSkill(w, projectName, s.name);
@@ -380,12 +378,12 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
     issues.push({
       id: `blind:${s.name}`,
       severity: "warning",
-      title: `${blind.map(agentName).join(", ")} can't see it`,
+      title: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
       decision: false,
       fixes: [
         {
           label: `Link it into ${s.dir === ".claude/skills" ? ".agents/skills" : ".claude/skills"}`,
-          preview: `Add a link (nothing is copied or moved), so ${blind.map(agentName).join(", ")} load it too.`,
+          preview: `Add a link (nothing is copied or moved), so ${blind.map((a) => harness(a).name).join(", ")} load it too.`,
           run: (w) => ((here(w).linked = true), `${s.name} is now visible to every agent`),
         },
       ],
@@ -435,12 +433,11 @@ export function tally(issues: Issue[]): Record<Severity, number> {
   };
 }
 
+/** A repo's own issues, per skill. */
 export function projectIssues(w: World, projectName: string): { skill: Usable; issue: Issue }[] {
-  return usable(w, projectName).flatMap((u) => issuesOf(w, projectName, u).map((issue) => ({ skill: u, issue })));
-}
-
-export function agentName(id: HarnessId): string {
-  return harness(id).name;
+  return usable(w, projectName)
+    .filter((u) => u.local)
+    .flatMap((u) => issuesOf(w, projectName, u).map((issue) => ({ skill: u, issue })));
 }
 
 // ─── Adding skills ──────────────────────────────────────
@@ -475,8 +472,8 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
   const hit = (name: string, description: string) => !q || matches(name, q) || (q.length >= 3 && description.toLowerCase().includes(q));
   const library: AddRow[] = target
     ? w.library
-        .filter((l) => !taken.has(l.name) && hit(l.name, l.description))
-        .map((l) => ({ key: `lib:${l.name}`, name: l.name, note: `v${l.latest}`, description: l.description, run: (w) => addToProject(w, target, l.name) }))
+        .filter((l) => !taken.has(l.name) && hit(l.name, w.descriptions[l.name] ?? ""))
+        .map((l) => ({ key: `lib:${l.name}`, name: l.name, note: `v${l.latest}`, description: w.descriptions[l.name] ?? "", run: (w) => addToProject(w, target, l.name) }))
     : [];
   const exists = q !== "" && (loaded.has(q) || w.library.some((l) => l.name === q));
   const where = target ? ` for ${target}` : "";
@@ -584,14 +581,14 @@ export function sampleWorld(): World {
       { name: "create-rule", source: "cursor", where: "Cursor built-in" },
     ],
     library: [
-      { name: "stripe-payments", description: "", latest: 2 },
-      { name: "react-patterns", description: "", latest: 2 },
-      { name: "api-conventions", description: "", latest: 1 },
-      { name: "seo-meta", description: "", latest: 1 },
-      { name: "testing-guide", description: "", latest: 3 },
-      { name: "mdx-tips", description: "", latest: 1 },
-      { name: "sql-migrations", description: "", latest: 1 },
-    ].map((l) => ({ ...l, description: DESCRIPTIONS[l.name] ?? "" })),
+      { name: "stripe-payments", latest: 2 },
+      { name: "react-patterns", latest: 2 },
+      { name: "api-conventions", latest: 1 },
+      { name: "seo-meta", latest: 1 },
+      { name: "testing-guide", latest: 3 },
+      { name: "mdx-tips", latest: 1 },
+      { name: "sql-migrations", latest: 1 },
+    ],
     usage: {
       "web-app": { "stripe-payments": 11, "react-patterns": 9, "api-conventions": 6, "deploy-preview": 4, "release-notes": 2, "commit-style": 8, "vercel-deploy": 3, nextjs: 5, "pr-review": 4 },
       "api-server": { "stripe-payments": 3, "api-conventions": 7, "commit-style": 5, "use-railway": 2 },

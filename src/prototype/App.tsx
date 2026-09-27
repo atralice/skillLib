@@ -62,7 +62,6 @@ type Modal =
   | { kind: "help" };
 
 const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.SEVERITY_RANK[b.severity];
-const agentOf = harness;
 
 function tag(u: W.Usable, w: W.World): Seg {
   const s = u.local;
@@ -97,12 +96,10 @@ function builder(title: string) {
   return {
     d,
     line: (...segs: Seg[]) => d.body.push({ segs }),
-    option: (o: Option) => d.body.push({ segs: [], option: d.options.push(o) - 1 }),
-    issues(issues: W.Issue[], noFixNote = "fix it on the repo's own copy") {
+    issues(issues: W.Issue[]) {
       if (!issues.length) return d.body.push({ segs: [["✓ No issues", color.green]] });
       for (const issue of [...issues].sort(bySeverity)) {
         d.body.push({ segs: [[`${SEV[issue.severity].icon} `, SEV[issue.severity].color], [issue.title, color.text], [issue.decision ? "  · your call" : "", color.faint]] });
-        if (!issue.fixes.length) d.body.push({ segs: [[`    ${noFixNote}`, color.faint]] });
         issue.fixes.forEach((fix, i) => d.body.push({ segs: [], option: d.options.push({ label: fix.label, fix, issue, recommended: !issue.decision && i === 0 }) - 1 }));
       }
       return 0;
@@ -146,10 +143,10 @@ function byName(copies: W.Usable[]): W.Usable[][] {
   return [...groups.values()].map((g) => g.sort((a, b) => COPY_RANK[a.source] - COPY_RANK[b.source]));
 }
 
-/** Every copy's issues on one row. Pointers like "fix it on the other copy" go: it's the same row now. */
+/** Every copy's issues on one row, each once. */
 function mergeIssues(lists: W.Issue[][]): W.Issue[] {
   const seen = new Set<string>();
-  return lists.flat().filter((i) => i.fixes.length > 0 && !seen.has(i.id) && seen.add(i.id));
+  return lists.flat().filter((i) => !seen.has(i.id) && seen.add(i.id));
 }
 
 const BLOCKS = " ▁▂▃▄▅▆▇█";
@@ -239,7 +236,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
         ["Agents   ", color.muted],
         ...w.agents.flatMap((id): Seg[] => {
           const n = copies.filter((c) => c.agents.includes(id)).length;
-          return [[agentOf(id).icon + " ", n ? agentOf(id).color : color.accentDim], [`${agentOf(id).name} ${n === 0 ? "–" : n === 1 ? "✓" : `×${n}`}   `, n > 1 ? color.red : n ? color.text : color.faint]];
+          return [[harness(id).icon + " ", n ? harness(id).color : color.accentDim], [`${harness(id).name} ${n === 0 ? "–" : n === 1 ? "✓" : `×${n}`}   `, n > 1 ? color.red : n ? color.text : color.faint]];
         }),
       );
       return b.d;
@@ -306,9 +303,8 @@ function projectPreview(w: W.World, p: string, width: number, rows: number): Seg
   const used = Object.entries(w.usage[p] ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const barW = Math.max(6, Math.min(24, width - 30));
   // The repo's own skills, like the list's Issues column; what loads everywhere belongs to Global.
-  const flagged = W.projectIssues(w, p).filter((x) => x.issue.fixes.length).sort((a, b) => bySeverity(a.issue, b.issue));
   const worst = new Map<string, W.Issue>();
-  for (const { skill, issue } of flagged) if (skill.local && !worst.has(skill.name)) worst.set(skill.name, issue);
+  for (const { skill, issue } of W.projectIssues(w, p).sort((a, b) => bySeverity(a.issue, b.issue))) if (!worst.has(skill.name)) worst.set(skill.name, issue);
   const lines: Seg[][] = [[], [["Most used here", color.accent], ["   last 30 days", color.faint]]];
   if (!used.length) lines.push([["  No skill used here in 30 days", color.faint]]);
   for (const [name, n] of used)
@@ -345,7 +341,7 @@ function InfoGrid({ rows, columns, width }: { rows: [string, Seg[]][]; columns: 
 
 function projectItems(w: W.World): Item[] {
   return w.projects.map((p) => {
-    const issues = W.projectIssues(w, p.name).filter((x) => x.skill.local).map((x) => x.issue);
+    const issues = W.projectIssues(w, p.name).map((x) => x.issue);
     const t = W.tally(issues);
     return {
       key: p.name,
@@ -384,7 +380,7 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
   return w.library.map((l): Item => {
     const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
     const uses = W.totalUses(w, l.name);
-    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => (rs.forEach((r) => W.addToProject(w, r, l.name)), `Added ${l.name} to ${rs.join(", ") || "no repo"}`) };
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => (rs.forEach((r) => W.addToProject(w, r, l.name)), `Added ${l.name} to ${rs.join(", ")}`) };
     const delFix: W.Fix = { label: "Delete from your library", preview: `Move ${l.name} and its versions to the backup folder.`, run: (w) => ((w.library = w.library.filter((x) => x.name !== l.name)), `Deleted ${l.name} from your library`) };
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
@@ -399,11 +395,11 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
         { text: `v${l.latest}`, width: 5, color: color.accent },
         { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
         { text: usesText(uses), width: 6, color: color.muted },
-        { text: " " + (issues[0]?.title ?? l.description), grow: true, color: issues[0] ? color.blue : color.faint },
+        { text: " " + (issues[0]?.title ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
       ],
       detail: (width) => {
         const b = builder(l.name);
-        for (const line of wrap(l.description, width - 4, 3)) b.line([line, color.muted]);
+        for (const line of wrap(w.descriptions[l.name] ?? "", width - 4, 3)) b.line([line, color.muted]);
         b.line();
         b.line(["Versions  ", color.muted], [Array.from({ length: l.latest }, (_, i) => `v${i + 1}`).join(" · ") + "  (newest)", color.text]);
         b.line(["In repos  ", color.muted], [repos.map((p) => { const s = p.skills.find((x) => x.name === l.name)!; return `${p.name} ${s.source === "lib" ? `v${s.version}` : s.source}`; }).join(" · ") || "none", color.text]);
@@ -418,7 +414,7 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
                   preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
                   run: () => "",
                   candidates: () => repos.map((p) => p.name),
-                  pickRepos: (w, rs) => (rs.forEach((r) => W.removeFromProject(w, r, l.name)), `Removed ${l.name} from ${rs.join(", ") || "no repo"}`),
+                  pickRepos: (w, rs) => (rs.forEach((r) => W.removeFromProject(w, r, l.name)), `Removed ${l.name} from ${rs.join(", ")}`),
                 }),
               ]
             : [fixOption(delFix)]),
@@ -523,8 +519,8 @@ export function App() {
     setModal({ kind: "confirm", fix: o.fix });
   }
   function fixSelected() {
-    const issue = current?.issues.filter((i) => i.fixes.length).sort(bySeverity)[0];
-    if (!issue) return setToast(current?.issues.length ? "Fix it on the repo's own copy" : "Nothing to fix · enter shows what you can do");
+    const issue = current && W.worst(current.issues);
+    if (!issue) return setToast("Nothing to fix · enter shows what you can do");
     if (issue.decision) {
       setFocus("detail");
       setDetailCursor(Math.max(0, detail?.options.findIndex((o) => o.issue === issue) ?? 0));
@@ -536,12 +532,9 @@ export function App() {
     const seen = new Set<string>();
     return from.flatMap((i) =>
       i.issues
-        .filter((x) => !x.decision && x.fixes.length && !seen.has(x.id) && seen.add(x.id))
+        .filter((x) => !x.decision && !seen.has(x.id) && seen.add(x.id))
         .map((x) => ({ label: `${i.name}: ${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
     );
-  }
-  function fixAll() {
-    setModal({ kind: "fixall", items: fixAllList(all), cursor: 0 });
   }
   /** Rows that start something, pinned above the list. */
   function actionRows(): Item[] {
@@ -563,7 +556,7 @@ export function App() {
     });
     const autoFixes = fixAllList(all);
     const fix = autoFixes.length
-      ? [row("#fixall", `✦ Fix ${autoFixes.length} issue${autoFixes.length === 1 ? "" : "s"} automatically…`, ["You'll see the list first and can untick any of them.", "", "Decisions (marked \"your call\") are never applied automatically: open the skill to choose."], fixAll)]
+      ? [row("#fixall", `✦ Fix ${autoFixes.length} issue${autoFixes.length === 1 ? "" : "s"} automatically…`, ["You'll see the list first and can untick any of them.", "", "Decisions (marked \"your call\") are never applied automatically: open the skill to choose."], () => setModal({ kind: "fixall", items: autoFixes, cursor: 0 }))]
       : [];
     if (dashboard)
       return [
