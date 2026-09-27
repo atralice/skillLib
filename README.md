@@ -131,11 +131,10 @@ Each row tells you:
 | | Meaning |
 |---|---|
 | **✻ ⬡ ◎ ℤ** | Claude Code, Cursor, Codex, Zed. An icon in color means that agent loads the skill here; a faint one means it doesn't. |
-| `²` | Cursor reaches this skill through two folders, so it may list it twice |
 | `.claude` / `.agents` | The folder holding the real copy |
 | **✓ committed** · **± changed** · **+ not added** · **∅ ignored** | The skill's git state. `∅ ignored` means it only exists on your machine. |
 | `v2` · `v1 → v2` | The installed version, and whether a newer one exists |
-| **⧉ 3 copies** | The same skill reaches your agents from 3 places. The details panel lists them; keep one. |
+| **⧉ 3 copies** | The same skill reaches your agents from 3 places. The details panel lists them, and Health has the fix. |
 | last column | Claude Code uses in the last 30 days |
 
 Related skills fold into one row: skills from the same plugin, the same source repo, or with the same name prefix (`design-*`). Press Enter on the group row for actions on all of them.
@@ -211,13 +210,33 @@ It's available from:
 - Enter on any skill or group → **Copy review prompt**
 - `p` inside the cleanup wizard
 
+### Duplicates
+
+The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. Health shows each case, and `skilllib tidy` fixes the folder ones.
+
+| What it finds | What it does |
+|---|---|
+| Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
+| Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
+| **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. |
+| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. |
+| A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
+| A repo copy of a skill you keep global | The repo copy is the extra one. Claude Code runs the global copy anyway. |
+
+- **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
+- **It never adds links.** That's **⇄ Make all usable** (`skilllib link`).
+- **It asks before changing committed files.** You choose: *tidy, but keep git as it is*, or *tidy everything*. On the command line, pass `--allow-git`.
+- **Cursor lists a skill once** even when it reaches it through several folders (tested September 2026). It lists a plugin's copy and your copy separately.
+
 ### Health and backups
 
-**Health** lists broken links, skills loaded twice, out-of-date repos and repo-only skills, each with a one-key fix. Below them is everything skilllib ever moved out, and `space` puts it back where it came from.
+**Health** lists broken links, duplicates, copies that differ, out-of-date repos and repo-only skills. Each has a one-key fix, or a short list of fixes to pick from. Below them is everything skilllib ever moved out, and `space` puts it back where it came from.
 
 skilllib never really deletes anything:
 - removed library skills go to `~/.skilllib/trash`
 - removed global skills go to `~/.skilllib/global-backup`
+- copies replaced by a link go to `~/.skilllib/tidy-backup`
+- removed plugins are listed too; restoring one reinstalls it
 
 ---
 
@@ -289,6 +308,7 @@ skilllib sync [--all]           install exactly the pinned versions
 skilllib outdated [--all]       skills with a newer version
 skilllib update [name...]       move to the newest versions
 skilllib link [--all]           make every skill here usable by all your agents
+skilllib tidy [--all|--global]  one real copy per skill, plus only the links your agents need
 
 skilllib list | show <name>     your library
 skilllib import <dir>...        add skill folders to your library (--global: all your global skills)
@@ -301,7 +321,7 @@ skilllib restore [name]         put back something skilllib moved out
 skilllib --version
 ```
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`.
+Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
 ## Files
 
@@ -311,21 +331,22 @@ Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-track
 | `~/.skilllib/library/` | Your skills (master copies). Worth putting under git. |
 | `~/.skilllib/store/` | Every version of every skill, immutable |
 | `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
-| `~/.skilllib/trash/`, `global-backup/` | Everything skilllib removed, restorable from Health |
+| `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/` | Everything skilllib removed, restorable from Health |
+| `~/.skilllib/plugin-backup.json` | Plugins skilllib removed, so Health can reinstall them |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 
 Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` is honored.
 
 ## FAQ
 
-**Does it change my repos?** Only when you tell it to: adding, removing or linking a skill, which updates `skilllib.json`. It asks before writing into a folder git tracks, and it never deletes a repo's own skills.
+**Does it change my repos?** Only when you tell it to: adding, removing, linking or tidying a skill, which updates `skilllib.json`. It asks before linking into a folder git tracks, and before tidy changes a committed file. It never deletes the only copy of a repo's own skill.
 
 **Can I share skills with my team?** Commit `skilllib.json` along with the copies in `.claude/skills`. Or keep your library in a git repo and point `SKILLLIB_HOME` at it.
 
 **Why does usage only count Claude Code?** It's the only agent here with local transcripts to read. Cursor doesn't keep them locally, and Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 
 **What's not supported yet?**
-- Cursor marketplace plugin skills: Cursor doesn't record which ones are enabled in a file skilllib can read.
+- Turning off Cursor marketplace plugins: skilllib reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
 - Installing new skills straight from GitHub is coming. For now, `skilllib import <folder>` or copy one from a repo.
 

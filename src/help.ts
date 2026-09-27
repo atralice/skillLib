@@ -37,10 +37,9 @@ export const HELP_TOPICS: HelpTopic[] = [
         heading: "Badges",
         lines: [
           "✻ ⬡ ◎ ℤ       Claude Code, Cursor, Codex, Zed — lit when that agent loads the skill here",
-          "²             Cursor reaches it through two folders (it reads several)",
           "⚠ loaded globally   loads in every repo on this machine, and you haven't decided about it yet",
           "✓ global      loads in every repo, and you keep it global on purpose (Enter → Keep global on purpose)",
-          "⧉ N copies    the same skill reaches agents from N places — keep one",
+          "⧉ N copies    the same skill reaches agents from N places — Health has the fix",
           "● in sync · ↑ update · ✎ edited · ○ only here",
           "✓ committed   in git, so teammates get it      ± changed   committed, with local edits",
           "+ not added   not committed yet                ∅ ignored   gitignored — only on your machine",
@@ -140,7 +139,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "Compat    .claude/skills, .codex/skills, ~/.claude/skills, ~/.codex/skills",
           "Plus      plugins from its marketplace, and Cursor's built-in skills",
           "Cloud Agents only see ~/.cursor/skills.",
-          "Its docs don't say what happens when two folders hold the same skill (the ² badge).",
+          "A skill in two folders is listed once (tested). A plugin's copy and yours are listed separately.",
         ],
       },
       {
