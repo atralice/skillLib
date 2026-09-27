@@ -91,7 +91,8 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
       linksTo.set(target.path, [...(linksTo.get(target.path) ?? []), e]);
       continue;
     }
-    const target_ = e.isLink ? readlinkSync(e.path) : "";
+    // Link targets use backslashes on Windows; compare with forward slashes.
+    const target_ = e.isLink ? readlinkSync(e.path).replace(/\\/g, "/") : "";
     const inAgents = e.dir === agentsDir || target_.includes(".agents/skills");
     const locked = lock[e.name]?.source;
     skills.push({
@@ -115,8 +116,10 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
   return skills;
 }
 
+/** Home-relative path for labels, always with "/" so it reads the same on every OS. */
 function tildify(p: string): string {
-  return p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
+  const shown = p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
+  return shown.replace(/\\/g, "/");
 }
 
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */
