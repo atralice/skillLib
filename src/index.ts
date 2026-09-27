@@ -21,6 +21,9 @@ In a project:
   skilllib add <name>...         Install library skills where your harnesses look
   skilllib remove <name>...      Remove skills from this project
   skilllib link [--all]          Make every skill here usable by all your agents (adds links)
+  skilllib tidy [--all|--global] One real copy per skill, plus only the links your agents need
+                                 (--dry-run to preview, --allow-git to change what git sees,
+                                 <name> --keep <folder> to pick the copy that wins)
   skilllib sync [--all]          Install exactly the versions in skilllib.json
   skilllib outdated [--all]      Skills with a newer version in the library
   skilllib update [name...]      Move to the newest versions (--all: every project)
@@ -87,6 +90,9 @@ async function main() {
       return commands.projects();
     case "link":
       return commands.link(args);
+    case "tidy":
+    case "dedup":
+      return commands.tidy(args);
     case "harnesses":
     case "agents":
       return commands.harnessesCommand(args);
