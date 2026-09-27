@@ -12,6 +12,7 @@
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,

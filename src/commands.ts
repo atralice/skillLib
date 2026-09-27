@@ -1,4 +1,3 @@
-import { existsSync, readdirSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import {
   addSkill,
@@ -16,7 +15,7 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir } from "./paths.js";
-import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects, writeManifest } from "./project.js";
+import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { dim, error, green, info, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";

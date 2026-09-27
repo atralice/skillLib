@@ -9,14 +9,13 @@ import { originFor, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
-export type LibrarySkill = { name: string; description: string; dir: string; hash: string };
+export type LibrarySkill = { name: string; description: string; dir: string };
 
 export function librarySkills(): LibrarySkill[] {
   return skillDirsIn(libraryDir()).map((dir) => ({
     name: basename(dir),
     description: readSkillInfo(dir).description,
     dir,
-    hash: treeHash(dir) ?? "",
   }));
 }
 
@@ -417,10 +416,6 @@ export function importSkill(dir: string, { force = false } = {}): { name: string
   forgetLatest(name);
   latestVersion(name);
   return { name, status: existing === null ? "added" : "updated" };
-}
-
-export function libraryExists(): boolean {
-  return existsSync(libraryDir());
 }
 
 function backupIndexFile(bucket: string): string {

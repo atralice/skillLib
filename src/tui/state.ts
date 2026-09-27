@@ -1,10 +1,10 @@
 import { basename, join } from "node:path";
 import { projectOfFactory } from "../commands.js";
-import { librarySkillDir, librarySkills, listBackups, projectStatus, projectsUsing, type Backup, type ProjectSkill, type Visibility } from "../library.js";
+import { librarySkillDir, librarySkills, listBackups, projectStatus, type Backup, type ProjectSkill, type Visibility } from "../library.js";
 import { enabledHarnesses, harnessesChosen, readConfig, visibleProjects } from "../config.js";
 import type { HarnessId } from "../harnesses.js";
 import { findIssues, type Issue } from "../health.js";
-import { findProjectRoot, isProjectCandidate, projectSkillsDir } from "../project.js";
+import { findProjectRoot, isProjectCandidate } from "../project.js";
 import { libraryOrigins, machineSkills, type SourcedSkill } from "../sources.js";
 import { readSkillInfo } from "../skills.js";
 import { forgetLatest, latestVersion, versionHistory, type Version } from "../versions.js";
@@ -87,7 +87,8 @@ export function loadSnapshot(): Snapshot {
     name: s.name,
     description: s.description,
     origin: origins[s.name] ?? inferred(s.name),
-    projects: projectsUsing(s.name).filter((p) => projects.includes(p)),
+    // Managed status entries are the manifest, already read above; no need to re-read every manifest per skill.
+    projects: projects.filter((p) => statusOf(p).some((x) => x.managed && x.name === s.name)).sort(),
     version: latestVersion(s.name)?.version ?? null,
   }));
   return {
