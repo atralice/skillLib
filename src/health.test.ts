@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix } from "./health.js";
-import { addSkill, deleteGlobal, importSkill, listBackups, restoreBackup } from "./library.js";
+import { addSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
-import { machineSkills } from "./sources.js";
+import { libraryOrigins, machineSkills } from "./sources.js";
 
 let tmp: string;
 
@@ -188,4 +188,31 @@ test("copies that differ aren't offered for import or tracking until you pick on
   const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
   expect(ids).toContain(`conflict:${project}:deploy`);
   expect(ids).not.toContain(`local:${project}:deploy`);
+});
+
+test("skills npx skills installed in a project keep their source and aren't called local only", () => {
+  const project = join(tmp, "web");
+  mkdirSync(project);
+  writeFileSync(
+    join(project, "skills-lock.json"),
+    JSON.stringify({ version: 1, skills: { "video-edit": { source: "genmedia-labs/skills" }, copied: { source: "acme/skills" } } }),
+  );
+  // Symlink method: real copy in .agents/skills, link in .claude/skills.
+  skill(join(project, ".agents", "skills", "video-edit"));
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(project, ".agents", "skills", "video-edit"), join(project, ".claude", "skills", "video-edit"));
+  // Copy method: a real copy in each folder.
+  skill(join(project, ".agents", "skills", "copied"));
+  skill(join(project, ".claude", "skills", "copied"));
+
+  expect(projectStatus(project).map((s) => [s.name, s.state, s.source])).toEqual([
+    ["copied", "from npx skills", "acme/skills"],
+    ["video-edit", "from npx skills", "genmedia-labs/skills"],
+  ]);
+  // No "only exists in web → import it" (tidy may still fold the copy-method duplicate into a link).
+  const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids.filter((id) => id.startsWith("local:") || id.startsWith("adopt:"))).toEqual([]);
+
+  importSkill(join(project, ".claude", "skills", "video-edit"));
+  expect(libraryOrigins()["video-edit"]).toBe("skills.sh: genmedia-labs/skills");
 });

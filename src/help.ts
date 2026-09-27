@@ -40,7 +40,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "⚠ loaded globally   loads in every repo on this machine, and you haven't decided about it yet",
           "✓ global      loads in every repo, and you keep it global on purpose (Enter → Keep global on purpose)",
           "⧉ N copies    the same skill reaches agents from N places — Health has the fix",
-          "● in sync · ↑ update · ✎ edited · ○ only here",
+          "● in sync · ↑ update · ✎ edited · ○ only here · ↓ owner/repo  installed here by npx skills",
           "✓ committed   in git, so teammates get it      ± changed   committed, with local edits",
           "+ not added   not committed yet                ∅ ignored   gitignored — only on your machine",
         ],

@@ -574,7 +574,9 @@ export function App() {
       const dir = r.path;
       const badge = stateBadge(r.state);
       const edited = r.state.startsWith("edited");
-      const inRepo = r.location === ".agents/skills" && !r.managed;
+      // Installed by `npx skills add` (listed in skills-lock.json): npx skills owns it, so copy it, never take it over.
+      const npx = r.state === "from npx skills";
+      const inRepo = r.location === ".agents/skills" && !r.managed && !npx;
       const missing = r.visibility.filter((v) => v.paths === 0);
       const seenBy = r.visibility.filter((v) => v.paths > 0);
       const notInLibrary = r.state === "local only" || r.state === "untracked, differs from library" || r.state === "repo skill" || r.state === "repo skill, differs from library";
@@ -632,7 +634,10 @@ export function App() {
           ? [{ label: "Remove links", hint: "keeps the real folder", run: removeLinks }]
           : []),
       ];
-      if (inRepo) {
+      if (npx) {
+        primary = { label: "copy to your skills", run: copyRepoSkillToLibrary };
+        actions.push({ label: "Copy to Your skills", hint: "so other repos can use it; npx skills keeps this copy", run: copyRepoSkillToLibrary });
+      } else if (inRepo) {
         const libraryAction: Action =
           r.state === "repo skill"
             ? { label: "Copy to Your skills", hint: "so other repos can use it; this repo keeps its copy", run: copyRepoSkillToLibrary }
@@ -717,11 +722,11 @@ export function App() {
       return {
         key,
         search: r.name,
-        group: prefixGroup(r.name),
+        group: npx ? { key: `repo:${r.source}`, label: r.source!, about: `Installed with \`npx skills add ${r.source}\` into this repo (recorded in skills-lock.json).` } : prefixGroup(r.name),
         skill: { name: r.name, path: dir },
         tags: [
           r.installed ? "in this project" : "installable",
-          ...(r.installed && r.state !== "ok" && r.state !== "repo skill, in library" ? ["needs attention"] : []),
+          ...(r.installed && r.state !== "ok" && r.state !== "repo skill, in library" && !npx ? ["needs attention"] : []),
         ],
         row: {
           key,
@@ -741,7 +746,7 @@ export function App() {
                   ? `  ⧉ ${dupes(r.name)} copies`
                   : !r.installed && globalCopy
                     ? "  ↗ already global"
-                    : `  ${badge.icon} ${badge.label}`,
+                    : `  ${badge.icon} ${npx ? r.source : badge.label}`,
               width: 19,
               color: r.installed && dupes(r.name) > 1 ? color.red : !r.installed && globalCopy ? color.yellow : badge.color,
             },
@@ -757,15 +762,17 @@ export function App() {
             r.installed
               ? `${seenBy.length ? `loaded by ${seenBy.map((v) => `${harnessName(v.id)}${v.paths > 1 ? ` (via ${v.paths} folders)` : ""}`).join(", ")}` : "not loaded by your harnesses"}${missing.length ? ` · not ${missing.map((v) => harnessName(v.id)).join(", ")}` : ""}`
               : "not installed",
-            inRepo
-              ? `committed in ${r.location}`
-              : r.installed
-                ? r.managed
-                  ? `v${r.version} installed in ${r.location}`
-                  : notInLibrary
-                    ? "only in this project"
-                    : "untracked copy"
-                : "not installed",
+            npx
+              ? `installed by npx skills from ${r.source} into ${r.location}`
+              : inRepo
+                ? `committed in ${r.location}`
+                : r.installed
+                  ? r.managed
+                    ? `v${r.version} installed in ${r.location}`
+                    : notInLibrary
+                      ? "only in this project"
+                      : "untracked copy"
+                  : "not installed",
             ...(r.installed && git ? [GIT_ABOUT[gitOf(r.path)!]] : []),
             r.inLibrary ? `in Your skills (v${r.latest}${origin ? `, from ${origin}` : ""})` : "not in Your skills",
             `${usesText(r.name, root)} Claude Code uses here (${USAGE_DAYS}d)`,
@@ -904,7 +911,19 @@ export function App() {
         ]
       : [];
     const fromLibrary = local.filter((r) => r.managed || r.state === "untracked copy of library skill");
-    const repoOwn = local.filter((r) => !fromLibrary.includes(r));
+    const fromNpx = local.filter((r) => r.state === "from npx skills");
+    const repoOwn = local.filter((r) => !fromLibrary.includes(r) && !fromNpx.includes(r));
+    const copyAllToLibrary = (members: Item[]): Action[] => [
+      {
+        label: `Copy all ${members.length} into your library`,
+        hint: "the repo keeps its copies",
+        run: () =>
+          act(() => {
+            const added = members.map((m) => importSkill(m.skill!.path, { force: true })).filter((r) => r.status !== "unchanged").length;
+            return ok(`${plural(added, "skill")} copied into your library`);
+          }),
+      },
+    ];
     const yours = globals.filter((m) => m.movable);
     const keptYours = yours.filter((m) => snapshot.keptGlobal.has(m.name));
     const unreviewed = yours.filter((m) => !snapshot.keptGlobal.has(m.name));
@@ -950,21 +969,8 @@ export function App() {
             },
           ],
         },
-        {
-          title: `The repo's own (${repoOwn.length})`,
-          items: repoOwn.map(item),
-          groupActions: (members) => [
-            {
-              label: `Copy all ${members.length} into your library`,
-              hint: "the repo keeps its copies",
-              run: () =>
-                act(() => {
-                  const added = members.map((m) => importSkill(m.skill!.path, { force: true })).filter((r) => r.status !== "unchanged").length;
-                  return ok(`${plural(added, "skill")} copied into your library`);
-                }),
-            },
-          ],
-        },
+        { title: `From npx skills (${fromNpx.length})`, items: fromNpx.map(item), groupActions: copyAllToLibrary },
+        { title: `The repo's own (${repoOwn.length})`, items: repoOwn.map(item), groupActions: copyAllToLibrary },
         {
           title: `⚠ Global · yours, not reviewed, loaded in every repo (${unreviewed.length})`,
           items: [...cleanupItem, ...unreviewed.map(globalItem)],

@@ -43,6 +43,8 @@ export function stateBadge(state: ProjectRow["state"]): Badge {
       return { icon: "✓", label: "in your skills too", color: color.green };
     case "repo skill, differs from library":
       return { icon: "≠", label: "differs from yours", color: color.yellow };
+    case "from npx skills":
+      return { icon: "↓", label: "npx skills", color: color.magenta };
     case "available":
       return { icon: " ", label: "", color: color.faint };
   }
