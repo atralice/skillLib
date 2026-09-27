@@ -109,16 +109,18 @@ function cost(dirs: string[]): number {
  * Cursor + Codex → .agents/skills; Claude Code + Cursor → .claude/skills;
  * Claude Code + Codex needs both (Claude Code reads only .claude/skills).
  * The real copy goes in .claude/skills when Claude Code is on, keeping where
- * existing installs live. Returns [real copy, ...links].
+ * existing installs live. With `keep`, the real copy is already in that
+ * folder and only the links are planned. Returns [real copy, ...links].
  */
-export function installDirs(enabled: HarnessId[]): string[] {
-  if (enabled.length === 0) return [PROJECT_SKILLS_DIR];
+export function installDirs(enabled: HarnessId[], keep?: string): string[] {
+  if (enabled.length === 0) return [keep ?? PROJECT_SKILLS_DIR];
   let best: string[] = [];
   for (let mask = 1; mask < 1 << ALL_PROJECT_DIRS.length; mask++) {
     const dirs = ALL_PROJECT_DIRS.filter((_, i) => mask & (1 << i)).sort((a, b) => preference(a) - preference(b));
+    if (keep && !dirs.includes(keep)) continue;
     if (!enabled.every((id) => harness(id).projectDirs.some((d) => dirs.includes(d)))) continue;
     if (best.length === 0 || cost(dirs) < cost(best)) best = dirs;
   }
-  const primary = enabled.includes("claude-code") ? PROJECT_SKILLS_DIR : best[0]!;
+  const primary = keep ?? (enabled.includes("claude-code") ? PROJECT_SKILLS_DIR : best[0]!);
   return [primary, ...best.filter((d) => d !== primary)];
 }
