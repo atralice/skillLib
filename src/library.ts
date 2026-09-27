@@ -3,9 +3,9 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
-import { enabledHarnesses, readConfig } from "./config.js";
+import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
-import { originFor, recordOrigin } from "./sources.js";
+import { globalSkillDirs, originFor, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
@@ -475,6 +475,7 @@ export function deleteGlobal(path: string, links: string[] = []) {
  * Stops a global skill loading everywhere by moving it (and any global links
  * pointing at it, so none break) into ~/.skilllib/global-backup. A skill must
  * be in the library first, unless it's a broken link that loads nothing.
+ * Once no global copy of it is left, it's no longer marked as kept global.
  */
 export function unloadGlobal(
   path: string,
@@ -486,7 +487,9 @@ export function unloadGlobal(
   const broken = !existsSync(join(path, "SKILL.md"));
   if (requireLibrary && !broken && latestVersion(name) === null) return { ok: false, reason: "import it into the library first" };
   for (const link of links) if (isLink(link)) stash(link, "global-backup");
-  return { ok: true, movedTo: stash(path, "global-backup") };
+  const movedTo = stash(path, "global-backup");
+  if (!globalSkillDirs().some((d) => entryExists(join(d, name)))) setKeepGlobal([name], false);
+  return { ok: true, movedTo };
 }
 
 /** Creates a new library skill with a starter SKILL.md. */

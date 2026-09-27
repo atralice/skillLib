@@ -47,6 +47,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 - **📦 Per-repo installs, pinned like dependencies.** Each repo lists its skills and versions in `skilllib.json`. `sync` reproduces them exactly, and `update` moves to the newest.
 - **🤝 One copy, every agent.** skilllib puts one real copy in the repo and links it into whichever folders your other agents read.
 - **🧹 A cleanup wizard for global skills.** For each global skill, pick the repos that should keep it, keep it global, or delete it. Usage numbers and descriptions help you decide.
+- **✓ Global on purpose.** Some skills belong everywhere. Mark them once and skilllib stops warning about them.
 - **🔎 See everything in a repo:**
   - where each skill comes from (the repo, your library, global, a plugin, claude.ai…)
   - which agents load it
@@ -119,7 +120,8 @@ A repo has two lists:
 |---|---|---|
 | *From your skills* | Versioned skills you added from your library | Remove it from this repo |
 | *The repo's own* | Skills committed to the repo (e.g. your team's `.agents/skills`) | Copy it into your skills, so other repos can use it |
-| *⚠ Global · yours* | Your global skills: they load in every repo | Open the cleanup wizard |
+| *⚠ Global · yours, not reviewed* | Your global skills you haven't decided about: they load in every repo | Open the cleanup wizard |
+| *✓ Global · yours, on purpose* | Your global skills you chose to keep global | Open the cleanup wizard |
 | *Global · from vendors* | Plugins, claude.ai skills, Cursor built-ins | – (manage them at the source) |
 
 **Add skills** shows your skills that this repo doesn't have yet. `space` adds one.
@@ -174,12 +176,22 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 Open **Global → ⚠ Clean up…**, or press `space` on any of your global skills. For each skill, `space` cycles through:
 
 - **◉ move:** installed into the repos you tick on the right. Repos that already have it, or where Claude Code used it, are pre-ticked.
-- **○ keep global**
+- **○ keep global**: skilllib remembers this choice, and the next cleanup skips the skill
 - **✕ delete** (`d`): removed without keeping a copy in your library
 
 Each skill shows how often Claude Code used it, and the panel below shows its description and where it was used. Review, apply, and your globals are gone: moved ones are in your library and in the right repos. Originals go to a backup you can restore from **Health**.
 
 You can also delete one skill (Enter → **Delete**) or a whole group (Enter → **Delete all N**) straight from Global.
+
+### Keeping a skill global on purpose
+
+Some skills are useful in every repo, for example a commit-message skill. Mark them so skilllib stops asking about them:
+
+- Enter on the skill (in Global or in a repo) → **✓ Keep global on purpose**. Enter on a group → **Keep all N global on purpose**.
+- In the cleanup wizard, every skill you leave on **○ keep global** is marked when you apply.
+- From the command line: `skilllib global keep <name>`.
+
+A marked skill shows **✓ global** instead of **⚠ loaded globally**, and has its own group in a repo. The cleanup wizard hides it (`k` shows it again), and review prompts tell the agent that you chose to keep it global. The mark only records your decision: no files move, and agents load the skill as before. Duplicate warnings (⧉) still show. To undo, use Enter → **Unmark** or `skilllib global unkeep <name>`.
 
 ### Ask an agent to review your skills
 
@@ -280,6 +292,7 @@ skilllib link [--all]           make every skill here usable by all your agents
 
 skilllib list | show <name>     your library
 skilllib import <dir>...        add skill folders to your library (--global: all your global skills)
+skilllib global [keep|unkeep]   your global skills; mark the ones you keep global on purpose
 skilllib new <name> [desc]      create a skill
 
 skilllib usage [--days N]       which skills Claude Code used
@@ -297,7 +310,7 @@ Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-track
 | `<repo>/skilllib.json` | The repo's skills and pinned versions. **Commit it.** |
 | `~/.skilllib/library/` | Your skills (master copies). Worth putting under git. |
 | `~/.skilllib/store/` | Every version of every skill, immutable |
-| `~/.skilllib/config.json` | Your agents, project folders, hidden projects |
+| `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
 | `~/.skilllib/trash/`, `global-backup/` | Everything skilllib removed, restorable from Health |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 
@@ -331,7 +344,7 @@ npm link                                     # use your checkout as `skilllib`
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.0.2 && git push --tags
+   git tag v1.1.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

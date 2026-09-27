@@ -28,12 +28,13 @@ test("the review prompt carries each skill's facts, its SKILL.md body, and asks 
         installedIn: [],
         otherCopies: ["plugin cloudflare@x"],
         inYourSkills: "yes, v2",
+        keptGlobal: true,
       },
     ],
     { scope: "Global skills.", usageDays: 30, harnesses: ["Claude Code", "Cursor"], projects: [{ name: "edge-app", path: "/code/edge-app" }] },
   );
 
-  for (const fact of ["### wrangler", "1 use in the last 30 days (edge-app: 1)", "plugin cloudflare@x", "yes, v2", "edge-app — /code/edge-app", "Run wrangler deploy."]) {
+  for (const fact of ["### wrangler", "marked this as global on purpose", "1 use in the last 30 days (edge-app: 1)", "plugin cloudflare@x", "yes, v2", "edge-app — /code/edge-app", "Run wrangler deploy."]) {
     expect(prompt).toContain(fact);
   }
   expect(prompt).not.toContain("description: Cloudflare CLI\n---");

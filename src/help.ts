@@ -30,6 +30,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           "esc           clear the search, then go back to the left pane",
           "ctrl+r        reload        ctrl+c   quit",
           "p             in the cleanup wizard: copy a prompt asking an agent to review the skills",
+          "k             in the cleanup wizard: show / hide the skills you keep global on purpose",
         ],
       },
       {
@@ -37,7 +38,8 @@ export const HELP_TOPICS: HelpTopic[] = [
         lines: [
           "✻ ⬡ ◎ ℤ       Claude Code, Cursor, Codex, Zed — lit when that agent loads the skill here",
           "²             Cursor reaches it through two folders (it reads several)",
-          "⚠ loaded globally   loads in every repo on this machine",
+          "⚠ loaded globally   loads in every repo on this machine, and you haven't decided about it yet",
+          "✓ global      loads in every repo, and you keep it global on purpose (Enter → Keep global on purpose)",
           "⧉ N copies    the same skill reaches agents from N places — keep one",
           "● in sync · ↑ update · ✎ edited · ○ only here",
           "✓ committed   in git, so teammates get it      ± changed   committed, with local edits",
