@@ -50,7 +50,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   skill(join(tmp, ".claude", "skills", "synced", "b", "twice"));
 
   const issues = findIssues([project], machineSkills(), new Set());
-  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`]);
+  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`, "agent-skill"]);
 
   for (const issue of issues) issue.fix?.run();
   expect(findIssues([project], machineSkills(), new Set(["deploy", "twice"]))).toEqual([]);

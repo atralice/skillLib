@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import * as commands from "./commands.js";
-import { error } from "./output.js";
+import { error, setJsonMode } from "./output.js";
+import { refreshAgentSkill } from "./agentSkill.js";
 
 const HELP = `
 skilllib — one library of agent skills (Claude Code, Cursor, Codex, Zed), installed per project
@@ -36,6 +37,13 @@ Health:
   skilllib restore [name]        Restore something skilllib moved out of the way
   skilllib unhide <path>         Show a hidden project again
 
+Agents:
+  skilllib agent-skill [install|remove]
+                                 Teach your agents to use skilllib, so you can ask them
+                                 "which skills can you use here?" in any repo
+  --json                         Machine-readable output (status list show projects outdated
+                                 usage doctor add remove sync update import agent-skill)
+
 Options: --force (overwrite local edits)  --allow-tracked (link into git-tracked skill folders)  --days N
 `.trim();
 
@@ -52,11 +60,15 @@ function packageVersion(): string {
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const args = commands.parseArgs(rest);
+  setJsonMode(args.json);
+  // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
+  refreshAgentSkill();
   switch (command) {
     case undefined:
       // Interactive when a person is at the terminal; plain status for scripts and pipes.
       return process.stdin.isTTY && process.stdout.isTTY ? (await import("./tui/index.js")).tui() : commands.status(args);
     case "ui":
+      if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("`skilllib ui` needs an interactive terminal. Agents and scripts: use `skilllib status --json`.");
       return (await import("./tui/index.js")).tui();
     case "status":
       return commands.status(args);
@@ -83,7 +95,7 @@ async function main() {
     case "scan":
       return commands.scan(args);
     case "projects":
-      return commands.projects();
+      return commands.projects(args);
     case "link":
       return commands.link(args);
     case "harnesses":
@@ -103,6 +115,8 @@ async function main() {
       return commands.doctor(args);
     case "usage":
       return commands.usage(args);
+    case "agent-skill":
+      return commands.agentSkill(args);
     case "--version":
     case "-v":
     case "version":

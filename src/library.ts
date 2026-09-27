@@ -76,7 +76,7 @@ function isLink(path: string): boolean {
  * the repo can be moved), a directory junction on Windows (no admin rights or
  * Developer Mode needed; junctions need an absolute target).
  */
-function linkDir(target: string, link: string) {
+export function linkDir(target: string, link: string) {
   if (process.platform === "win32") symlinkSync(target, link, "junction");
   else symlinkSync(relative(dirname(link), target), link);
 }

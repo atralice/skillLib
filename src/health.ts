@@ -3,6 +3,7 @@ import { addSkill, importSkill, projectStatus, syncProject, unloadGlobal, update
 import { HARNESSES } from "./harnesses.js";
 import { projectSkillsDir } from "./project.js";
 import type { SourcedSkill } from "./sources.js";
+import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 
 export type Issue = {
   id: string;
@@ -133,6 +134,23 @@ export function findIssues(
         });
       }
     }
+  }
+
+  const agentSkill = agentSkillState();
+  if (agentSkill !== "installed") {
+    issues.push({
+      id: "agent-skill",
+      severity: "suggestion",
+      title: agentSkill === "missing" ? "Your agents don't know about skilllib" : "The skilllib skill for your agents is out of date",
+      detail: "The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.",
+      fix: {
+        label: agentSkill === "missing" ? "Install the skilllib skill for your agents" : "Update it",
+        run: () => {
+          const r = installAgentSkill();
+          return r.ok ? `Your agents can now use skilllib (${r.dirs.length} folder${r.dirs.length === 1 ? "" : "s"})` : `skilllib skill: ${r.reason}`;
+        },
+      },
+    });
   }
 
   return issues;
