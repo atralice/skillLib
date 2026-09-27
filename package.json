@@ -1,15 +1,18 @@
 {
   "name": "skilllib",
   "version": "1.0.0",
-  "description": "Manage agent skills like dependencies: one versioned library, and each repo picks what it needs. Works with Claude Code, Cursor, Codex and Zed.",
+  "description": "Manage your agent skills like dependencies. One library for all your skills; each repo gets only the ones it needs, and every agent can see them. Works with Claude Code, Cursor, Codex and Zed.",
   "keywords": [
     "agent-skills",
     "skills",
+    "skill-md",
     "claude-code",
+    "claude",
     "cursor",
     "codex",
     "zed",
-    "skill-md",
+    "ai-agents",
+    "skills-manager",
     "cli",
     "tui"
   ],
