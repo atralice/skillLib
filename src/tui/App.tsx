@@ -403,7 +403,11 @@ export function App() {
   const edit = async (file: string) => {
     const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
     await suspendTerminal(() => {
-      spawnSync(`${editor} "${file}"`, { shell: true, stdio: "inherit" });
+      // $EDITOR may carry args ("code -w"), so it goes through the shell — but the path is
+      // passed as $1, never interpolated: skill folder names come from third-party repos.
+      // Windows paths can't contain `"`, so quoting is safe there (and cmd resolves .cmd shims).
+      if (process.platform === "win32") spawnSync(`${editor} "${file}"`, { shell: true, stdio: "inherit" });
+      else spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
     });
     reload();
     say(`Saved ${tildify(file)}`);
