@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { useState } from "react";
 import { Box, Text, type Key } from "ink";
+import { setKeepGlobal } from "../config.js";
 import { addSkill, deleteGlobal, importSkill, unloadGlobal } from "../library.js";
 import type { SourcedSkill } from "../sources.js";
 import { KeyBar, ListPanel, Panel, wrap, type Hint, type Row } from "./components.js";
@@ -9,7 +10,7 @@ import { color } from "./theme.js";
 /** The app forwards key presses here while the wizard is open (one input handler avoids split escape sequences). */
 export type KeyHandler = (input: string, key: Key) => void;
 
-export type CleanupResult = { unloaded: number; installs: number; deleted: number; problems: string[] };
+export type CleanupResult = { unloaded: number; installs: number; deleted: number; kept: number; problems: string[] };
 
 /** What happens to each global skill: move it into projects, leave it global, or delete it. */
 type Mode = "move" | "keep" | "delete";
@@ -24,9 +25,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * 1. choose skills (left) and, for each, the projects that keep it (right)
  * 2. review, then apply: copy into Your skills, install into the ticked
  *    projects, and stop loading it globally (the original goes to backup).
+ * Skills you choose to keep global are remembered and hidden next time (k shows them).
  */
 export function CleanupWizard({
   skills,
+  kept,
   projects,
   usesIn,
   usesTotal,
@@ -41,6 +44,8 @@ export function CleanupWizard({
   inputRef,
 }: {
   skills: SourcedSkill[];
+  /** Names you already keep global on purpose; hidden unless you press k. */
+  kept: Set<string>;
   projects: string[];
   /** Claude Code uses of a skill in a project (null while loading). */
   usesIn: (skill: string, project: string) => number | null;
@@ -61,11 +66,20 @@ export function CleanupWizard({
   const [step, setStep] = useState<Step>("choose");
   const [focus, setFocus] = useState<"skills" | "projects">("skills");
   const [modes, setModes] = useState<Map<string, Mode>>(
-    () => new Map(skills.map((s) => [s.path, !initialSkill || s.name === initialSkill ? "move" : "keep"])),
+    () => new Map(skills.map((s) => [s.path, s.name === initialSkill || (!initialSkill && !kept.has(s.name)) ? "move" : "keep"])),
   );
   const modeOf = (s: SourcedSkill): Mode => modes.get(s.path) ?? "keep";
-  const setMode = (s: SourcedSkill, mode: Mode) => setModes((prev) => new Map(prev).set(s.path, mode));
-  const [skillIndex, setSkillIndex] = useState(() => Math.max(0, skills.findIndex((s) => s.name === initialSkill)));
+  // Only a keep you chose is remembered, not the default for skills you didn't look at.
+  const [touched, setTouched] = useState<Set<string>>(() => new Set(initialSkill ? [] : skills.map((s) => s.path)));
+  const setMode = (s: SourcedSkill, mode: Mode) => {
+    setModes((prev) => new Map(prev).set(s.path, mode));
+    setTouched((prev) => new Set(prev).add(s.path));
+  };
+  const [showKept, setShowKept] = useState(false);
+  const shown = (on: boolean) => skills.filter((s) => on || !kept.has(s.name) || s.name === initialSkill);
+  const list = shown(showKept);
+  const hiddenKept = skills.length - shown(false).length;
+  const [skillIndex, setSkillIndex] = useState(() => Math.max(0, list.findIndex((s) => s.name === initialSkill)));
   const [projectIndex, setProjectIndex] = useState(0);
   const [status, setStatus] = useState("");
   // Pre-tick projects that already have the skill or where agents used it.
@@ -76,9 +90,10 @@ export function CleanupWizard({
       ),
   );
 
-  const skill = skills[skillIndex];
+  const skill = list[skillIndex];
   const chosen = skills.filter((s) => modeOf(s) === "move");
   const toDelete = skills.filter((s) => modeOf(s) === "delete");
+  const toKeep = skills.filter((s) => modeOf(s) === "keep" && touched.has(s.path) && !kept.has(s.name));
   const totalInstalls = chosen.reduce((n, s) => n + (targets.get(s.path)?.size ?? 0), 0);
   const orphans = chosen.filter((s) => (targets.get(s.path)?.size ?? 0) === 0);
 
@@ -118,7 +133,10 @@ export function CleanupWizard({
       if (r.ok) unloaded++;
       else problems.push(`${s.name}: ${r.reason}`);
     }
-    onDone({ unloaded, installs, deleted, problems });
+    setKeepGlobal(toKeep.map((s) => s.name), true);
+    // Moving or deleting a skill you kept global is a new decision; forget the old one.
+    setKeepGlobal([...chosen, ...toDelete].map((s) => s.name).filter((n) => kept.has(n)), false);
+    onDone({ unloaded, installs, deleted, kept: toKeep.length, problems });
   };
 
   inputRef.current = (input: string, key: Key) => {
@@ -129,14 +147,19 @@ export function CleanupWizard({
       return;
     }
     if (key.escape) return onCancel();
-    if (input === "p") return setStatus(onReviewPrompt(skills));
-    if (key.return) return chosen.length || toDelete.length ? setStep("review") : undefined;
+    if (input === "p") return setStatus(onReviewPrompt(list));
+    if (input === "k" && hiddenKept) {
+      const next = shown(!showKept);
+      setShowKept(!showKept);
+      return setSkillIndex(Math.max(0, next.findIndex((s) => s.path === skill?.path)));
+    }
+    if (key.return) return chosen.length || toDelete.length || toKeep.length ? setStep("review") : undefined;
     if (key.tab || key.rightArrow || key.leftArrow) {
       return setFocus(key.leftArrow ? "skills" : key.rightArrow ? "projects" : focus === "skills" ? "projects" : "skills");
     }
     if (focus === "skills") {
       if (key.upArrow) return setSkillIndex((i) => Math.max(0, i - 1));
-      if (key.downArrow) return setSkillIndex((i) => Math.min(skills.length - 1, i + 1));
+      if (key.downArrow) return setSkillIndex((i) => Math.min(list.length - 1, i + 1));
       if (input === " " && skill) return setMode(skill, NEXT_MODE[modeOf(skill)]);
       if (input === "d" && skill) return setMode(skill, modeOf(skill) === "delete" ? "keep" : "delete");
     } else {
@@ -169,9 +192,10 @@ export function CleanupWizard({
             {[
               chosen.length ? `${plural(chosen.length, "skill")} ${chosen.length === 1 ? "moves" : "move"} into your projects (${plural(totalInstalls, "install")})` : "",
               toDelete.length ? `${plural(toDelete.length, "skill")} ${toDelete.length === 1 ? "is" : "are"} deleted` : "",
+              toKeep.length ? `${plural(toKeep.length, "skill")} ${toKeep.length === 1 ? "stays" : "stay"} global on purpose` : "",
             ]
               .filter(Boolean)
-              .join(" · ") + ". None of them will load in every repo anymore."}
+              .join(" · ") + "."}
           </Text>
           <Text color={color.faint}>Moved skills are copied into Your skills first. Every original goes to a backup you can restore from Health.</Text>
           <Text> </Text>
@@ -185,6 +209,9 @@ export function CleanupWizard({
           {lines.length > bodyHeight - 7 ? <Text color={color.faint}>{`… and ${lines.length - (bodyHeight - 7)} more`}</Text> : null}
           {toDelete.length ? (
             <Text color={color.red} wrap="truncate-end">{`✕ delete (not kept in Your skills): ${toDelete.map((s) => s.name).join(", ")}`}</Text>
+          ) : null}
+          {toKeep.length ? (
+            <Text color={color.muted} wrap="truncate-end">{`✓ keep global, and skip next cleanup: ${toKeep.map((s) => s.name).join(", ")}`}</Text>
           ) : null}
           <Box flexGrow={1} />
           {orphans.length ? (
@@ -208,7 +235,7 @@ export function CleanupWizard({
   const detailHeight = height >= 26 ? 7 : height >= 20 ? 5 : 0;
   const listHeight = bodyHeight - detailHeight;
   const usesText = (n: number | null) => (n === null ? "…" : n === 0 ? "unused" : `${n} use${n === 1 ? "" : "s"}`);
-  const skillRows: Row[] = skills.map((s) => {
+  const skillRows: Row[] = list.map((s) => {
     const mode = modeOf(s);
     const n = targets.get(s.path)?.size ?? 0;
     return {
@@ -218,7 +245,7 @@ export function CleanupWizard({
         { text: s.name, grow: true, color: mode === "keep" ? color.muted : mode === "delete" ? color.red : undefined },
         { text: usesText(usesTotal(s.name)).padStart(9), width: 9, color: usesTotal(s.name) ? color.text : color.faint },
         {
-          text: mode === "keep" ? "  keep global" : mode === "delete" ? "  delete" : n ? `  → ${plural(n, "project")}` : "  → no project",
+          text: mode === "keep" ? (kept.has(s.name) ? "  ✓ kept global" : "  keep global") : mode === "delete" ? "  delete" : n ? `  → ${plural(n, "project")}` : "  → no project",
           width: 15,
           color: mode === "keep" ? color.faint : mode === "delete" ? color.red : n ? color.green : color.yellow,
         },
@@ -253,18 +280,18 @@ export function CleanupWizard({
           These load in every repo, so every agent reads them all the time. Pick the projects that should keep each one.
         </Text>
         <Text color={color.faint} wrap="truncate-end">
-          {status ? `✓ ${status}` : "◉ move into the ticked projects · ○ keep global · ✕ delete. Pre-ticked: projects that have it or used it. p: ask an agent."}
+          {status ? `✓ ${status}` : "◉ move into the ticked projects · ○ keep global (remembered) · ✕ delete. Pre-ticked: projects that have it or used it. p: ask an agent."}
         </Text>
       </Box>
       <Box height={listHeight}>
         <ListPanel
-          title={`Global skills · ${chosen.length} move · ${toDelete.length} delete · uses ${usageDays}d`}
+          title={`Global skills · ${chosen.length} move · ${toDelete.length} delete${hiddenKept && !showKept ? ` · ${hiddenKept} kept hidden` : ""} · uses ${usageDays}d`}
           focused={focus === "skills"}
           width={leftWidth}
           height={listHeight}
           rows={skillRows}
           selected={skillIndex}
-          empty="None of your skills load globally. 🎉"
+          empty={hiddenKept ? `All reviewed: you keep ${plural(hiddenKept, "skill")} global on purpose. k shows them.` : "None of your skills load globally. 🎉"}
         />
         <ListPanel
           title={skill ? `Keep ${skill.name} in…` : "Projects"}
@@ -309,6 +336,7 @@ export function CleanupWizard({
             ["space", focus === "skills" ? "move / keep / delete" : "tick project"],
             ...(focus === "skills" ? ([["d", "delete"]] as Hint[]) : []),
             ["tab", "switch side"],
+            ...(hiddenKept ? ([["k", showKept ? "hide kept" : `show kept (${hiddenKept})`]] as Hint[]) : []),
             ["enter", `review (${plural(totalInstalls, "install")})`],
             ["p", "ask an agent"],
             ["esc", "cancel"],

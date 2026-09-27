@@ -14,6 +14,7 @@ Set up:
   skilllib harnesses [id...]     Show or set the agents you use (claude-code cursor codex zed)
   skilllib import <dir>...       Add skill folders to the library (--force replaces)
   skilllib import --global       Copy ~/.claude/skills into the library
+  skilllib global [keep|unkeep <name>...]  Your global skills; mark ones you keep global on purpose
 
 In a project:
   skilllib status                This project's skills and their status
@@ -97,6 +98,8 @@ async function main() {
     case "new":
     case "create":
       return commands.newSkill(args);
+    case "global":
+      return commands.globalCommand(args);
     case "restore":
       return commands.restore(args);
     case "doctor":

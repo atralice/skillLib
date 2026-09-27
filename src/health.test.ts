@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addRoot, discoverProjects, setHarnesses, setHidden, visibleProjects } from "./config.js";
+import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues } from "./health.js";
 import { addSkill, importSkill, listBackups, restoreBackup } from "./library.js";
 import { machineSkills } from "./sources.js";
@@ -73,4 +73,15 @@ test("flags a project skill that also loads globally", () => {
   expect(issue?.id).toBe(`twice:${project}:alpha`);
   issue?.fix?.run();
   expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);
+});
+
+test("keeping a skill global on purpose is remembered by name and can be undone", () => {
+  expect([...keptGlobal()]).toEqual([]);
+  setKeepGlobal(["commit", "ponytail"], true);
+  setKeepGlobal(["commit"], true);
+  expect([...keptGlobal()]).toEqual(["commit", "ponytail"]);
+  setKeepGlobal(["ponytail"], false);
+  expect([...keptGlobal()]).toEqual(["commit"]);
+  // Other settings survive.
+  expect(harnessesChosen()).toBe(true);
 });

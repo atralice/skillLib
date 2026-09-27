@@ -1,7 +1,7 @@
 import { basename, join } from "node:path";
 import { projectOfFactory } from "../commands.js";
 import { librarySkillDir, librarySkills, listBackups, projectStatus, type Backup, type ProjectSkill, type Visibility } from "../library.js";
-import { enabledHarnesses, harnessesChosen, readConfig, visibleProjects } from "../config.js";
+import { enabledHarnesses, harnessesChosen, keptGlobal, readConfig, visibleProjects } from "../config.js";
 import type { HarnessId } from "../harnesses.js";
 import { findIssues, type Issue } from "../health.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
@@ -49,6 +49,8 @@ export type Snapshot = {
   /** Harnesses you use (from config, or detected until you choose). */
   harnesses: HarnessId[];
   harnessesChosen: boolean;
+  /** Global skills you marked as global on purpose. */
+  keptGlobal: Set<string>;
 };
 
 /** Everything the screens show except usage, read fresh from disk. */
@@ -102,6 +104,7 @@ export function loadSnapshot(): Snapshot {
     roots: readConfig().roots,
     harnesses: enabledHarnesses(),
     harnessesChosen: harnessesChosen(),
+    keptGlobal: keptGlobal(),
   };
 }
 

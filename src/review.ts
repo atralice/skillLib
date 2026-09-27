@@ -22,6 +22,8 @@ export type ReviewSkill = {
   installedIn: string[];
   otherCopies: string[];
   inYourSkills: string | null;
+  /** You marked it as global on purpose. */
+  keptGlobal?: boolean;
 };
 
 export type ReviewContext = {
@@ -74,6 +76,7 @@ export function buildReviewPrompt(skills: ReviewSkill[], ctx: ReviewContext): st
       `- Location: ${tildify(s.path)}${s.links.length ? ` (also linked from ${s.links.map(tildify).join(", ")})` : ""}`,
       `- Loaded by: ${s.loadedBy}`,
       ...(s.vendor ? [`- Vendor-managed: ${s.vendor}`] : []),
+      ...(s.keptGlobal ? ["- I marked this as global on purpose: recommend changing that only for a strong reason (unused, duplicated, low quality)"] : []),
       `- Usage (Claude Code transcripts only): ${usage}`,
       `- Installed in projects: ${s.installedIn.length ? s.installedIn.join(", ") : "none"}`,
       `- Other copies agents can see: ${s.otherCopies.length ? s.otherCopies.join("; ") : "none"}`,

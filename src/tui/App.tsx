@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
-import { addRoot, allowTrackedLinks, discoverProjects, removeRoot, setHarnesses, setHidden } from "../config.js";
+import { addRoot, allowTrackedLinks, discoverProjects, removeRoot, setHarnesses, setHidden, setKeepGlobal } from "../config.js";
 import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "../harnesses.js";
 import { lstatSync } from "node:fs";
 import {
@@ -779,6 +779,7 @@ export function App() {
     // Global skills load here too; show them so the view matches what agents actually have.
     const globalItem = (m: (typeof snapshot.machine)[number]): Item => {
       const inLib = libraryNames.has(m.name);
+      const kept = m.movable && snapshot.keptGlobal.has(m.name);
       const alsoLocal = rows.some((r) => r.installed && r.name === m.name);
       const moveHere = () =>
         confirm(
@@ -794,6 +795,7 @@ export function App() {
       const actions: Action[] = m.movable
         ? [
             { label: "Choose which repos keep it…", hint: "cleanup wizard", run: () => setWizard({ initialSkill: m.name }) },
+            keepAction(m),
             { label: `Use only in ${where}`, hint: "add here, stop loading everywhere", run: moveHere },
             { label: "Delete", hint: "not kept in Your skills · restorable from Health", run: () => confirmDeleteGlobal([m]) },
             ...(inLib
@@ -825,9 +827,9 @@ export function App() {
             ...harnessChips(enabledIds.map((id) => ({ id, paths: m.harnesses.includes(id) ? 1 : 0 })), true),
             { text: "", width: 8 },
             {
-              text: `  ${dupes(m.name) > 1 ? `⧉ ${dupes(m.name)} copies` : m.movable ? "⚠ loaded globally" : "vendor"}`,
+              text: `  ${dupes(m.name) > 1 ? `⧉ ${dupes(m.name)} copies` : kept ? "✓ global" : m.movable ? "⚠ loaded globally" : "vendor"}`,
               width: 19,
-              color: dupes(m.name) > 1 ? color.red : m.movable ? color.yellow : color.faint,
+              color: dupes(m.name) > 1 ? color.red : kept ? color.green : m.movable ? color.yellow : color.faint,
             },
             { text: usesText(m.name, root).padStart(4), color: color.muted },
           ],
@@ -840,7 +842,7 @@ export function App() {
           meta: [
             `loaded in every project by ${m.harnesses.map(harnessName).join(", ")}`,
             `${m.kind}: ${m.origin}`,
-            m.movable ? "yours: the cleanup wizard can scope it to projects" : "managed by the vendor",
+            kept ? "yours: kept global on purpose" : m.movable ? "yours: the cleanup wizard can scope it to projects" : "managed by the vendor",
           ],
           description: dupes(m.name) > 1 ? `Loaded ${dupes(m.name)} times here: ${copiesOf(m.name).join(" · ")}. Agents may see it twice — keep one.` : sourceGroup(m)?.about,
         },
@@ -897,8 +899,10 @@ export function App() {
     const fromLibrary = local.filter((r) => r.managed || r.state === "untracked copy of library skill");
     const repoOwn = local.filter((r) => !fromLibrary.includes(r));
     const yours = globals.filter((m) => m.movable);
+    const keptYours = yours.filter((m) => snapshot.keptGlobal.has(m.name));
+    const unreviewed = yours.filter((m) => !snapshot.keptGlobal.has(m.name));
     const vendor = globals.filter((m) => !m.movable);
-    const cleanupItem: Item[] = yours.length
+    const cleanupItem: Item[] = unreviewed.length
       ? [
           {
             key: "__cleanup",
@@ -908,7 +912,7 @@ export function App() {
               key: "__cleanup",
               cells: [
                 { text: "⚠ ", color: color.yellow },
-                { text: `${plural(yours.length, "skill")} of yours load in every repo — choose where each should live…`, grow: true, color: color.yellow },
+                { text: `${plural(unreviewed.length, "skill")} of yours load in every repo — choose where each should live…`, grow: true, color: color.yellow },
               ],
             },
             primary: { label: "clean up", run: () => setWizard({}) },
@@ -955,30 +959,14 @@ export function App() {
           ],
         },
         {
-          title: `⚠ Global · yours, loaded in every repo (${yours.length})`,
-          items: [...cleanupItem, ...yours.map(globalItem)],
-          groupActions: (members) => [
-            {
-              label: `Copy review prompt for all ${members.length}`,
-              hint: "for an agent to decide keep / move / delete",
-              run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
-            },
-
-            {
-              label: `Copy all ${members.length} to Your skills`,
-              hint: "they keep loading globally",
-              run: () =>
-                act(() => {
-                  const added = members.map((m) => importSkill(m.skill!.path)).filter((r) => r.status === "added").length;
-                  return ok(`${plural(added, "skill")} imported into your library`);
-                }),
-            },
-            {
-              label: `Delete all ${members.length}`,
-              hint: "not kept in Your skills · restorable from Health",
-              run: () => confirmDeleteGlobal(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path))),
-            },
-          ],
+          title: `⚠ Global · yours, not reviewed, loaded in every repo (${unreviewed.length})`,
+          items: [...cleanupItem, ...unreviewed.map(globalItem)],
+          groupActions: (members) => [...keepGroupActions(members), ...yourGlobalActions(members)],
+        },
+        {
+          title: `✓ Global · yours, on purpose (${keptYours.length})`,
+          items: keptYours.map(globalItem),
+          groupActions: (members) => [...keepGroupActions(members), ...yourGlobalActions(members)],
         },
         {
           title: `Global · from vendors: plugins, claude.ai, built-in (${vendor.length})`,
@@ -1125,6 +1113,7 @@ export function App() {
 
   function globalSections(): Section[] {
     const yours = snapshot.machine.filter((m) => m.movable);
+    const unreviewed = yours.filter((m) => !m.broken && !snapshot.keptGlobal.has(m.name));
     const importAll: Action = {
       label: "Copy all of yours to Your skills",
       run: () => {
@@ -1162,12 +1151,16 @@ export function App() {
         key: "__cleanup",
         cells: [
           { text: "⚠ ", color: color.yellow },
-          { text: `Clean up: choose which repos keep each of your ${yours.length} global skills…`, grow: true, color: color.yellow },
+          { text: `Clean up: choose which repos keep each of your ${unreviewed.length} unreviewed global skills…`, grow: true, color: color.yellow },
         ],
       },
       primary: { label: "clean up", run: () => setWizard({}) },
       actions: [{ label: "Open the cleanup wizard", run: () => setWizard({}) }],
-      preview: { title: "Clean up global skills", meta: ["every agent reads global skills in every repo"], description: "Install each skill only where it's needed, then stop loading it everywhere. Originals are kept in backup." },
+      preview: {
+        title: "Clean up global skills",
+        meta: ["every agent reads global skills in every repo", ...(snapshot.keptGlobal.size ? [`skips the ${snapshot.keptGlobal.size} you keep global on purpose (k shows them)`] : [])],
+        description: "Install each skill only where it's needed, keep it global on purpose, or delete it. Originals are kept in backup.",
+      },
     };
     const grouped = groups.map(([title, test]) => ({
       title,
@@ -1179,6 +1172,7 @@ export function App() {
             },
         ...(title.startsWith("Yours")
           ? [
+              ...keepGroupActions(members),
               {
                 label: `Delete all ${members.length}`,
                 hint: "not kept in Your skills · restorable from Health",
@@ -1216,7 +1210,7 @@ export function App() {
             actions.push({ label: "Remove the broken link", run: unload });
           } else {
             if (!inLib) actions.push({ label: "Copy to Your skills", hint: "keeps loading globally", run: importIt });
-            if (m.movable) actions.push({ label: "Stop loading it globally", hint: "use it per project instead", run: unload });
+            if (m.movable) actions.push(keepAction(m), { label: "Stop loading it globally", hint: "use it per project instead", run: unload });
             primary = m.movable ? { label: "choose repos…", run: () => setWizard({ initialSkill: m.name }) } : !inLib ? { label: "copy to your skills", run: importIt } : undefined;
             if (m.movable) {
               actions.unshift({ label: "Choose which repos keep it…", hint: "cleanup wizard", run: () => setWizard({ initialSkill: m.name }) });
@@ -1238,6 +1232,7 @@ export function App() {
                 { text: m.name.padEnd(30).slice(0, 30), color: m.broken ? color.red : undefined },
                 { text: m.broken ? "broken link" : m.origin, grow: true, color: m.broken ? color.red : kindColor[m.kind] },
                 ...harnessChips(enabledIds.map((id) => ({ id, paths: m.harnesses.includes(id) ? 1 : 0 })), !m.broken),
+                { text: m.movable && snapshot.keptGlobal.has(m.name) ? " ✓ kept" : "       ", color: color.green },
                 { text: inLib ? " ✓ library" : "          ", color: color.green },
                 { text: usesText(m.name).padStart(5), color: color.muted },
               ],
@@ -1250,7 +1245,7 @@ export function App() {
               meta: [
                 m.harnesses.length ? `loaded everywhere by ${m.harnesses.map(harnessName).join(", ")}` : "not loaded by your harnesses",
                 `${m.kind}: ${m.origin}`,
-                m.movable ? "yours to manage" : "managed by the vendor",
+                m.movable ? (snapshot.keptGlobal.has(m.name) ? "yours · kept global on purpose" : "yours to manage") : "managed by the vendor",
                 tildify(m.path) + (m.links.length ? ` (+ ${m.links.length} link${m.links.length > 1 ? "s" : ""})` : ""),
               ],
               description: m.broken ? "Broken link: it points at a folder that no longer exists, so it loads nothing." : undefined,
@@ -1290,7 +1285,58 @@ export function App() {
           "The prompt includes each skill's description, a SKILL.md excerpt, how it was installed (vendor, skills.sh, plugin…), which agents load it, usage per project, duplicates and your project list. Paste it into Claude Code, Cursor or Codex; it replies with keep / move / delete per skill.",
       },
     };
-    return [{ title: "", items: [...(yours.some((m) => !m.broken) ? [launcher] : []), reviewAll] }, ...grouped];
+    return [{ title: "", items: [...(unreviewed.length ? [launcher] : []), reviewAll] }, ...grouped];
+  }
+
+  /** Marks your global skills as global on purpose, or unmarks them. Only the decision is saved; no files change. */
+  function markKept(names: string[], keep: boolean) {
+    act(() => {
+      setKeepGlobal(names, keep);
+      const label = names.length === 1 ? names[0]! : plural(names.length, "skill");
+      return ok(keep ? `${label} kept global on purpose — cleanup skips ${names.length === 1 ? "it" : "them"}` : `${label} back in cleanup`);
+    });
+  }
+
+  function keepAction(m: { name: string }): Action {
+    return snapshot.keptGlobal.has(m.name)
+      ? { label: "Unmark: not global on purpose", hint: "cleanup asks about it again", run: () => markKept([m.name], false) }
+      : { label: "✓ Keep global on purpose", hint: "stops the ⚠ and skips it in cleanup", run: () => markKept([m.name], true) };
+  }
+
+  /** Keep / unmark actions for a group of your global skills. */
+  function keepGroupActions(members: Item[]): Action[] {
+    const names = [...new Set(members.flatMap((m) => (m.skill ? [m.skill.name] : [])))];
+    const unkept = names.filter((n) => !snapshot.keptGlobal.has(n));
+    const kept = names.filter((n) => snapshot.keptGlobal.has(n));
+    return [
+      ...(unkept.length ? [{ label: `✓ Keep all ${unkept.length} global on purpose`, hint: "cleanup skips them", run: () => markKept(unkept, true) }] : []),
+      ...(kept.length ? [{ label: `Unmark all ${kept.length}`, hint: "cleanup asks about them again", run: () => markKept(kept, false) }] : []),
+    ];
+  }
+
+  /** Group actions for your global skills in a repo. */
+  function yourGlobalActions(members: Item[]): Action[] {
+    return [
+      {
+        label: `Copy review prompt for all ${members.length}`,
+        hint: "for an agent to decide keep / move / delete",
+        run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
+      },
+      {
+        label: `Copy all ${members.length} to Your skills`,
+        hint: "they keep loading globally",
+        run: () =>
+          act(() => {
+            const added = members.map((m) => importSkill(m.skill!.path)).filter((r) => r.status === "added").length;
+            return ok(`${plural(added, "skill")} imported into your library`);
+          }),
+      },
+      {
+        label: `Delete all ${members.length}`,
+        hint: "not kept in Your skills · restorable from Health",
+        run: () => confirmDeleteGlobal(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path))),
+      },
+    ];
   }
 
   /** Delete one or more of your global skills (moved to backup, restorable from Health). */
@@ -1349,6 +1395,7 @@ export function App() {
       installedIn: projectsWith(m.name),
       otherCopies: snapshot.machine.filter((x) => x.name === m.name && x.path !== m.path).map((x) => `${x.kind} ${x.origin} (${tildify(x.path)})`),
       inYourSkills: lib ? `yes, v${lib.version}` : null,
+      keptGlobal: m.movable && snapshot.keptGlobal.has(m.name),
     };
   }
 
@@ -1968,6 +2015,7 @@ export function App() {
         {header}
         <CleanupWizard
           skills={yours}
+          kept={snapshot.keptGlobal}
           projects={snapshot.projects}
           usesIn={(skill, project) => (usage ? (usage.byProject.get(project)?.get(skill) ?? 0) : null)}
           usesTotal={(skill) => (usage ? (usage.total.get(skill) ?? 0) : null)}
@@ -1998,7 +2046,14 @@ export function App() {
             reload();
             setToast({
               ok: r.problems.length === 0,
-              text: `${plural(r.unloaded, "skill")} moved into projects (${plural(r.installs, "install")})${r.deleted ? ` · ${r.deleted} deleted` : ""}${r.problems.length ? ` · ${r.problems.length} kept global: ${r.problems[0]}` : ""}`,
+              text: [
+                r.unloaded || r.installs ? `${plural(r.unloaded, "skill")} moved into projects (${plural(r.installs, "install")})` : "",
+                r.deleted ? `${r.deleted} deleted` : "",
+                r.kept ? `${plural(r.kept, "skill")} kept global on purpose` : "",
+                r.problems.length ? `${r.problems.length} left global: ${r.problems[0]}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · "),
             });
           }}
         />

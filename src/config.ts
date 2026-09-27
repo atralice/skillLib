@@ -13,8 +13,9 @@ import { skillDirsIn } from "./skills.js";
  * - harnesses: the coding agents you use; decides where skills get installed.
  *   Unset until you choose (first run asks).
  * - agentsDirOk: projects where you allowed writing links into a git-tracked .agents/skills
+ * - keepGlobal: names of your global skills you chose to keep global; skilllib stops nagging about them
  */
-export type Config = { roots: string[]; hidden: string[]; harnesses?: HarnessId[]; agentsDirOk?: string[] };
+export type Config = { roots: string[]; hidden: string[]; harnesses?: HarnessId[]; agentsDirOk?: string[]; keepGlobal?: string[] };
 
 function configFile(): string {
   return join(skilllibHome(), "config.json");
@@ -109,4 +110,19 @@ export function setHarnesses(ids: HarnessId[]) {
 export function allowTrackedLinks(root: string) {
   const config = readConfig();
   writeConfig({ ...config, agentsDirOk: [...new Set([...(config.agentsDirOk ?? []), root])].sort() });
+}
+
+/** Global skills you marked as global on purpose. */
+export function keptGlobal(): Set<string> {
+  return new Set(readConfig().keepGlobal ?? []);
+}
+
+/** Marks (or unmarks) skills as global on purpose. Only records the decision; no files change. */
+export function setKeepGlobal(names: string[], keep: boolean) {
+  const kept = keptGlobal();
+  for (const n of names) {
+    if (keep) kept.add(n);
+    else kept.delete(n);
+  }
+  writeConfig({ ...readConfig(), keepGlobal: [...kept].sort() });
 }
