@@ -120,9 +120,11 @@ export function keptGlobal(): Set<string> {
 /** Marks (or unmarks) skills as global on purpose. Only records the decision; no files change. */
 export function setKeepGlobal(names: string[], keep: boolean) {
   const kept = keptGlobal();
+  const before = kept.size;
   for (const n of names) {
     if (keep) kept.add(n);
     else kept.delete(n);
   }
+  if (kept.size === before) return;
   writeConfig({ ...readConfig(), keepGlobal: [...kept].sort() });
 }

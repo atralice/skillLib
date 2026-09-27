@@ -1114,6 +1114,7 @@ export function App() {
   function globalSections(): Section[] {
     const yours = snapshot.machine.filter((m) => m.movable);
     const unreviewed = yours.filter((m) => !m.broken && !snapshot.keptGlobal.has(m.name));
+    const keptCount = yours.filter((m) => !m.broken && snapshot.keptGlobal.has(m.name)).length;
     const importAll: Action = {
       label: "Copy all of yours to Your skills",
       run: () => {
@@ -1158,7 +1159,7 @@ export function App() {
       actions: [{ label: "Open the cleanup wizard", run: () => setWizard({}) }],
       preview: {
         title: "Clean up global skills",
-        meta: ["every agent reads global skills in every repo", ...(snapshot.keptGlobal.size ? [`skips the ${snapshot.keptGlobal.size} you keep global on purpose (k shows them)`] : [])],
+        meta: ["every agent reads global skills in every repo", ...(keptCount ? [`skips the ${keptCount} you keep global on purpose (k shows them)`] : [])],
         description: "Install each skill only where it's needed, keep it global on purpose, or delete it. Originals are kept in backup.",
       },
     };

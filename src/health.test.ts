@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues } from "./health.js";
-import { addSkill, importSkill, listBackups, restoreBackup } from "./library.js";
+import { addSkill, deleteGlobal, importSkill, listBackups, restoreBackup } from "./library.js";
 import { machineSkills } from "./sources.js";
 
 let tmp: string;
@@ -84,4 +84,11 @@ test("keeping a skill global on purpose is remembered by name and can be undone"
   expect([...keptGlobal()]).toEqual(["commit"]);
   // Other settings survive.
   expect(harnessesChosen()).toBe(true);
+});
+
+test("deleting a kept global skill forgets the mark, so a reinstall isn't silently kept", () => {
+  skill(join(tmp, ".claude", "skills", "commit"));
+  setKeepGlobal(["commit", "other"], true);
+  expect(deleteGlobal(join(tmp, ".claude", "skills", "commit")).ok).toBe(true);
+  expect([...keptGlobal()]).toEqual(["other"]);
 });
