@@ -331,7 +331,7 @@ npm link                                     # use your checkout as `skilllib`
    git tag v1.0.1 && git push --tags
    ```
 
-CI then tests on Linux, macOS and Windows, publishes to npm with provenance, and creates a GitHub release.
+CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.
 
 The earlier registry-server version (Next.js, Postgres, S3) lives on the `archive/registry-server` branch.
 
