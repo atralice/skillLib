@@ -23,7 +23,7 @@ const strip = (s: string) => s.replace(/\u001B\[[0-9;?]*[A-Za-z]/g, "").replace(
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 await wait(300);
 for (const step of steps) {
-  if (step.startsWith("#")) { console.log(`\n===== ${step.slice(1)} =====\n` + strip(out.last)); continue; }
+  if (step.startsWith("#")) { console.log(`\n===== ${step.slice(1)} =====\n` + (process.env.RAW ? out.last : strip(out.last))); continue; }
   for (const k of step.split(" ")) { inp.send(keys[k] ?? k); await wait(60); }
 }
 process.exit(0);

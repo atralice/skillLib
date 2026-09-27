@@ -86,6 +86,8 @@ export type Issue = {
   id: string;
   severity: Severity;
   title: string;
+  /** The same, in a few words, for the list; the details show `title`. */
+  short: string;
   /** Decisions never run from "fix all"; the first fix of an automatic issue is the recommended one. */
   decision: boolean;
   fixes: Fix[];
@@ -252,7 +254,7 @@ export function machineActions(m: MachineSkill): Fix[] {
 }
 
 function unreviewedGlobal(m: MachineSkill): Issue {
-  return { id: `global:${m.name}`, severity: "warning", title: "Global, not reviewed: loads in every repo", decision: true, fixes: globalFixes(m) };
+  return { id: `global:${m.name}`, severity: "warning", title: "Global, not reviewed: loads in every repo", short: "Not reviewed", decision: true, fixes: globalFixes(m) };
 }
 
 /** Issues on skills that load everywhere, independent of any project. */
@@ -263,6 +265,7 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
       id: `broken:${m.name}`,
       severity: "problem",
       title: "Broken link: points at a folder that no longer exists",
+      short: "Broken link",
       decision: false,
       fixes: [{ label: "Remove the link", preview: `Remove ${m.where}/${m.name}.`, run: (w) => removeMachine(w, w.machine.find((x) => x === m || (x.name === m.name && x.broken))!, `Removed broken link ${m.name}`) }],
     });
@@ -274,6 +277,7 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
       id: `dup-plugin:${m.name}`,
       severity: "problem",
       title: `Loaded twice: also in plugin ${plugin.where}`,
+      short: "Loaded twice",
       decision: false,
       fixes: [
         {
@@ -307,6 +311,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `missing:${s.name}`,
       severity: "problem",
       title: "Listed in skilllib.json but the folder is missing",
+      short: "Folder missing",
       decision: false,
       fixes: [{ label: "Restore it (sync)", preview: `Reinstall ${s.name} v${s.version} into ${s.dir}.`, run: (w) => ((here(w).missing = false), `Restored ${s.name}`) }],
     });
@@ -315,6 +320,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `twice-g:${s.name}`,
       severity: "problem",
       title: `Loaded twice: also global in ${g.where}`,
+      short: "Loaded twice",
       decision: false,
       fixes: [
         {
@@ -336,6 +342,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `twice-p:${s.name}`,
       severity: "problem",
       title: `Same name as a skill in plugin ${plugin.where}`,
+      short: "Same name as a plugin skill",
       decision: true,
       fixes: [
         ...(s.source !== "repo"
@@ -349,6 +356,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `edited:${s.name}`,
       severity: "warning",
       title: `Edited here: differs from library v${s.version}`,
+      short: "Edited here",
       decision: true,
       fixes: [
         {
@@ -370,6 +378,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `outdated:${s.name}`,
       severity: "warning",
       title: `Update available: v${s.version} → v${l.latest}`,
+      short: `Update to v${l.latest}`,
       decision: false,
       fixes: [{ label: `Update to v${l.latest}`, preview: `Replace ${s.dir}/${s.name} with library v${l.latest}.`, run: (w) => ((here(w).version = lib(w, s.name)!.latest), `${s.name} updated to v${here(w).version}`) }],
     });
@@ -379,6 +388,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `blind:${s.name}`,
       severity: "warning",
       title: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
+      short: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
       decision: false,
       fixes: [
         {
@@ -393,6 +403,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `adopt:${s.name}`,
       severity: "hint",
       title: "Same as your library skill, but not tracked",
+      short: "Not tracked",
       decision: false,
       fixes: [{ label: "Track it", preview: `Record ${s.name} v${l.latest} in skilllib.json so library updates reach it.`, run: (w) => (Object.assign(here(w), { source: "lib", version: l.latest }), `${s.name} is tracked`) }],
     });
@@ -401,6 +412,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `local:${s.name}`,
       severity: "hint",
       title: "Only exists in this repo",
+      short: "Only in this repo",
       decision: false,
       fixes: [
         {
@@ -415,6 +427,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       id: `unused:${s.name}`,
       severity: "hint",
       title: "Not used here in 30 days",
+      short: "Unused 30 days",
       decision: true,
       fixes: [{ label: "Remove it from this repo", preview: `Delete ${s.dir}/${s.name} in ${projectName}. Your library keeps it.`, run: (w) => removeFromProject(w, projectName, s.name) }],
     });

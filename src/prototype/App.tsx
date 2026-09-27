@@ -5,16 +5,17 @@
 import { pathToFileURL } from "node:url";
 import { useRef, useState, type ReactNode } from "react";
 import { Box, render, Text, useApp, useInput, useWindowSize, type Key } from "ink";
-import { HARNESSES, harness } from "../harnesses.js";
+import { HARNESSES } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "../tui/components.js";
 import { color } from "../tui/theme.js";
 import * as W from "./world.js";
 
-type Place = "projects" | "library" | "global" | "settings";
+type Place = "projects" | "library" | "global" | "health" | "settings";
 const PLACES: [Place, string][] = [
   ["projects", "Projects"],
-  ["library", "Library"],
+  ["library", "Your skills"],
   ["global", "Global"],
+  ["health", "Health"],
   ["settings", "Settings"],
 ];
 /** The tabs above a list; "issues" keeps only rows with an issue, the others filter by source. */
@@ -34,10 +35,14 @@ const SEV: Record<W.Severity, { icon: string; color: string }> = {
 };
 /** The repo the prototype pretends you launched it from. */
 const CWD = "web-app";
+/** Terminals this wide get the Places sidebar instead of the tab bar. */
+const SIDEBAR_AT = 80;
+const SIDEBAR_W = 28;
 
 type Seg = [text: string, color?: string];
 type Option = { label: string; fix?: W.Fix; action?: () => void; issue?: W.Issue; recommended?: boolean };
-type Line = { segs: Seg[]; option?: number };
+/** A detail line: text, one option on its own line (fixes), or a `row` of options side by side (actions). */
+type Line = { segs: Seg[]; option?: number; row?: number[] };
 type Detail = { title: string; body: Line[]; options: Option[] };
 type Item = {
   key: string;
@@ -66,9 +71,7 @@ const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.S
 function tag(u: W.Usable, w: W.World): Seg {
   const s = u.local;
   if (s?.source === "lib") {
-    const latest = w.library.find((l) => l.name === s.name)?.latest ?? 0;
-    const v = s.missing ? "missing" : s.edited ? `v${s.version} ✎` : latest > s.version! ? `v${s.version}→${latest}` : `v${s.version}`;
-    return [`lib ${v}`, color.accent];
+    return [`lib v${s.version}`, color.accent];
   }
   if (s) return [s.source, color.blue];
   if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
@@ -104,11 +107,20 @@ function builder(title: string) {
       }
       return 0;
     },
-    /** Everything else you can do. Skips what an issue above already offers. */
-    actions(options: Option[]) {
+    /** Everything else you can do, side by side, wrapping at `width`. Skips what an issue above already offers. */
+    actions(options: Option[], width: number) {
       const offered = new Set(d.options.map((o) => o.label));
-      d.body.push({ segs: [] }, { segs: [["Actions", color.accent]] });
-      for (const o of options.filter((o) => !offered.has(o.label))) d.body.push({ segs: [], option: d.options.push(o) - 1 });
+      let line: Line = { segs: [["Actions  ", color.accent]], row: [] };
+      let used = 9;
+      d.body.push({ segs: [] }, line);
+      for (const o of options.filter((o) => !offered.has(o.label))) {
+        if (line.row!.length && used + 3 + o.label.length > width - 6) {
+          d.body.push((line = { segs: [["         "]], row: [] }));
+          used = 9;
+        }
+        used += (line.row!.length ? 3 : 0) + o.label.length;
+        line.row!.push(d.options.push(o) - 1);
+      }
     },
   };
 }
@@ -172,8 +184,8 @@ function usageLines(w: W.World, name: string, width: number, repo: string | null
   let last = -1;
   days.forEach((v, i) => v && (last = i));
   const ago = last < 0 ? "" : last === 29 ? "today" : last === 28 ? "yesterday" : `${29 - last} days ago`;
-  const head: Seg[] = [[repo ? "Usage here" : "Usage", color.accent], [total ? `   ${total} in 30 days · last used ${ago}` : "   not used in 30 days", color.muted]];
-  if (!total) return [head, [["  Claude Code sessions only: other agents don't record skill use.", color.faint]]];
+  const head: Seg[] = [[repo ? "Usage here" : "Usage", color.accent], [total ? `   last used ${ago}` : "   not used in 30 days", color.muted]];
+  if (!total) return [head];
   const chart = barChart(days, width - 8);
   const repos = Object.entries(w.usage)
     .filter(() => !repo)
@@ -191,7 +203,6 @@ function usageLines(w: W.World, name: string, width: number, repo: string | null
       ["█".repeat(Math.max(1, Math.round((n / repos[0]![1]) * barW))), color.accentDim],
       [` ${n}`, color.muted],
     ]),
-    [["  Claude Code sessions only: other agents don't record skill use.", color.faint]],
   ];
 }
 
@@ -212,7 +223,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       { text: clip(u.name, nameW), width: nameW },
       { text: clip(t, 14), width: 14, color: tc },
       { text: usesText(u.uses), width: 6, color: color.muted },
-      { text: " " + (top?.title ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+      { text: " " + (top?.short ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
     ],
     detail: (width) => {
       const b = builder(u.name);
@@ -220,7 +231,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       b.line();
       if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
       else b.issues(issues);
-      b.actions(actions);
+      b.actions(actions, width);
       b.line();
       for (const segs of usageLines(w, u.name, width, repo)) b.line(...segs);
       b.line();
@@ -229,16 +240,9 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
         const s = c.local;
         const path = s ? `${s.dir}/${c.name}${s.linked ? " + link" : ""}` : c.source === "global" ? `${c.where}/${c.name}` : c.where;
         const extra = s ? (s.missing ? "missing" : s.git === "committed" ? "✓ committed" : s.git === "new" ? "+ not committed" : "∅ gitignored") : "";
-        const [ct, cc] = tag(c, w);
-        b.line(["  ", undefined], [path + "  ", color.text], [ct + "  ", cc], [extra, color.faint]);
+        const [ct, cc] = c === u ? ["", undefined] : tag(c, w);
+        b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
       }
-      b.line(
-        ["Agents   ", color.muted],
-        ...w.agents.flatMap((id): Seg[] => {
-          const n = copies.filter((c) => c.agents.includes(id)).length;
-          return [[harness(id).icon + " ", n ? harness(id).color : color.accentDim], [`${harness(id).name} ${n === 0 ? "–" : n === 1 ? "✓" : `×${n}`}   `, n > 1 ? color.red : n ? color.text : color.faint]];
-        }),
-      );
       return b.d;
     },
   };
@@ -252,23 +256,23 @@ function projectSkillItems(w: W.World, p: string, nameW: number, notify: (m: str
 }
 
 const stub = (label: string, notify: (m: string) => void, what = label): Option => ({ label, action: () => notify(`${what} (not in the prototype)`) });
-const reviewPrompt = (notify: (m: string) => void) => stub("Copy a review prompt for an agent", notify, "Copied a review prompt");
+const reviewPrompt = (notify: (m: string) => void) => stub("Review prompt", notify, "Copied a review prompt for an agent");
 
 /** What you can do with a skill as a repo sees it; never empty. */
 function skillActions(w: W.World, p: string, u: W.Usable, notify: (m: string) => void, openInGlobal: (name: string) => void): Option[] {
   const s = u.local;
   const inLibrary = w.library.find((l) => l.name === u.name);
-  const remove: W.Fix = { label: "Remove from this repo", preview: `Delete ${s?.dir}/${u.name} in ${p}. Your library keeps it.`, run: (w) => W.removeFromProject(w, p, u.name) };
+  const remove: W.Fix = { label: "Remove from repo", preview: `Delete ${s?.dir}/${u.name} in ${p}. Your library keeps it.`, run: (w) => W.removeFromProject(w, p, u.name) };
   if (s?.source === "lib")
     return [
       ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => ((W.localSkill(w, p, u.name).version = inLibrary.latest), `${u.name} updated to v${inLibrary.latest}`) })] : []),
-      stub("Edit it in your library", notify),
+      stub("Edit in library", notify),
       fixOption(remove),
       reviewPrompt(notify),
     ];
   if (s?.source === "repo")
     return [
-      ...(inLibrary ? [] : [fixOption({ label: "Copy it into your library", preview: `Copy ${u.name} into your library as v1, so other repos can add it. The repo's copy stays as it is.`, run: (w) => (W.importToLibrary(w, u.name), `${u.name} copied into your library`) })]),
+      ...(inLibrary ? [] : [fixOption({ label: "Copy into library", preview: `Copy ${u.name} into your library as v1, so other repos can add it. The repo's copy stays as it is.`, run: (w) => (W.importToLibrary(w, u.name), `${u.name} copied into your library`) })]),
       reviewPrompt(notify),
     ];
   if (s)
@@ -296,27 +300,6 @@ function overview(w: W.World, p: string): [label: string, value: Seg[]][] {
     ["Branch", [[project.branch, color.text], [project.dirty ? `  ${project.dirty} uncommitted` : "", color.yellow]]],
     ["Manifest", [manifest]],
   ];
-}
-
-/** Below a repo's info in the Projects list: its most used skills, then what needs fixing. */
-function projectPreview(w: W.World, p: string, width: number, rows: number): Seg[][] {
-  const used = Object.entries(w.usage[p] ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const barW = Math.max(6, Math.min(24, width - 30));
-  // The repo's own skills, like the list's Issues column; what loads everywhere belongs to Global.
-  const worst = new Map<string, W.Issue>();
-  for (const { skill, issue } of W.projectIssues(w, p).sort((a, b) => bySeverity(a.issue, b.issue))) if (!worst.has(skill.name)) worst.set(skill.name, issue);
-  const lines: Seg[][] = [[], [["Most used here", color.accent], ["   last 30 days", color.faint]]];
-  if (!used.length) lines.push([["  No skill used here in 30 days", color.faint]]);
-  for (const [name, n] of used)
-    lines.push([["  " + clip(name, 18).padEnd(18), color.text], ["█".repeat(Math.max(1, Math.round((n / used[0]![1]) * barW))), color.accentDim], [` ${n}`, color.muted]]);
-  lines.push([], [["To fix", color.accent], [worst.size ? `   ${worst.size} skill${worst.size === 1 ? "" : "s"}` : "", color.faint]]);
-  if (!worst.size) lines.push([["  ✓ Nothing to fix", color.green]]);
-  const room = Math.max(1, rows - lines.length);
-  const shown = [...worst].slice(0, room);
-  for (const [name, issue] of shown)
-    lines.push([[`  ${SEV[issue.severity].icon} `, SEV[issue.severity].color], [clip(name, 18).padEnd(18), color.text], [issue.title, color.muted]]);
-  if (worst.size > shown.length) lines.push([[`  … ${worst.size - shown.length} more: enter to open`, color.faint]]);
-  return lines;
 }
 
 /** Label/value pairs in `columns` columns. */
@@ -370,8 +353,8 @@ function globalActions(u: W.Usable, notify: (m: string) => void): Option[] {
   const m = u.machine!;
   return [
     ...W.machineActions(m).map(fixOption),
-    ...(m.source === "claude.ai" ? [stub("Turn it off in claude.ai settings", notify)] : []),
-    ...(m.source === "cursor" ? [stub("Manage it in Cursor settings", notify)] : []),
+    ...(m.source === "claude.ai" ? [stub("Turn off in claude.ai", notify)] : []),
+    ...(m.source === "cursor" ? [stub("Manage in Cursor", notify)] : []),
     reviewPrompt(notify),
   ];
 }
@@ -382,7 +365,7 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
     const uses = W.totalUses(w, l.name);
     const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => (rs.forEach((r) => W.addToProject(w, r, l.name)), `Added ${l.name} to ${rs.join(", ")}`) };
     const delFix: W.Fix = { label: "Delete from your library", preview: `Move ${l.name} and its versions to the backup folder.`, run: (w) => ((w.library = w.library.filter((x) => x.name !== l.name)), `Deleted ${l.name} from your library`) };
-    const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
+    const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
     return {
       key: l.name,
@@ -395,7 +378,7 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
         { text: `v${l.latest}`, width: 5, color: color.accent },
         { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
         { text: usesText(uses), width: 6, color: color.muted },
-        { text: " " + (issues[0]?.title ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
+        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
       ],
       detail: (width) => {
         const b = builder(l.name);
@@ -418,14 +401,23 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
                 }),
               ]
             : [fixOption(delFix)]),
-          stub("Edit SKILL.md (saves a new version)", notify),
-        ]);
+          stub("Edit SKILL.md", notify),
+        ], width);
         b.line();
         for (const segs of usageLines(w, l.name, width, null)) b.line(...segs);
         return b.d;
       },
     };
   });
+}
+
+/** Health: every skill with something to fix, in every repo and in Global, with the same details and fixes. */
+function healthItems(w: W.World, nameW: number, notify: (m: string) => void, openInGlobal: (name: string) => void): Item[] {
+  const flagged = (where: string, items: Item[]) =>
+    items
+      .filter((i) => i.issues.length)
+      .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
+  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, notify, openInGlobal))), ...flagged("Global", globalItems(w, nameW, notify))];
 }
 
 /** The picker's cursor, kept off group titles. */
@@ -438,7 +430,10 @@ function addCursor(rows: W.AddRow[], cursor: number): number {
 
 export function App() {
   const { exit } = useApp();
-  const { columns, rows: termRows } = useWindowSize();
+  const { columns: termCols, rows: termRows } = useWindowSize();
+  const sidebar = termCols >= SIDEBAR_AT;
+  /** Width left for the content, beside the sidebar when it shows. */
+  const columns = sidebar ? termCols - SIDEBAR_W : termCols;
   const [world, setWorld] = useState(W.sampleWorld);
   const [history, setHistory] = useState<W.World[]>([]);
   const [place, setPlace] = useState<Place>("projects");
@@ -446,20 +441,26 @@ export function App() {
   const [chip, setChip] = useState<Chip>("all");
   const [query, setQuery] = useState("");
   const [cursors, setCursors] = useState<Record<string, number>>({});
-  const [focus, setFocus] = useState<"list" | "detail">("list");
+  // Panes go Places → list → details: enter or → goes one deeper, esc or ← one back.
+  const [focus, setFocus] = useState<"sidebar" | "list" | "detail">(sidebar ? "sidebar" : "list");
+  const [sideQuery, setSideQuery] = useState("");
+  /** The sidebar cursor is on Help, which opens on enter rather than as you pass it. */
+  const [onHelp, setOnHelp] = useState(false);
   const [detailCursor, setDetailCursor] = useState(0);
   const [modal, setModal] = useState<Modal | null>(null);
   const [toast, setToast] = useState<string>("Sample data: nothing on disk changes");
   const order = useRef<{ key: string; keys: string[] }>({ key: "", keys: [] });
 
-  const wide = columns >= 110;
-  const listW = wide ? Math.floor(columns * 0.58) : columns;
-  const detailW = columns - listW;
-  const nameW = Math.min(22, Math.max(17, Math.floor(listW * 0.22)));
+  /** Tall enough to show details under the list; shorter terminals open them on enter. */
+  const split = termRows >= 30;
+  const nameW = Math.min(22, Math.max(17, Math.floor(columns * 0.22)));
   const dashboard = place === "projects" && open !== null;
-  const chips: [Chip, string][] = dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : CHIPS.slice(0, 2);
+  const chips: [Chip, string][] =
+    dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : place === "health" ? CHIPS.slice(0, 1) : CHIPS.slice(0, 2);
 
   // ── Current list ──
+  const health = healthItems(world, nameW, setToast, openInGlobal);
+  const healthWorst = W.worst(health.flatMap((i) => i.issues));
   const all: Item[] =
     place === "projects"
       ? open
@@ -469,7 +470,9 @@ export function App() {
         ? globalItems(world, nameW, setToast)
         : place === "library"
           ? libraryItems(world, nameW, setToast)
-          : settingsItems();
+          : place === "health"
+            ? health
+            : settingsItems();
   const inChip = (i: Item, c: Chip) => c === "all" || (c === "issues" ? i.issues.length > 0 : i.group === c);
   let items = all.filter((i) => i.header || ((!query || W.matches(i.name, query)) && inChip(i, chip)));
   // Sort by health when the view opens; don't re-sort after a fix, so rows stay under the cursor.
@@ -494,7 +497,7 @@ export function App() {
   let cursor = Math.min(cursors[cursorKey] ?? firstSelectable, items.length - 1);
   if (items[cursor]?.header) cursor = firstSelectable;
   const current = items[cursor];
-  const detail = current?.detail?.(wide ? detailW : columns);
+  const detail = current?.detail?.(columns);
 
   // ── Actions ──
   function apply(run: (w: W.World) => string) {
@@ -532,7 +535,7 @@ export function App() {
     const seen = new Set<string>();
     return from.flatMap((i) =>
       i.issues
-        .filter((x) => !x.decision && !seen.has(x.id) && seen.add(x.id))
+        .filter((x) => !x.decision && !seen.has(`${i.key}|${x.id}`) && seen.add(`${i.key}|${x.id}`))
         .map((x) => ({ label: `${i.name}: ${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
     );
   }
@@ -563,7 +566,7 @@ export function App() {
         row("#add", "+ Add a skill…", ["Search your library and the skills in your other repos, or create a new one."], () => setModal({ kind: "add", cursor: 0, query: "", target: open })),
         ...fix,
       ];
-    if (place === "global") return fix;
+    if (place === "global" || place === "health") return fix;
     if (place === "library")
       return [row("#add", "+ New skill…", ["Create a skill in your library, or have an agent write it. Skills in your repos can be copied in from their own actions."], () => setModal({ kind: "add", cursor: 0, query: "", target: null }))];
     return [];
@@ -651,26 +654,60 @@ export function App() {
       setWorld(prev);
       return setToast("↺ Undone");
     }
+    // Typing filters the pane you're in: repos in Places, the list otherwise.
+    if (focus === "sidebar" && (isNameChar(input, key) || key.backspace || key.delete)) {
+      const q = isNameChar(input, key) ? sideQuery + input.toLowerCase() : sideQuery.slice(0, -1);
+      setSideQuery(q);
+      // Jump to the first repo that matches, as moving onto it would.
+      const first = q && world.projects.find((p) => W.matches(p.name, q));
+      if (first) toRepo(first.name)();
+      return;
+    }
     if (isNameChar(input, key)) return setFocus("list"), setQuery(query + input.toLowerCase());
     if (key.backspace || key.delete) return setQuery(query.slice(0, -1));
     if (input === "?") return setModal({ kind: "help" });
     if (focus === "detail") {
-      const n = detail?.options.length ?? 0;
-      if (key.escape || key.leftArrow) return setFocus("list");
-      if (key.upArrow) return setDetailCursor(Math.max(0, detailCursor - 1));
-      if (key.downArrow) return setDetailCursor(Math.min(n - 1, detailCursor + 1));
+      // Options by line: a fix per line, or a row of actions. ↑↓ move by line, ←→ along a row;
+      // ← on a line's first option goes back a pane, like ← everywhere else.
+      const lines = (detail?.body ?? []).flatMap((l) => (l.row ? [l.row] : l.option !== undefined ? [[l.option]] : []));
+      const at = lines.findIndex((r) => r.includes(detailCursor));
+      const col = at < 0 ? 0 : lines[at]!.indexOf(detailCursor);
+      const goLine = (i: number) => lines[i] && setDetailCursor(lines[i]![Math.min(col, lines[i]!.length - 1)]!);
+      if (key.escape) return setFocus("list");
+      if (key.upArrow) return goLine(Math.max(0, at - 1));
+      if (key.downArrow) return goLine(at + 1);
+      if (key.leftArrow) return col > 0 ? setDetailCursor(lines[at]![col - 1]!) : setFocus("list");
+      if (key.rightArrow) return lines[at]?.[col + 1] !== undefined ? setDetailCursor(lines[at]![col + 1]!) : undefined;
       if ((key.return || input === " ") && detail?.options[detailCursor]) return choose(detail.options[detailCursor]!);
       return;
     }
+    if (focus === "sidebar") {
+      if (key.upArrow || key.downArrow) {
+        const d = key.upArrow ? -1 : 1;
+        let i = sideAt + d;
+        while (sideRows[i]?.header) i += d;
+        const next = sideRows[i];
+        if (!next) return;
+        if (next.key === "help") return setOnHelp(true);
+        return next.go(), setOnHelp(false), setFocus("sidebar");
+      }
+      if (key.return && onHelp) return setModal({ kind: "help" });
+      if (key.rightArrow || key.return) return setOnHelp(false), setFocus("list");
+      if (key.escape) return setSideQuery("");
+      return;
+    }
+    if (sidebar && key.leftArrow) return setFocus("sidebar");
+    if (sidebar && key.rightArrow && detail) return setFocus("detail"), setDetailCursor(0);
     if (key.upArrow) return move(-1);
     if (key.downArrow) return move(1);
-    if (key.leftArrow || key.rightArrow) {
+    if (!sidebar && (key.leftArrow || key.rightArrow)) {
       const i = PLACES.findIndex(([p]) => p === place) + (key.leftArrow ? -1 : 1);
       if (PLACES[i]) goPlace(PLACES[i]![0]);
       return;
     }
     if (key.escape) {
       if (query) return setQuery("");
+      if (sidebar) return setFocus("sidebar");
       if (chip !== "all") return setChip("all");
       if (dashboard) return setOpen(null);
       return;
@@ -771,11 +808,44 @@ export function App() {
   // ── Layout ──
   const bottomH = 1;
   const confirmH = modal?.kind === "confirm" ? 5 : 0;
-  const bodyH = Math.max(8, termRows - 1 - bottomH - confirmH);
+  const bodyH = Math.max(8, termRows - (sidebar ? 0 : 1) - bottomH - confirmH);
   // Same count as Global's Issues tab: skills with something to fix.
   const globalFlagged = world.machine.map((m) => [m.name, W.machineIssues(world, m)] as const).filter(([, issues]) => issues.length);
   const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
+
+  /** The sidebar: places, then every repo. Moving onto a row opens it. */
+  // Like Global's count: skills with something to fix, marked by the worst of them.
+  const badge = (p: string): Cell => {
+    const found = W.projectIssues(world, p);
+    const top = W.worst(found.map((x) => x.issue));
+    return { text: top ? SEV[top.severity].icon : "", width: 3, color: top ? SEV[top.severity].color : undefined };
+  };
+  const sideRow = (key: string, label: string, here: boolean, go: () => void, count: Cell[] = []) => ({
+    key,
+    header: false,
+    here: here && !onHelp,
+    go,
+    cells: [{ text: label, grow: true, bold: !key.startsWith("repo:") }, ...count] as Cell[],
+  });
+  const sideHeader = (key: string, text: string) => ({ key, header: true, here: false, go: () => {}, cells: [{ text }] as Cell[] });
+  const toRepo = (name: string | null) => () => (setPlace("projects"), setOpen(name), setQuery(""), setChip("all"));
+  const sideRows = [
+    sideRow("library", "▤ Your skills", place === "library", () => goPlace("library"), [{ text: String(world.library.length), width: 4, color: color.muted }]),
+    // The number turns red or yellow when any of them has an issue.
+    sideRow("global", "◈ Global", place === "global", () => goPlace("global"), [
+      { text: String(new Set(world.machine.map((m) => m.name)).size), width: 4, color: globalProblem ? color.red : globalIssues ? color.yellow : color.muted },
+    ]),
+    sideRow("health", "✓ Health", place === "health", () => goPlace("health"), [
+      { text: String(health.length), width: 4, color: healthWorst ? SEV[healthWorst.severity].color : color.green },
+    ]),
+    sideHeader("#projects", "Projects"),
+    ...world.projects.filter((p) => !sideQuery || W.matches(p.name, sideQuery)).map((p) => sideRow(`repo:${p.name}`, `${p.name === CWD ? "◆" : " "} ${p.name}`, place === "projects" && open === p.name, toRepo(p.name), [badge(p.name)])),
+    sideHeader("#end", ""),
+    sideRow("settings", "⚙ Settings", place === "settings", () => goPlace("settings")),
+    { ...sideRow("help", "? Help", false, () => {}), here: onHelp },
+  ];
+  const sideAt = sideRows.findIndex((r) => r.here);
 
   const topBar = (
     <Box height={1} width={columns} justifyContent="space-between">
@@ -786,7 +856,7 @@ export function App() {
         {PLACES.map(([p, label]) => (
           <Text key={p} backgroundColor={place === p ? color.accent : undefined} color={place === p ? "#0B1020" : color.muted} bold={place === p}>
             {` ${label}`}
-            <Text color={place === p ? "#0B1020" : globalProblem ? color.red : color.yellow}>{p === "global" && globalIssues ? ` ${globalIssues}` : ""}</Text>
+            <Text color={place === p ? "#0B1020" : healthWorst ? SEV[healthWorst.severity].color : color.green}>{p === "health" && health.length ? ` ${health.length}` : ""}</Text>
             {" "}
           </Text>
         ))}
@@ -822,42 +892,47 @@ export function App() {
         ? titles([["", 2], ["Project", 18], ["Skills", 10], ["Issues", 0]])
         : place === "library"
           ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 18], [" Uses", 6], [" Issue / description", 0]])
-          : null;
+          : place === "health"
+            ? titles([["", 2], ["Skill", nameW], ["Where", 16], [" Issue", 0]])
+            : null;
   const showChips = chips.length > 0;
   const listHeader = (
     <Box flexDirection="column">
       {showChips ? chipRow : null}
-      {columnTitles ? <TitleRow cells={columnTitles} width={listW} /> : null}
+      {columnTitles ? <TitleRow cells={columnTitles} width={columns} /> : null}
     </Box>
   );
 
-  const overviewH = dashboard ? 4 : 0;
+  const overviewH = dashboard && !sidebar ? 4 : 0;
+  const listH = split ? Math.floor((bodyH - overviewH) / 2) : bodyH - overviewH;
+  const detailH = split ? bodyH - overviewH - listH : bodyH;
   const listRows: Row[] = items.map((i) => ({ key: i.key, cells: i.cells, header: i.header }));
-  const listTitle = dashboard ? "Skills" : place === "projects" ? "Projects" : place === "library" ? "Your skills" : place === "global" ? "Loads everywhere" : "Settings";
+  const listTitle = dashboard ? "Skills" : place === "projects" ? "Projects" : place === "library" ? "Your skills" : place === "global" ? "Loads everywhere" : place === "health" ? "To fix" : "Settings";
   const list = (
     <ListPanel
       title={listTitle}
       focused={focus === "list"}
-      width={listW}
-      height={bodyH - overviewH}
+      width={columns}
+      height={listH}
       rows={listRows}
       selected={Math.max(0, cursor)}
-      empty={query ? `Nothing matches "${query}" · esc clears` : chip === "issues" ? "✓ No issues here" : "Nothing here"}
+      empty={query ? `Nothing matches "${query}" · esc clears` : chip === "issues" || place === "health" ? "✓ Nothing to fix" : "Nothing here"}
       header={listHeader}
       headerHeight={(showChips ? 1 : 0) + (columnTitles ? 1 : 0)}
     />
   );
 
   const side =
-    place === "projects" && !open && current && !current.header ? (
-      <Panel title={current.name} focused={false} width={detailW} height={bodyH}>
-        <InfoGrid rows={overview(world, current.name)} columns={1} width={detailW} />
-        {projectPreview(world, current.name, detailW, bodyH - 8).map((segs, i) => (
-          <SegLine key={i} segs={segs.length ? segs : [[" "]]} />
-        ))}
+    sidebar && focus === "sidebar" && dashboard ? (
+      <Panel title={open!} focused={false} width={columns} height={detailH}>
+        <InfoGrid rows={overview(world, open!)} columns={2} width={columns} />
+      </Panel>
+    ) : place === "projects" && !open && current && !current.header ? (
+      <Panel title={current.name} focused={false} width={columns} height={detailH}>
+        <InfoGrid rows={overview(world, current.name)} columns={2} width={columns} />
       </Panel>
     ) : detail ? (
-      <DetailPanel detail={detail} width={wide ? detailW : columns} height={wide ? bodyH - overviewH : bodyH} focused={focus === "detail"} cursor={detailCursor} />
+      <DetailPanel detail={detail} width={columns} height={detailH} focused={focus === "detail"} cursor={detailCursor} />
     ) : null;
 
   let body: ReactNode;
@@ -937,19 +1012,17 @@ export function App() {
         )}
       />
     );
-  } else if (!wide && focus === "detail" && side) body = side;
+  } else if (!split && focus === "detail" && side) body = side;
   else
     body = (
       <Box flexDirection="column">
-        {dashboard ? (
+        {overviewH ? (
           <Panel title={open!} focused={false} width={columns} height={overviewH}>
             <InfoGrid rows={overview(world, open!)} columns={2} width={columns} />
           </Panel>
         ) : null}
-        <Box>
-          {list}
-          {wide ? side : null}
-        </Box>
+        {list}
+        {split ? side : null}
       </Box>
     );
 
@@ -964,28 +1037,45 @@ export function App() {
           : modal
             ? "any key closes"
             : focus === "detail"
-              ? "↑↓ choose · enter apply · esc back"
+              ? "↑↓ ←→ choose · enter apply · esc back"
+              : focus === "sidebar"
+                ? "↑↓ choose · enter open · type to filter repos"
               : place === "projects" && !open
-                ? "type to filter · enter open · ←→ places · ? keys"
+                ? `type to filter · enter open · ${sidebar ? "← sidebar" : "←→ places"} · ? keys`
                 : place === "settings"
-                  ? "enter toggle · ←→ places · ? keys"
-                  : `type to filter · space ★ fix · enter actions · tab tabs${dashboard ? " · esc all projects" : ""} · ? keys`;
+                  ? `enter toggle · ${sidebar ? "← sidebar" : "←→ places"} · ? keys`
+                  : `type to filter · space ★ fix · enter actions · tab tabs${sidebar ? " · esc back" : `${dashboard ? " · esc all projects" : ""} · ? keys`}`;
 
   return (
-    <Box flexDirection="column" width={columns} height={termRows}>
-      {topBar}
-      {body}
-      {modal?.kind === "confirm" ? (
-        <Panel title={modal.fix.label} focused width={columns} height={confirmH}>
-          {wrap(modal.fix.preview, columns - 6, 2).map((l, i) => (
-            <Text key={i} color={color.text}>
-              {l}
-            </Text>
-          ))}
-          <Text color={color.faint}>{"You can undo it with ctrl+z."}</Text>
-        </Panel>
-      ) : null}
-      <Box height={1} width={columns} justifyContent="space-between">
+    <Box flexDirection="column" width={termCols} height={termRows}>
+      {sidebar ? null : topBar}
+      <Box>
+        {sidebar ? (
+          <ListPanel
+            title={sideQuery ? `◆ skilllib ⌕ ${sideQuery}▏` : "◆ skilllib"}
+            focused={focus === "sidebar"}
+            width={SIDEBAR_W}
+            height={bodyH + confirmH}
+            rows={sideRows}
+            selected={sideAt}
+            empty=""
+          />
+        ) : null}
+        <Box flexDirection="column" width={columns}>
+          {body}
+          {modal?.kind === "confirm" ? (
+            <Panel title={modal.fix.label} focused width={columns} height={confirmH}>
+              {wrap(modal.fix.preview, columns - 6, 2).map((l, i) => (
+                <Text key={i} color={color.text}>
+                  {l}
+                </Text>
+              ))}
+              <Text color={color.faint}>{"You can undo it with ctrl+z."}</Text>
+            </Panel>
+          ) : null}
+        </Box>
+      </Box>
+      <Box height={1} width={termCols} justifyContent="space-between">
         <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
@@ -1011,11 +1101,29 @@ function SegLine({ segs }: { segs: Seg[] }) {
 
 function DetailPanel({ detail, width, height, focused, cursor }: { detail: Detail; width: number; height: number; focused: boolean; cursor: number }) {
   const visible = height - 2;
-  const at = detail.body.findIndex((l) => l.option === cursor);
+  const at = detail.body.findIndex((l) => l.option === cursor || l.row?.includes(cursor));
   const offset = focused && at >= visible ? at - visible + 2 : 0;
   return (
-    <Panel title={detail.title} hint={focused ? "choose a fix" : "enter to act"} focused={focused} width={width} height={height}>
+    <Panel title={detail.title} focused={focused} width={width} height={height}>
       {detail.body.slice(offset, offset + visible).map((l, i) => {
+        if (l.row)
+          return (
+            <Box key={i} height={1} overflow="hidden">
+              <Text wrap="truncate-end">
+                {l.segs.map(([t, c], j) => (
+                  <Text key={j} color={c}>{t}</Text>
+                ))}
+                {l.row.map((o, j) => (
+                  <Text key={o}>
+                    <Text color={color.faint}>{j ? " · " : ""}</Text>
+                    <Text color={focused && o === cursor ? color.text : color.muted} bold={focused && o === cursor} backgroundColor={focused && o === cursor ? color.selection : undefined}>
+                      {detail.options[o]!.label}
+                    </Text>
+                  </Text>
+                ))}
+              </Text>
+            </Box>
+          );
         if (l.option === undefined) return <SegLine key={i} segs={l.segs.length ? l.segs : [[" "]]} />;
         const o = detail.options[l.option]!;
         const on = focused && l.option === cursor;
@@ -1037,13 +1145,13 @@ function DetailPanel({ detail, width, height, focused, cursor }: { detail: Detai
 
 function Help({ width, height }: { width: number; height: number }) {
   const keys: [string, string][] = [
-    ["a-z 0-9 -", "filter the list you're in (initials work: cfw finds cloudflare-workers)"],
+    ["a-z 0-9 -", "filter the pane you're in (initials work: cfw finds cloudflare-workers)"],
     ["↑ ↓", "move"],
-    ["enter", "open a repo · show a skill's issues and actions · start a + or ✦ row"],
+    ["enter  →", "one pane deeper: Places → list → details (and applies the chosen fix)"],
     ["space", "apply the ★ recommended fix (or show the choices when it's your call)"],
     ["tab  ⇧tab", "next / previous tab: All · Issues · Local · Global · Plugins · Vendor"],
-    ["← →", "previous / next place: Projects · Library · Global · Settings"],
-    ["esc", "back: clear the filter → All → projects list"],
+    ["", "under 80 columns there's no Places pane: ← → switch places instead"],
+    ["esc  ←", "one pane back (esc clears a filter first)"],
     ["ctrl+z", "undo the last change"],
     ["ctrl+c", "quit"],
   ];
@@ -1058,6 +1166,7 @@ function Help({ width, height }: { width: number; height: number }) {
       <Text> </Text>
       <Text color={color.muted}>{"✕ problem · ⚠ warning · · hint · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
       <Text color={color.muted}>{"Source: lib = from your library · repo = committed by the team · untracked = only on this machine"}</Text>
+      <Text color={color.muted}>{"Usage counts Claude Code sessions only: other agents don't record skill use."}</Text>
     </Panel>
   );
 }
