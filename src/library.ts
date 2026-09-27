@@ -94,14 +94,15 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
 
 /**
  * [real-copy folder, ...link folders] for a skill. An existing install keeps
- * its folder (switching harnesses never moves it); links are recorded ones
- * plus any your current harnesses need, since adding a link moves nothing.
+ * its folder (switching harnesses never moves it), and so does an untracked
+ * real copy being adopted, so tracking never leaves two copies. Links are
+ * recorded ones plus any your current harnesses need; adding one moves nothing.
  */
-function dependencyDirs(dep: Dependency | undefined): string[] {
+function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
   const wanted = installDirs(enabledHarnesses());
-  if (!dep) return wanted;
-  const primary = dep.dir ?? PROJECT_SKILLS_DIR;
-  return [primary, ...new Set([...(dep.links ?? []), ...wanted.filter((d) => d !== primary)])];
+  const untracked = ALL_PROJECT_DIRS.find((d) => existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
+  const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? wanted[0]!);
+  return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
 }
 
 /** True when git tracks files under `dir` in `root` (so writing there shows up in git status). */
@@ -290,7 +291,7 @@ export function addSkill(
 
   const manifest = readManifest(root);
   const recorded = manifest.skills[name];
-  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(recorded);
+  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(root, name, recorded);
   const to = join(root, primary, name);
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);

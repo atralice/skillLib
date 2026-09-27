@@ -236,11 +236,73 @@ describe("harnesses", () => {
     expect(existsSync(join(project, ".agents", "skills", "alpha", "SKILL.md"))).toBe(true);
   });
 
-  test("Codex-only still keeps the real copy in .claude/skills and only links into .agents/skills", () => {
-    setHarnesses(["codex"]);
+  test("without Claude Code, the one real copy goes in .agents/skills, which Cursor and Codex both read", () => {
+    setHarnesses(["cursor", "codex"]);
+    addSkill(project, "alpha");
+    const agents = join(project, ".agents", "skills", "alpha");
+    expect(lstatSync(agents).isDirectory()).toBe(true);
+    expect(existsSync(local("alpha"))).toBe(false);
+    expect(readManifest(project).skills.alpha).toMatchObject({ dir: ".agents/skills" });
+    expect(readManifest(project).skills.alpha?.links).toBeUndefined();
+    expect(projectStatus(project)[0]).toMatchObject({
+      location: ".agents/skills",
+      state: "ok",
+      visibility: [
+        { id: "cursor", paths: 1 },
+        { id: "codex", paths: 1 },
+      ],
+    });
+
+    // A teammate with Claude Code gets a link into .claude/skills; the copy stays put.
+    setHarnesses(["claude-code", "cursor", "codex"]);
+    expect(syncProject(project)).toEqual([]);
+    addSkill(project, "alpha");
+    expect(lstatSync(local("alpha")).isSymbolicLink()).toBe(true);
+    expect(readManifest(project).skills.alpha).toMatchObject({ dir: ".agents/skills", links: [".claude/skills"] });
+
+    removeSkill(project, "alpha");
+    expect(existsSync(agents)).toBe(false);
+    expect(existsSync(local("alpha"))).toBe(false);
+  });
+
+  test("tracking an untracked copy keeps it where it is instead of making a second one", () => {
+    setHarnesses(["cursor", "codex"]);
+    writeSkill(local("alpha"), "v1");
+    expect(stateOf("alpha")).toBe("untracked copy of library skill");
+
+    expect(addSkill(project, "alpha")).toMatchObject({ action: "updated", to: 1 });
+    expect(lstatSync(local("alpha")).isDirectory()).toBe(true);
+    expect(lstatSync(join(project, ".agents", "skills", "alpha")).isSymbolicLink()).toBe(true);
+    expect(readManifest(project).skills.alpha).toMatchObject({ links: [".agents/skills"] });
+    expect(readManifest(project).skills.alpha?.dir).toBeUndefined();
+  });
+
+  test("tracking a copy that's already linked into .agents/skills keeps the one real copy", () => {
+    setHarnesses(["cursor", "codex"]);
+    writeSkill(local("alpha"), "v1");
+    mkdirSync(join(project, ".agents", "skills"), { recursive: true });
+    symlinkSync("../../.claude/skills/alpha", join(project, ".agents", "skills", "alpha"));
+
     addSkill(project, "alpha");
     expect(lstatSync(local("alpha")).isDirectory()).toBe(true);
     expect(lstatSync(join(project, ".agents", "skills", "alpha")).isSymbolicLink()).toBe(true);
+    expect(readManifest(project).skills.alpha).toMatchObject({ links: [".agents/skills"] });
+    expect(projectStatus(project)[0]?.visibility).toEqual([
+      { id: "cursor", paths: 2 },
+      { id: "codex", paths: 1 },
+    ]);
+  });
+
+  test("installDirs picks the fewest folders that reach every agent", async () => {
+    const { installDirs } = await import("./harnesses.js");
+    expect(installDirs(["claude-code"])).toEqual([".claude/skills"]);
+    expect(installDirs(["claude-code", "cursor"])).toEqual([".claude/skills"]);
+    expect(installDirs(["cursor"])).toEqual([".agents/skills"]);
+    expect(installDirs(["codex"])).toEqual([".agents/skills"]);
+    expect(installDirs(["cursor", "codex", "zed"])).toEqual([".agents/skills"]);
+    // Claude Code reads only .claude/skills, Codex only .agents/skills: both are unavoidable.
+    expect(installDirs(["claude-code", "cursor", "codex", "zed"])).toEqual([".claude/skills", ".agents/skills"]);
+    expect(installDirs([])).toEqual([".claude/skills"]);
   });
 
   test("linkAll makes every skill usable by every enabled agent without copying anything", async () => {

@@ -142,7 +142,10 @@ If some skills aren't visible to every agent you use, the top row offers **⇄ M
 
 ### Adding and removing skills
 
-- **Adding** (`space` in *Add skills*) copies the newest version into `.claude/skills/<name>`, which Claude Code and Cursor read. If you use Codex or Zed, it also links it into `.agents/skills`. The skill is recorded in `skilllib.json`. Agents pick it up in their next session.
+- **Adding** (`space` in *Add skills*) copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session.
+  - Claude Code (with or without Cursor): `.claude/skills/<name>`.
+  - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`, which all three read.
+  - Claude Code plus Codex or Zed: the copy goes in `.claude/skills`, with a link in `.agents/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed only read `.agents/skills`.
 - **Removing** (`space` again) deletes that copy and its links. Your library and other repos aren't touched. If you edited it here, skilllib asks first; Enter → *Save local edits to Your skills* keeps them.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
 - **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.

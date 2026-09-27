@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { claudeDir, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 
 export type HarnessId = "claude-code" | "cursor" | "codex" | "zed";
 
@@ -91,13 +91,34 @@ export function harness(id: HarnessId): Harness {
 /** Every project skill folder any harness reads. */
 export const ALL_PROJECT_DIRS = [...new Set(HARNESSES.flatMap((h) => h.projectDirs))];
 
+/** On a tie, shared folders beat agent-specific ones. */
+const PREFERRED_DIRS = [AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR];
+function preference(dir: string): number {
+  const i = PREFERRED_DIRS.indexOf(dir);
+  return i === -1 ? PREFERRED_DIRS.length : i;
+}
+
+/** Fewer folders first, then preferred ones. */
+function cost(dirs: string[]): number {
+  return dirs.length * 100 + dirs.reduce((sum, d) => sum + preference(d), 0);
+}
+
 /**
- * Where skilllib puts a library skill in a project so every enabled harness
- * sees it: the real copy always goes in .claude/skills (Claude Code and Cursor
- * read it, and repos rarely commit it); harnesses that only read
- * .agents/skills (Codex, Zed) get a link there. Returns [real copy, ...links].
+ * Where skilllib puts a library skill in a project: the fewest folders that
+ * reach every enabled harness, so no folder is written just to be read twice.
+ * Cursor + Codex → .agents/skills; Claude Code + Cursor → .claude/skills;
+ * Claude Code + Codex needs both (Claude Code reads only .claude/skills).
+ * The real copy goes in .claude/skills when Claude Code is on, keeping where
+ * existing installs live. Returns [real copy, ...links].
  */
 export function installDirs(enabled: HarnessId[]): string[] {
-  const needsAgents = enabled.some((id) => !harness(id).projectDirs.includes(".claude/skills"));
-  return needsAgents ? [".claude/skills", ".agents/skills"] : [".claude/skills"];
+  if (enabled.length === 0) return [PROJECT_SKILLS_DIR];
+  let best: string[] = [];
+  for (let mask = 1; mask < 1 << ALL_PROJECT_DIRS.length; mask++) {
+    const dirs = ALL_PROJECT_DIRS.filter((_, i) => mask & (1 << i)).sort((a, b) => preference(a) - preference(b));
+    if (!enabled.every((id) => harness(id).projectDirs.some((d) => dirs.includes(d)))) continue;
+    if (best.length === 0 || cost(dirs) < cost(best)) best = dirs;
+  }
+  const primary = enabled.includes("claude-code") ? PROJECT_SKILLS_DIR : best[0]!;
+  return [primary, ...best.filter((d) => d !== primary)];
 }
