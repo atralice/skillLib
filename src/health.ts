@@ -1,10 +1,9 @@
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, importSkill, isGitTracked, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin } from "./plugins.js";
-import { projectSkillsDir } from "./project.js";
 import type { SourcedSkill } from "./sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
@@ -183,6 +182,7 @@ export function findIssues(
   issues.push(...global.conflicts.map(conflictIssue));
 
   const kept = keptGlobal();
+  const alsoGlobal = new Map<string, string[]>(); // skill → projects with a managed copy
   const globalNames = new Set(loaded.filter((m) => m.kind !== "plugin").map((m) => m.name));
   for (const root of projects) {
     const where = basename(root);
@@ -265,6 +265,8 @@ export function findIssues(
     }
 
     for (const s of status) {
+      // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track.
+      if (isLink(s.path)) continue;
       if (s.state === "local only") {
         issues.push({
           id: `local:${root}:${s.name}`,
@@ -274,7 +276,7 @@ export function findIssues(
           fix: {
             label: "Import into the library",
             run: () => {
-              importSkill(join(projectSkillsDir(root), s.name));
+              importSkill(s.path);
               addSkill(root, s.name);
               return `${s.name} imported and tracked in ${where}`;
             },
@@ -289,43 +291,55 @@ export function findIssues(
           fix: { label: "Track it", run: () => `${addSkill(root, s.name).name} tracked in ${where}` },
         });
       }
-      if (globalNames.has(s.name) && s.managed) {
-        const movable = machine.find((m) => m.name === s.name && m.movable);
-        // You keep it global on purpose: the project copy is the extra one (and Claude Code runs the global one anyway).
-        if (kept.has(s.name)) {
-          issues.push({
-            id: `twice:${root}:${s.name}`,
-            severity: "suggestion",
-            title: `${s.name}: in ${where}, and you keep it global`,
-            detail: "The global copy already loads here, so this project copy is extra. Claude Code runs the global one anyway.",
-            fix: {
-              label: `Remove the copy in ${where}`,
+      if (globalNames.has(s.name) && s.managed) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), root]);
+    }
+  }
+
+  // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
+  // decision, so these are choices, never run by `doctor --fix`.
+  for (const [name, roots] of alsoGlobal) {
+    const wheres = roots.map((r) => basename(r)).join(", ");
+    if (kept.has(name)) {
+      // You keep it global on purpose: the project copies are the extra ones (Claude Code runs the global one anyway).
+      issues.push({
+        id: `twice:${name}`,
+        severity: "suggestion",
+        title: `${name}: in ${wheres}, and you keep it global`,
+        detail: "The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.",
+        choices: [
+          {
+            label: `Remove the copies in ${wheres}`,
+            hint: "the global copy stays",
+            run: () => {
+              const removed = roots.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
+              return `${name}: removed from ${removed.join(", ") || "no project"}; the global copy stays`;
+            },
+          },
+        ],
+      });
+      continue;
+    }
+    const movable = machine.find((m) => m.name === name && m.movable);
+    issues.push({
+      id: `twice:${name}`,
+      severity: "suggestion",
+      title: `${name}: in ${wheres} and also loaded globally`,
+      detail: "The project copies are enough; the global one loads it in every other project too. Or keep it global on purpose (Global → Enter).",
+      choices: movable
+        ? [
+            {
+              label: "Stop loading it globally",
+              hint: "restorable from Health",
               run: () => {
-                const c = removeSkill(root, s.name);
-                return c.action === "removed" ? `${s.name}: removed from ${where}; the global copy stays` : `${s.name}: ${c.reason}`;
+                if (!libraryNames.has(name)) importSkill(movable.path);
+                const r = unloadGlobal(movable.path, movable.links);
+                if (!r.ok) throw new Error(`${name}: ${r.reason}`);
+                return `${name} no longer loads globally`;
               },
             },
-          });
-          continue;
-        }
-        issues.push({
-          id: `twice:${root}:${s.name}`,
-          severity: "suggestion",
-          title: `${s.name}: in ${where} and also loaded globally`,
-          detail: "The project copy is enough; the global one loads it in every other project too.",
-          fix: movable
-            ? {
-                label: "Stop loading it globally",
-                run: () => {
-                  if (!libraryNames.has(s.name)) importSkill(movable.path);
-                  const r = unloadGlobal(movable.path, movable.links);
-                  return r.ok ? `${s.name} no longer loads globally` : `${s.name}: ${r.reason}`;
-                },
-              }
-            : undefined,
-        });
-      }
-    }
+          ]
+        : undefined,
+    });
   }
 
   return issues;

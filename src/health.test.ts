@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { findIssues } from "./health.js";
+import { findIssues, runFix } from "./health.js";
 import { addSkill, deleteGlobal, importSkill, listBackups, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { machineSkills } from "./sources.js";
@@ -75,9 +75,14 @@ test("flags a project skill that also loads globally", () => {
   importSkill(join(tmp, ".claude", "skills", "alpha"));
   addSkill(project, "alpha");
 
-  const [issue] = findIssues([project], machineSkills(), new Set(["alpha"]));
-  expect(issue?.id).toBe(`twice:${project}:alpha`);
-  issue?.fix?.run();
+  const other = join(tmp, "api");
+  mkdirSync(other);
+  addSkill(other, "alpha");
+
+  // One issue for both projects, and a choice: doctor --fix never moves your global skills.
+  const issues = findIssues([project, other], machineSkills(), new Set(["alpha"]));
+  expect(issues.map((i) => [i.id, i.title, i.fix])).toEqual([["twice:alpha", "alpha: in web, api and also loaded globally", undefined]]);
+  expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "alpha no longer loads globally" });
   expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);
 });
 
@@ -108,8 +113,9 @@ test("a project copy of a skill you keep global is the extra one", () => {
   setKeepGlobal(["alpha"], true);
 
   const [issue] = findIssues([project], machineSkills(), new Set(["alpha"]));
-  expect(issue).toMatchObject({ id: `twice:${project}:alpha`, fix: { label: "Remove the copy in web" } });
-  issue?.fix?.run();
+  expect(issue?.id).toBe("twice:alpha");
+  expect(issue?.choices?.map((c) => c.label)).toEqual(["Remove the copies in web"]);
+  issue?.choices?.[0]?.run();
   expect(readManifest(project).skills.alpha).toBeUndefined();
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
@@ -158,4 +164,14 @@ test("a skill some of your agents can't reach gets a link fix, with a choice whe
   const tracked = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `usable:${repo}`);
   expect(tracked?.fix).toBeUndefined();
   expect(tracked?.choices?.map((c) => c.label)).toEqual(["Add links, but not where git tracks the folder", "Add links everywhere"]);
+});
+
+test("a link to a folder under another name isn't offered for import (that made a second copy)", () => {
+  const project = join(tmp, "trader");
+  skill(join(project, ".agents", "skills", "Trading Best Practices"));
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  symlinkSync("../../.agents/skills/Trading Best Practices", join(project, ".claude", "skills", "trading-best-practices"));
+
+  const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids.filter((id) => id.startsWith("local:") || id.startsWith("adopt:"))).toEqual([]);
 });
