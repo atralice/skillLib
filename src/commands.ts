@@ -475,7 +475,7 @@ export function show(args: Args) {
       path: dir,
       latest: latestVersion(name)?.version ?? null,
       origin: libraryOrigins()[name] ?? "",
-      projects: knownProjects().filter((p) => name in readManifest(p).skills),
+      projects: knownProjects().filter((p) => name in readManifest(p).skills).map((p) => basename(p)),
       skillMd: readFileSync(join(dir, "SKILL.md"), "utf-8"),
     });
   }

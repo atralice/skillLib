@@ -62,7 +62,7 @@ async function main() {
   const args = commands.parseArgs(rest);
   setJsonMode(args.json);
   // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
-  refreshAgentSkill();
+  if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
   switch (command) {
     case undefined:
       // Interactive when a person is at the terminal; plain status for scripts and pipes.
