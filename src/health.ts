@@ -1,8 +1,8 @@
 import { basename, join } from "node:path";
-import { enabledHarnesses, keptGlobal } from "./config.js";
+import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
-import { HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, importSkill, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
+import { addSkill, importSkill, isGitTracked, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin } from "./plugins.js";
 import { projectSkillsDir } from "./project.js";
 import type { SourcedSkill } from "./sources.js";
@@ -231,6 +231,38 @@ export function findIssues(
       });
     }
     issues.push(...tidy.conflicts.map(conflictIssue));
+
+    // Skills some of your agents can't reach here: links fix that (nothing is copied or moved).
+    const partial = status.filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0));
+    if (partial.length) {
+      const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
+      const tracked = readConfig().agentsDirOk?.includes(root)
+        ? []
+        : [...new Set(missing.map((id) => harness(id).projectDirs[0]!))].filter((dir) => isGitTracked(root, dir));
+      const run = (allowTracked: boolean) => () => {
+        if (allowTracked) allowTrackedLinks(root);
+        const r = linkAll(root, { allowTracked });
+        return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks it)` : ""}`;
+      };
+      issues.push({
+        id: `usable:${root}`,
+        severity: "suggestion",
+        title: `${where}: ${plural(partial.length, "skill")} not usable by ${agentNames(missing)}`,
+        detail: `${partial
+          .map((s) => `${s.name} (not ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))})`)
+          .join(", ")}. Adding links makes the one real copy reach every agent you use; nothing is copied or moved.${
+          tracked.length ? ` Git tracks ${tracked.join(", ")}, so links there show in git status.` : ""
+        }`,
+        ...(tracked.length
+          ? {
+              choices: [
+                { label: "Add links, but not where git tracks the folder", hint: `skips ${tracked.join(", ")}`, run: run(false) },
+                { label: "Add links everywhere", hint: `remembered for ${where}; git will see them`, run: run(true) },
+              ],
+            }
+          : { fix: { label: "Add the links", run: run(false) } }),
+      });
+    }
 
     for (const s of status) {
       if (s.state === "local only") {

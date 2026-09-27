@@ -1887,7 +1887,7 @@ export function App() {
         "Skills your harnesses load in EVERY project (~/.claude/skills, ~/.agents/skills, plugins…). Move yours into the library and add them only where needed.",
       ],
       help: ["Help", "Where skills come from, and how Claude Code, Cursor, Codex and Zed find and use them. Press enter (or ? anywhere)."],
-      health: ["Health", "Broken links, duplicates, copies that differ, plugins that repeat your skills, out-of-date projects — and everything skilllib moved out, ready to restore."],
+      health: ["Health", "Broken links, duplicates, copies that differ, plugins that repeat your skills, skills some agents can't reach, out-of-date projects — and everything skilllib moved out, ready to restore."],
       settings: ["Settings", `Harnesses: ${snapshot.harnesses.map(harnessName).join(", ") || "none"} · Folders: ${snapshot.roots.map(tildify).join(", ") || "none yet"}`],
     };
     const [title, description] = about[place.kind] ?? ["", ""];

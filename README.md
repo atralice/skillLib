@@ -230,7 +230,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 
 ### Health and backups
 
-**Health** lists broken links, duplicates, copies that differ, out-of-date repos and repo-only skills. Each has a one-key fix, or a short list of fixes to pick from. Below them is everything skilllib ever moved out, and `space` puts it back where it came from.
+**Health** lists broken links, duplicates, copies that differ, skills some of your agents can't reach, out-of-date repos and repo-only skills. Each has a one-key fix, or a short list of fixes to pick from. Below them is everything skilllib ever moved out, and `space` puts it back where it came from.
 
 skilllib never really deletes anything:
 - removed library skills go to `~/.skilllib/trash`

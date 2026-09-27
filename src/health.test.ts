@@ -137,3 +137,25 @@ test("tidy issues: a plain fix when git won't notice, a choice when it would, an
   expect(inRepo?.fix).toBeUndefined();
   expect(inRepo?.choices?.map((c) => c.label)).toEqual(["Tidy, but keep git as it is", "Tidy everything"]);
 });
+
+test("a skill some of your agents can't reach gets a link fix, with a choice when git tracks the folder", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  skill(join(project, ".agents", "skills", "team")); // Codex sees it, Claude Code doesn't
+
+  const issue = () => findIssues([project], machineSkills(), new Set()).find((i) => i.id === `usable:${project}`);
+  expect(issue()?.title).toBe("web: 1 skill not usable by Claude Code");
+  expect(issue()?.fix?.label).toBe("Add the links");
+  issue()?.fix?.run();
+  expect(lstatSync(join(project, ".claude", "skills", "team")).isSymbolicLink()).toBe(true);
+  expect(issue()).toBeUndefined();
+
+  const repo = join(tmp, "repo");
+  skill(join(repo, ".agents", "skills", "team"));
+  skill(join(repo, ".claude", "skills", "committed"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["add", "."], { cwd: repo });
+  const tracked = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `usable:${repo}`);
+  expect(tracked?.fix).toBeUndefined();
+  expect(tracked?.choices?.map((c) => c.label)).toEqual(["Add links, but not where git tracks the folder", "Add links everywhere"]);
+});
