@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Box, Text, type Key } from "ink";
 import { addSkill, deleteGlobal, importSkill, unloadGlobal } from "../library.js";
 import type { SourcedSkill } from "../sources.js";

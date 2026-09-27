@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { addRoot, allowTrackedLinks, discoverProjects, removeRoot, setHarnesses, setHidden } from "../config.js";
 import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "../harnesses.js";

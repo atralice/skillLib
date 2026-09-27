@@ -1,5 +1,5 @@
 import { basename, join } from "node:path";
-import { addSkill, importSkill, projectStatus, syncProject, unloadGlobal, updateProject, type ProjectSkill } from "./library.js";
+import { addSkill, importSkill, projectStatus, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { HARNESSES } from "./harnesses.js";
 import { projectSkillsDir } from "./project.js";
 import type { SourcedSkill } from "./sources.js";
