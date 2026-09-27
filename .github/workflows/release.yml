@@ -1,13 +1,16 @@
 name: Release
 
 # Push a tag like v1.0.1 (matching package.json's version) to publish to npm.
+# Publishing uses npm trusted publishing (OIDC): no token, no 2FA prompt.
+# Configure it once on npmjs.com → skilllib → Settings → Trusted Publisher:
+#   GitHub Actions · atralice / skillLib · workflow: release.yml
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write # create the GitHub release
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing + provenance
 
 jobs:
   publish:
@@ -22,6 +25,8 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - uses: oven-sh/setup-bun@v2
       - run: pnpm install --frozen-lockfile
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 ships npm 10.
+      - run: npm install -g npm@latest
 
       - name: Tag matches package.json version
         run: |
@@ -35,9 +40,7 @@ jobs:
       - run: pnpm build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: GitHub release
         run: gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
