@@ -11,9 +11,9 @@ export function setJsonMode(on: boolean) {
   jsonMode = on;
 }
 
-/** Prints `data` as the command's JSON result. */
+/** Prints `data` as the command's JSON result, on one line: agents pay for every token. */
 export function json(data: unknown) {
-  process.stdout.write(JSON.stringify(data, null, 2) + "\n");
+  process.stdout.write(JSON.stringify(data) + "\n");
 }
 
 const color = (code: number) => (s: string) => (process.stdout.isTTY && !jsonMode ? `\x1b[${code}m${s}\x1b[0m` : s);

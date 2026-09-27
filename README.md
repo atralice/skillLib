@@ -308,7 +308,20 @@ skilllib --version
 
 Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`.
 
-**`--json`** prints one JSON document on stdout for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. `status --json` lists everything agents can use in the repo, global and vendor skills included, with each skill's `source`, `origin`, the agents that load it, and its version and git state.
+**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
+
+- **`status --json`** answers everything about the repo in one call:
+  - the repo's skills, with their source, version, state and git state
+  - the global skills, grouped by where they come from
+  - every problem skilllib found here, with its fix
+  - how often Claude Code used each skill here
+  - the repo's top-level files
+
+  Skills that share every attribute are grouped, and attributes at their usual value are left out.
+- **`list --json`**: inside a repo, the library skills the repo already has (names only), and the others with the first sentence of their description.
+- **`add`, `remove`, `sync` and `update`** list each change and the folders it wrote to, so there's nothing left to check.
+
+The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so an agent usually answers "which skills can you use here?" in one step.
 
 ## Files
 

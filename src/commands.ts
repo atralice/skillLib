@@ -20,7 +20,7 @@ import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, pr
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
-import { libraryEntries, usableHere } from "./here.js";
+import { libraryFor, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
@@ -54,8 +54,17 @@ function colorState(state: SkillState): string {
   return yellow(state);
 }
 
-function printChanges(changes: Change[], args: Args) {
-  if (args.json) return json(changes);
+/** For agents: where each installed or updated skill now is, so they needn't look. */
+function withDirs(root: string, changes: Change[]) {
+  const { skills } = readManifest(root);
+  return changes.map((c) => {
+    const dep = c.action === "installed" || c.action === "updated" ? skills[c.name] : undefined;
+    return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
+  });
+}
+
+function printChanges(root: string, changes: Change[], args: Args) {
+  if (args.json) return json(withDirs(root, changes));
   for (const c of changes) {
     if (c.blocked?.length) {
       warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
@@ -108,9 +117,8 @@ function lastUsed(summary: UsageSummary | undefined): string {
 export async function status(args: Args) {
   const root = findProjectRoot();
   if (args.json) {
-    const here = usableHere(root);
     const usage = await usageBySkill(args.days, root);
-    json({ ...here, usageDays: args.days, skills: here.skills.map((s) => ({ ...s, usesHere: usage.get(s.name)?.uses ?? 0 })) });
+    json(usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
     rememberProjects([root]);
     return;
   }
@@ -146,8 +154,7 @@ export async function status(args: Args) {
 /** Everything in the library, where each skill is installed, and how much it's used. */
 export async function list(args: Args) {
   if (args.json) {
-    const usage = await usageBySkill(args.days);
-    return json({ usageDays: args.days, skills: libraryEntries(currentProject()).map((s) => ({ ...s, uses: usage.get(s.name)?.uses ?? 0 })) });
+    return json(libraryFor(currentProject()));
   }
   const skills = librarySkills();
   if (skills.length === 0) {
@@ -228,7 +235,7 @@ export function add(args: Args) {
   }
   const root = findProjectRoot();
   if (args.allowTracked) allowTrackedLinks(root);
-  printChanges(args.positional.map((name) => addSkill(root, name, { force: args.force })), args);
+  printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force })), args);
   rememberProjects([root]);
 }
 
@@ -238,7 +245,7 @@ export function remove(args: Args) {
     process.exit(1);
   }
   const root = findProjectRoot();
-  printChanges(args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
+  printChanges(root, args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
 }
 
 /** Installs exactly the versions in skilllib.json (--all: every project). */
@@ -250,9 +257,9 @@ export function sync(args: Args) {
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
       if (changes.length === 0) success("Installed versions match skilllib.json");
-      else printChanges(changes, args);
+      else printChanges(root, changes, args);
     }
-    return { project: basename(root), path: root, changes };
+    return { project: basename(root), path: root, changes: withDirs(root, changes) };
   });
   if (args.json) json(args.all ? results : results[0]!.changes);
   if (!args.all) rememberProjects(roots);
@@ -267,9 +274,9 @@ export function update(args: Args) {
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
       if (changes.length === 0) success("Everything is on the latest version");
-      else printChanges(changes, args);
+      else printChanges(root, changes, args);
     }
-    return { project: basename(root), path: root, changes };
+    return { project: basename(root), path: root, changes: withDirs(root, changes) };
   });
   if (args.json) json(args.all ? results : results[0]!.changes);
 }

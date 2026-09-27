@@ -7,6 +7,7 @@ import { agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSki
 import { setHarnesses } from "./config.js";
 import { findIssues } from "./health.js";
 import { importSkill } from "./library.js";
+import { firstSentence } from "./here.js";
 import { machineSkills } from "./sources.js";
 
 let tmp: string;
@@ -87,20 +88,24 @@ describe("--json", () => {
   });
 
   test("add, status and list answer 'what can you use here and where is it from'", () => {
-    expect(JSON.parse(cli("add", "stripe", "--json"))).toEqual([{ name: "stripe", action: "installed", to: 1 }]);
+    expect(JSON.parse(cli("add", "stripe", "--json"))).toEqual([{ name: "stripe", action: "installed", to: 1, dirs: [".claude/skills"] }]);
 
     const status = JSON.parse(cli("status", "--json"));
-    expect(status.project.path).toBe(project);
-    const bySkill = Object.fromEntries(status.skills.map((s: { name: string }) => [s.name, s]));
-    expect(bySkill.stripe).toMatchObject({ source: "library", scope: "project", state: "ok", version: 1, loadedBy: ["claude-code"], description: "Stripe payments" });
-    expect(bySkill.team).toMatchObject({ source: "repo", scope: "project", loadedBy: [] });
-    expect(bySkill.everywhere).toMatchObject({ source: "global", scope: "global", yours: true, loadedBy: ["claude-code"] });
-
-    const list = JSON.parse(cli("list", "--json"));
-    expect(list.skills.map((s: { name: string; inThisProject: boolean }) => [s.name, s.inThisProject])).toEqual([
-      ["stripe", true],
-      ["terraform", false],
+    expect(status.project).toBe(project.replace(tmp, "~"));
+    expect(status.skills).toEqual([
+      { source: "library", version: 1, git: "new", skills: ["stripe"] },
+      { source: "repo", dir: ".agents/skills", git: "new", agents: [], skills: ["team"] },
     ]);
+    expect(status.global).toEqual([{ source: "global", from: "~/.claude/skills", agents: ["claude-code"], skills: ["everywhere"] }]);
+    expect(status.issues.map((i: { fix?: string }) => i.fix)).toContain("Install the skilllib skill for your agents");
+
+    // Inside a project, the library splits into what it has and what it could add (with a short description).
+    expect(JSON.parse(cli("list", "--json"))).toEqual({ inThisProject: ["stripe"], skills: [{ name: "terraform", description: "Terraform infra" }] });
+  });
+
+  test("a skilllib.json above the git root belongs to another checkout", () => {
+    writeFileSync(join(tmp, "skilllib.json"), JSON.stringify({ skills: {} }));
+    expect(JSON.parse(cli("status", "--json")).project).toBe(project.replace(tmp, "~"));
   });
 
   test("stdout is only JSON, even when a command warns", () => {
@@ -109,4 +114,12 @@ describe("--json", () => {
     expect(JSON.parse(cli("doctor", "--json")).map((i: { id: string }) => i.id)).toContain("agent-skill");
     expect(JSON.parse(cli("agent-skill", "install", "--json")).state).toBe("installed");
   });
+});
+
+test("descriptions shorten to their first sentence", () => {
+  expect(firstSentence("Build AI agents on Cloudflare Workers using the Agents SDK. Load when creating stateful agents.")).toBe(
+    "Build AI agents on Cloudflare Workers using the Agents SDK.",
+  );
+  expect(firstSentence("Short. But this is only one sentence really")).toBe("Short. But this is only one sentence really");
+  expect(firstSentence("x".repeat(300))).toHaveLength(200);
 });
