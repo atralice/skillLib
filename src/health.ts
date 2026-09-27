@@ -29,7 +29,11 @@ export type Issue = {
   severity: "problem" | "suggestion";
   title: string;
   detail: string;
-  /** One-key fix, safe to run unasked (`doctor --fix` does). */
+  /**
+   * One-key fix, safe to run unasked (`doctor --fix` does): it only repairs (broken links, missing
+   * links, sync, identical duplicates). Anything that decides where a skill lives, removes a plugin,
+   * or adds to your library or a repo's skilllib.json is a choice instead.
+   */
   fix?: Choice;
   /** Fixes that need a decision; the person picks one. Never set together with `fix`. */
   choices?: Choice[];
@@ -264,31 +268,37 @@ export function findIssues(
       });
     }
 
+    const differing = new Set(tidy.conflicts.map((c) => c.name));
     for (const s of status) {
-      // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track.
-      if (isLink(s.path)) continue;
+      // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
+      // and copies that differ need a winner first (the conflict issue above).
+      if (isLink(s.path) || differing.has(s.name)) continue;
+      // Importing and tracking change the library and the repo's skilllib.json: choices, never run by `doctor --fix`.
       if (s.state === "local only") {
         issues.push({
           id: `local:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name}: only exists in ${where}`,
-          detail: "Import it into the library to reuse it in other projects and keep it backed up.",
-          fix: {
-            label: "Import into the library",
-            run: () => {
-              importSkill(s.path);
-              addSkill(root, s.name);
-              return `${s.name} imported and tracked in ${where}`;
+          detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in skilllib.json.",
+          choices: [
+            {
+              label: "Import into the library",
+              hint: `${where} then tracks it`,
+              run: () => {
+                importSkill(s.path);
+                addSkill(root, s.name);
+                return `${s.name} imported and tracked in ${where}`;
+              },
             },
-          },
+          ],
         });
       } else if (s.state === "untracked copy of library skill") {
         issues.push({
           id: `adopt:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name} in ${where} isn't tracked`,
-          detail: "It's identical to the library copy; track it so future library changes reach it.",
-          fix: { label: "Track it", run: () => `${addSkill(root, s.name).name} tracked in ${where}` },
+          detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
+          choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
         });
       }
       if (globalNames.has(s.name) && s.managed) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), root]);

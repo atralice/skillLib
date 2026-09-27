@@ -54,7 +54,11 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   const issues = findIssues([project], machineSkills(), new Set());
   expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`]);
 
+  // doctor --fix only runs the fixes; importing is a choice.
+  expect(issues.find((i) => i.id.startsWith("local:"))?.fix).toBeUndefined();
   for (const issue of issues) issue.fix?.run();
+  expect(existsSync(join(tmp, "home", "library", "deploy"))).toBe(false);
+  for (const issue of issues) issue.choices?.[0]?.run();
   // Your skill wins over the claude.ai copy, but only claude.ai can turn its copy off.
   const left = findIssues([project], machineSkills(), new Set(["deploy", "twice"]));
   expect(left.map((i) => [i.id, i.fix, i.choices])).toEqual([["dup:twice", undefined, undefined]]);
@@ -174,4 +178,14 @@ test("a link to a folder under another name isn't offered for import (that made 
 
   const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
   expect(ids.filter((id) => id.startsWith("local:") || id.startsWith("adopt:"))).toEqual([]);
+});
+
+test("copies that differ aren't offered for import or tracking until you pick one", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  skill(join(project, ".claude", "skills", "deploy"), "a");
+  skill(join(project, ".agents", "skills", "deploy"), "b");
+  const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids).toContain(`conflict:${project}:deploy`);
+  expect(ids).not.toContain(`local:${project}:deploy`);
 });
