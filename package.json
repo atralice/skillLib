@@ -1,6 +1,6 @@
 {
   "name": "skilllib",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Manage your agent skills like dependencies. One library for all your skills; each repo gets only the ones it needs, and every agent can see them. Works with Claude Code, Cursor, Codex and Zed.",
   "keywords": [
     "agent-skills",
