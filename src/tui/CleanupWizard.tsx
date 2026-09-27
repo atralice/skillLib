@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { Box, Text, type Key } from "ink";
 import { addSkill, deleteGlobal, importSkill, unloadGlobal } from "../library.js";
 import type { SourcedSkill } from "../sources.js";
-import { ListPanel, Panel, wrap, type Row } from "./components.js";
+import { KeyBar, ListPanel, Panel, wrap, type Hint, type Row } from "./components.js";
 import { color } from "./theme.js";
 
 /** The app forwards key presses here while the wizard is open (one input handler avoids split escape sequences). */
@@ -192,14 +192,13 @@ export function CleanupWizard({
           ) : null}
         </Box>
         <Box height={1} paddingX={1}>
-          <Text backgroundColor={color.accentDim} color={color.text}>
-            {" enter "}
-          </Text>
-          <Text color={color.muted}>{" apply   "}</Text>
-          <Text backgroundColor={color.accentDim} color={color.text}>
-            {" esc "}
-          </Text>
-          <Text color={color.muted}>{" back"}</Text>
+          <KeyBar
+            width={width - 2}
+            hints={[
+              ["enter", "apply"],
+              ["esc", "back"],
+            ]}
+          />
         </Box>
       </Box>
     );
@@ -304,21 +303,17 @@ export function CleanupWizard({
         </Panel>
       ) : null}
       <Box height={1} paddingX={1}>
-        {(
-          [
+        <KeyBar
+          width={width - 2}
+          hints={[
             ["space", focus === "skills" ? "move / keep / delete" : "tick project"],
-            ...(focus === "skills" ? ([["d", "delete"]] as const) : []),
+            ...(focus === "skills" ? ([["d", "delete"]] as Hint[]) : []),
             ["tab", "switch side"],
-            ["p", "ask an agent (copy prompt)"],
             ["enter", `review (${plural(totalInstalls, "install")})`],
+            ["p", "ask an agent"],
             ["esc", "cancel"],
-          ] as const
-        ).map(([k, l]) => (
-          <Box key={k} marginRight={2}>
-            <Text backgroundColor={color.accentDim} color={color.text}>{` ${k} `}</Text>
-            <Text color={color.muted}>{` ${l}`}</Text>
-          </Box>
-        ))}
+          ]}
+        />
       </Box>
     </Box>
   );
