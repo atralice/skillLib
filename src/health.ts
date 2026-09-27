@@ -134,12 +134,14 @@ export function findIssues(
 
   // Cursor plugins can't be read or changed from outside Cursor: report them.
   if (enabledHarnesses().includes("cursor")) {
-    for (const s of cursorPluginSkills().filter((x) => loadedYours.has(x.name))) {
+    const byPlugin = new Map<string, string[]>();
+    for (const s of cursorPluginSkills().filter((x) => loadedYours.has(x.name))) byPlugin.set(s.plugin, [...(byPlugin.get(s.plugin) ?? []), s.name]);
+    for (const [plugin, names] of byPlugin) {
       issues.push({
-        id: `cursor-plugin:${s.plugin}:${s.name}`,
+        id: `cursor-plugin:${plugin}`,
         severity: "suggestion",
-        title: `${s.name}: also in the Cursor plugin ${s.plugin}`,
-        detail: `Cursor lists both when that plugin is on. Your skill wins: turn the plugin off in Cursor (Settings → Plugins).`,
+        title: `${names.join(", ")}: also in the Cursor plugin ${plugin}`,
+        detail: `Cursor lists both copies when that plugin is on. Your skill wins: turn the plugin off in Cursor (Settings → Plugins).`,
       });
     }
   }

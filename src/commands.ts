@@ -23,6 +23,7 @@ import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { findIssues } from "./health.js";
+import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
@@ -360,11 +361,11 @@ export function newSkill(args: Args) {
 }
 
 export function restore(args: Args) {
-  const backups = listBackups();
+  const backups = [...listBackups(), ...pluginBackups()];
   const name = args.positional[0];
   if (!name) {
     if (backups.length === 0) return info("Nothing to restore.");
-    table(backups.map((b) => ({ Skill: b.name, From: b.kind === "trash" ? "library (deleted)" : tildify(dirname(b.from)), Moved: b.movedAt })));
+    table(backups.map((b) => ({ Skill: b.name, From: b.kind === "trash" ? "library (deleted)" : b.kind === "plugin" ? "Claude Code plugin" : tildify(dirname(b.from)), Moved: b.movedAt })));
     info(dim("\n→ skilllib restore <name>"));
     return;
   }
@@ -373,7 +374,7 @@ export function restore(args: Args) {
     error(`No backup named ${name}`);
     process.exit(1);
   }
-  const r = restoreBackup(backup);
+  const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
   if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
   else error(`Can't restore ${name}: ${r.reason}`);
 }

@@ -11,7 +11,7 @@ import { treeHash } from "./skills.js";
 
 /**
  * One change tidy makes, always to a single path:
- * - link:    add a link to the real copy (or point a wrong/broken link at it)
+ * - link:    point a wrong or broken link at the real copy
  * - unlink:  remove a link no agent you use needs
  * - replace: swap an identical (or, if you chose, a differing) real copy for a link
  * - remove:  drop an identical real copy no agent you use needs
@@ -83,7 +83,8 @@ function conflictOf(name: string, root: string | null, reals: Entry[], enabled: 
 
 /**
  * Tidies one project's skill folders: one real copy per skill, plus only the
- * links your agents need. A real copy never moves (skilllib.json is shared,
+ * links your agents need. It removes and repoints, never adds: making a skill
+ * reach more agents is linkAll's job. A real copy never moves (skilllib.json is shared,
  * and teammates may use other agents), and links skilllib.json records are
  * kept for the same reason. `keep` resolves a conflict: name → the folder
  * (absolute, as in Conflict.copies) whose copy wins.
@@ -141,9 +142,6 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
         steps.push(needed ? { kind: "replace", path: e.path, target: primary.path } : { kind: "remove", path: e.path });
       }
     }
-    for (const dir of wanted) {
-      if (dir !== primary.dir && !entries.some((e) => e.dir === dir)) steps.push({ kind: "link", path: join(dir, name), target: primary.path });
-    }
     if (steps.length) report.plans.push({ name, root, primary: primary.path, steps });
   }
   return report;
@@ -190,16 +188,14 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
 }
 
 /**
- * Steps that change what git shows: anything touching a committed path, and
- * anything new in a folder git doesn't ignore (it would show in `git status`).
- * Removing an uncommitted file from view is fine.
+ * Steps that change what git shows: anything touching a committed path.
+ * Changing or removing an uncommitted file is fine.
  */
 export function gitVisibleSteps(plan: TidyPlan, git: GitInfo | null = plan.root ? gitInfo(plan.root) : null): TidyStep[] {
   if (!plan.root || !git) return [];
   return plan.steps.filter((s) => {
     const state = git.of(relativeTo(plan.root!, s.path));
-    if (state === "committed" || state === "changed") return true;
-    return state === "new" && s.kind === "link" && !entryExists(s.path);
+    return state === "committed" || state === "changed";
   });
 }
 

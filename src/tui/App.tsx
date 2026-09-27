@@ -23,9 +23,11 @@ import {
   unloadGlobal,
   updateProject,
   visibilityOf,
+  type Backup,
   type Change,
   type Visibility,
 } from "../library.js";
+import { restorePlugin } from "../plugins.js";
 import { KeyBar, ListPanel, Panel, wrap, type Cell, type Hint, type Row } from "./components.js";
 import {
   loadSnapshot,
@@ -242,19 +244,23 @@ const harnessName = (id: HarnessId) => HARNESSES.find((h) => h.id === id)?.name 
 
 /**
  * One icon per enabled harness, in its brand color when that harness loads the
- * skill and faint when it doesn't. "²" marks a skill reached through two
- * folders (Cursor reads several), which it may list twice.
+ * skill and faint when it doesn't. (Cursor lists a skill it reaches through
+ * several folders once, so that isn't flagged.)
  */
 function harnessChips(visibility: Visibility, installed: boolean): Cell[] {
-  return visibility.flatMap((v): Cell[] => {
+  return visibility.map((v): Cell => {
     const h = HARNESSES.find((x) => x.id === v.id);
     const on = installed && v.paths > 0;
-    return [
-      { text: ` ${h?.icon ?? "?"}`, color: on ? h?.color : color.faint, dim: !on },
-      { text: v.paths > 1 && installed ? "²" : " ", color: color.yellow },
-    ];
+    return { text: ` ${h?.icon ?? "?"} `, color: on ? h?.color : color.faint, dim: !on };
   });
 }
+
+const BACKUP_LABEL: Record<Backup["kind"], string> = {
+  trash: "deleted from library",
+  "global-backup": "unloaded from global",
+  "tidy-backup": "duplicate replaced by a link",
+  plugin: "plugin removed",
+};
 
 const GIT_LABEL: Record<GitState, { text: string; color: string }> = {
   committed: { text: "✓ committed", color: color.green },
@@ -754,7 +760,7 @@ export function App() {
               ? `committed in ${r.location}`
               : r.installed
                 ? r.managed
-                  ? `v${r.version} installed in .claude/skills`
+                  ? `v${r.version} installed in ${r.location}`
                   : notInLibrary
                     ? "only in this project"
                     : "untracked copy"
@@ -764,7 +770,7 @@ export function App() {
             `${usesText(r.name, root)} Claude Code uses here (${USAGE_DAYS}d)`,
           ],
           ...(r.installed && dupes(r.name) > 1
-            ? { description: `Loaded ${dupes(r.name)} times here: ${copiesOf(r.name).join(" · ")}. Agents may see it twice — keep one.` }
+            ? { description: `Reaches your agents from ${dupes(r.name)} places: ${copiesOf(r.name).join(" · ")}. Health has the fix (your skill wins over plugins).` }
             : {}),
         },
       };
@@ -844,7 +850,7 @@ export function App() {
             `${m.kind}: ${m.origin}`,
             kept ? "yours: kept global on purpose" : m.movable ? "yours: the cleanup wizard can scope it to projects" : "managed by the vendor",
           ],
-          description: dupes(m.name) > 1 ? `Loaded ${dupes(m.name)} times here: ${copiesOf(m.name).join(" · ")}. Agents may see it twice — keep one.` : sourceGroup(m)?.about,
+          description: dupes(m.name) > 1 ? `Reaches your agents from ${dupes(m.name)} places: ${copiesOf(m.name).join(" · ")}. Health has the fix (your skill wins over plugins).` : sourceGroup(m)?.about,
         },
       };
     };
@@ -891,7 +897,7 @@ export function App() {
             preview: {
               title: "Make every skill usable by all your agents",
               meta: [`${plural(partial.length, "skill")} missing for ${missingAgents.map(harnessName).join(", ")}`],
-              description: `Adds relative symlinks so each agent's folder reaches the one real copy (e.g. .claude/skills/<name> → .agents/skills/<name>). The repo's files aren't changed; folders git tracks need your OK first. Cursor reads several folders, so it may see a linked skill through two paths (shown as ²).`,
+              description: `Adds relative symlinks so each agent's folder reaches the one real copy (e.g. .claude/skills/<name> → .agents/skills/<name>). The repo's files aren't changed; folders git tracks need your OK first. Cursor lists a skill it reaches through several folders once.`,
             },
           },
         ]
@@ -1520,7 +1526,12 @@ export function App() {
         title: "Issues",
         items: snapshot.issues.map((issue): Item => {
           const fix = issue.fix;
-          const run = fix ? () => confirm(`${fix.label}?`, () => ok(fix.run())) : undefined;
+          const choices = (issue.choices ?? []).map((c): Action => ({ label: c.label, hint: c.hint, run: () => act(() => ok(c.run())) }));
+          const run = fix
+            ? () => confirm(`${fix.label}?`, () => ok(fix.run()))
+            : choices.length
+              ? () => setOverlay({ type: "menu", title: issue.title, index: 0, build: () => choices })
+              : undefined;
           return {
             key: issue.id,
             search: issue.title,
@@ -1534,10 +1545,10 @@ export function App() {
               ],
             },
             primary: run ? { label: "fix", run } : undefined,
-            actions: run && fix ? [{ label: fix.label, run }] : [],
+            actions: fix && run ? [{ label: fix.label, run }] : choices,
             preview: {
               title: issue.title,
-              meta: [issue.severity, fix ? `fix: ${fix.label.toLowerCase()}` : "no automatic fix"],
+              meta: [issue.severity, fix ? `fix: ${fix.label.toLowerCase()}` : choices.length ? `${choices.length} ways to fix it: pick one` : "no automatic fix"],
               description: issue.detail,
             },
           };
@@ -1548,7 +1559,7 @@ export function App() {
         items: snapshot.backups.map((b): Item => {
           const restore = () =>
             act(() => {
-              const r = restoreBackup(b);
+              const r = b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b);
               return r.ok ? ok(`${b.name} restored to ${tildify(r.to)}`) : warn(`Can't restore ${b.name}: ${r.reason}`);
             });
           return {
@@ -1559,7 +1570,7 @@ export function App() {
               key: b.path,
               cells: [
                 { text: b.name, grow: true },
-                { text: b.kind === "trash" ? " deleted from library" : " unloaded from global", color: color.muted },
+                { text: ` ${BACKUP_LABEL[b.kind]}`, color: color.muted },
                 { text: `   ${b.movedAt}`, color: color.faint },
               ],
             },
@@ -1568,7 +1579,7 @@ export function App() {
             preview: {
               title: b.name,
               dir: b.path,
-              meta: [b.kind === "trash" ? "deleted from the library" : "removed from ~/.claude/skills", `moved ${b.movedAt}`],
+              meta: [b.kind === "plugin" ? "Claude Code plugin; restoring reinstalls it" : `from ${tildify(b.from)}`, `moved ${b.movedAt}`],
             },
           };
         }),

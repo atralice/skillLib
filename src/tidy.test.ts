@@ -56,17 +56,19 @@ describe("project tidy", () => {
     expect(isLink(at(".agents", "flow"))).toBe(false);
   });
 
-  test("removes links no agent needs and adds the ones missing", () => {
+  test("removes links no agent needs and repoints broken ones, but never adds links", () => {
     setHarnesses(["claude-code", "cursor", "codex"]);
     writeSkill(at(".agents", "refactor"), "r");
     mkdirSync(join(project, ".cursor", "skills"), { recursive: true });
+    mkdirSync(join(project, ".claude", "skills"), { recursive: true });
     symlinkSync("../../.agents/skills/refactor", at(".cursor", "refactor"));
-    writeSkill(at(".claude", "local"), "l");
+    symlinkSync("../../nowhere/refactor", at(".claude", "refactor"));
+    writeSkill(at(".claude", "local"), "l"); // Codex can't see it: that's "make usable", not tidy
 
     tidyAll();
     expect(existsSync(at(".cursor", "refactor"))).toBe(false);
-    expect(isLink(at(".claude", "refactor"))).toBe(true);
-    expect(isLink(at(".agents", "local"))).toBe(true);
+    expect(existsSync(join(at(".claude", "refactor"), "SKILL.md"))).toBe(true);
+    expect(existsSync(at(".agents", "local"))).toBe(false);
     expect(planProjectTidy(project).plans).toEqual([]);
   });
 
@@ -109,13 +111,15 @@ describe("project tidy", () => {
     expect(readManifest(project).skills.alpha?.links).toEqual([".agents/skills"]);
   });
 
-  test("records new links for managed skills so sync keeps them", () => {
+  test("a managed skill's duplicate becomes a link skilllib.json records, so sync keeps it", () => {
     writeSkill(join(tmp, "src", "alpha"), "v1");
     importSkill(join(tmp, "src", "alpha"));
     setHarnesses(["claude-code"]);
     addSkill(project, "alpha");
     setHarnesses(["claude-code", "codex"]);
+    writeSkill(at(".agents", "alpha"), "v1");
     tidyAll();
+    expect(isLink(at(".agents", "alpha"))).toBe(true);
     expect(readManifest(project).skills.alpha?.links).toEqual([".agents/skills"]);
   });
 
@@ -149,16 +153,18 @@ describe("git", () => {
     expect(isLink(at(".claude", "team"))).toBe(true);
   });
 
-  test("holds back a new link git would show until you say go", () => {
+  test("holds back changes to committed files until you say go", () => {
     setHarnesses(["claude-code", "codex"]);
-    writeSkill(at(".claude", "mine"), "m");
+    writeSkill(at(".claude", "both"), "b");
+    writeSkill(at(".agents", "both"), "b");
+    git("add", "-f", ".");
 
     const [plan] = planProjectTidy(project).plans;
-    expect(gitVisibleSteps(plan!)).toEqual([{ kind: "link", path: at(".agents", "mine"), target: at(".claude", "mine") }]);
+    expect(gitVisibleSteps(plan!)).toEqual([{ kind: "replace", path: at(".agents", "both"), target: at(".claude", "both") }]);
     expect(applyTidy(plan!).held).toHaveLength(1);
-    expect(existsSync(at(".agents", "mine"))).toBe(false);
+    expect(isLink(at(".agents", "both"))).toBe(false);
     applyTidy(plan!, { git: "go" });
-    expect(isLink(at(".agents", "mine"))).toBe(true);
+    expect(isLink(at(".agents", "both"))).toBe(true);
   });
 });
 

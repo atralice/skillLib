@@ -117,7 +117,8 @@ test("a project copy of a skill you keep global is the extra one", () => {
 test("tidy issues: a plain fix when git won't notice, a choice when it would, and doctor --fix never picks", () => {
   setHarnesses(["claude-code", "codex"]);
   const project = join(tmp, "web");
-  skill(join(project, ".claude", "skills", "mine"));
+  skill(join(project, ".claude", "skills", "mine"), "same");
+  skill(join(project, ".agents", "skills", "mine"), "same");
   skill(join(tmp, ".claude", "skills", "g"), "same");
   skill(join(tmp, ".agents", "skills", "g"), "same");
   skill(join(project, ".claude", "skills", "deploy"), "a");
@@ -131,6 +132,7 @@ test("tidy issues: a plain fix when git won't notice, a choice when it would, an
   expect(byId(`conflict:${project}:deploy`)?.choices?.map((c) => c.label)).toEqual(["Keep the .claude/skills copy", "Keep the .agents/skills copy"]);
 
   execFileSync("git", ["init", "-q"], { cwd: project });
+  execFileSync("git", ["add", "."], { cwd: project });
   const inRepo = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `tidy:${project}`);
   expect(inRepo?.fix).toBeUndefined();
   expect(inRepo?.choices?.map((c) => c.label)).toEqual(["Tidy, but keep git as it is", "Tidy everything"]);

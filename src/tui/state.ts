@@ -4,6 +4,7 @@ import { librarySkillDir, librarySkills, listBackups, projectStatus, type Backup
 import { enabledHarnesses, harnessesChosen, keptGlobal, readConfig, visibleProjects } from "../config.js";
 import type { HarnessId } from "../harnesses.js";
 import { findIssues, type Issue } from "../health.js";
+import { pluginBackups } from "../plugins.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
 import { libraryOrigins, machineSkills, type SourcedSkill } from "../sources.js";
 import { readSkillInfo } from "../skills.js";
@@ -100,7 +101,7 @@ export function loadSnapshot(): Snapshot {
     library,
     machine,
     issues: findIssues(projects, machine, new Set(library.map((l) => l.name)), statusOf),
-    backups: listBackups(),
+    backups: [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt)),
     roots: readConfig().roots,
     harnesses: enabledHarnesses(),
     harnessesChosen: harnessesChosen(),
