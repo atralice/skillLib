@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
-import { PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalSkillDirs } from "./sources.js";
 import { treeHash } from "./skills.js";
@@ -51,6 +51,14 @@ function entriesOf(dirs: string[], name: string): Entry[] {
     if (!link && !skill) return []; // some other folder; never touched
     return [{ dir, path, link, real, hash: null }];
   });
+}
+
+function readJson<T>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as T;
+  } catch {
+    return null;
+  }
 }
 
 /** Hashes real copies only when there's more than one to compare: hashing reads every file. */
@@ -101,6 +109,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   const rel = (dir: string) => relativeTo(root, dir);
   const readsOf = (id: HarnessId) => HARNESSES.find((h) => h.id === id)!.projectDirs.map(abs);
   let git: GitInfo | null | undefined; // looked up once, only if needed
+  const skillsLock = readJson<{ skills?: Record<string, unknown> }>(join(root, "skills-lock.json"))?.skills ?? {};
 
   for (const name of namesIn(ALL_PROJECT_DIRS.map(abs))) {
     const entries = entriesOf(ALL_PROJECT_DIRS.map(abs), name);
@@ -122,11 +131,15 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     } else if (chosen) {
       primary = reals.find((r) => r.dir === chosen);
     } else {
-      // The copy teammates get (committed), else the one in the folder your agents need most.
+      // The copy teammates get (committed); then, for a skill `npx skills` installed, its own
+      // real copy in .agents/skills (its symlink layout); else the folder your agents need most.
       if (git === undefined) git = gitInfo(root);
       const planned = installDirs(enabled).map(abs);
+      const fromSkillsSh = name in skillsLock;
       const rank = (e: Entry) =>
-        (git && ["committed", "changed"].includes(git.of(rel(e.path))) ? 0 : 100) + (planned.includes(e.dir) ? planned.indexOf(e.dir) : 50);
+        (git && ["committed", "changed"].includes(git.of(rel(e.path))) ? 0 : 1000) +
+        (fromSkillsSh && e.dir === abs(AGENTS_SKILLS_DIR) ? 0 : 100) +
+        (planned.includes(e.dir) ? planned.indexOf(e.dir) : 50);
       primary = [...reals].sort((a, b) => rank(a) - rank(b))[0];
     }
     if (!primary) continue;

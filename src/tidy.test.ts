@@ -56,6 +56,16 @@ describe("project tidy", () => {
     expect(isLink(at(".agents", "flow"))).toBe(false);
   });
 
+  test("a skill `npx skills` installed keeps its .agents/skills copy, matching its symlink layout", () => {
+    setHarnesses(["claude-code", "cursor", "codex"]);
+    writeSkill(at(".claude", "video-edit"), "same");
+    writeSkill(at(".agents", "video-edit"), "same");
+    writeFileSync(join(project, "skills-lock.json"), JSON.stringify({ version: 1, skills: { "video-edit": { source: "genmedia-labs/skills" } } }));
+
+    const [plan] = planProjectTidy(project).plans;
+    expect(plan?.steps).toEqual([{ kind: "replace", path: at(".claude", "video-edit"), target: at(".agents", "video-edit") }]);
+  });
+
   test("removes links no agent needs and repoints broken ones, but never adds links", () => {
     setHarnesses(["claude-code", "cursor", "codex"]);
     writeSkill(at(".agents", "refactor"), "r");
