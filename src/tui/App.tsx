@@ -40,6 +40,7 @@ import {
 import { color, kindColor, stateBadge } from "./theme.js";
 import { CleanupWizard, type KeyHandler } from "./CleanupWizard.js";
 import { HELP_TOPICS } from "../help.js";
+import { matchScore } from "../search.js";
 import { gitInfo, relativeTo, type GitInfo, type GitState } from "../git.js";
 import { buildReviewPrompt, copyText, type ReviewSkill } from "../review.js";
 
@@ -207,24 +208,6 @@ function describe(change: Change, where?: string): Result {
 function openFolder(dir: string) {
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
   spawn(cmd, [dir], { detached: true, stdio: "ignore" }).unref();
-}
-
-/**
- * Search match: prefix first, then substring, then word initials
- * ("cfw" → "cloudflare-workers"). Null when it doesn't match.
- */
-function matchScore(text: string, query: string): number | null {
-  if (!query) return 0;
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  if (t.startsWith(q)) return 0;
-  if (t.includes(q)) return 1;
-  const initials = t
-    .split(/[-_\s./]+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("");
-  return q.length >= 2 && initials.startsWith(q) ? 2 : null;
 }
 
 function placeKey(place: Place): string {

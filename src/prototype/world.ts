@@ -3,7 +3,8 @@
  * skills each project can use, their health issues, and the fixes. Fixes
  * mutate the world; the UI keeps snapshots for undo.
  */
-import type { HarnessId } from "../harnesses.js";
+import { harness, type HarnessId } from "../harnesses.js";
+import { matchScore } from "../search.js";
 
 export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
@@ -162,6 +163,11 @@ export function usable(w: World, projectName: string): Usable[] {
 
 // ─── Mutations (each returns what happened) ─────────────
 
+/** A repo's own copy of a skill, looked up in `w` (fixes must not mutate a render-time copy). */
+export function localSkill(w: World, projectName: string, name: string): LocalSkill {
+  return project(w, projectName).skills.find((s) => s.name === name)!;
+}
+
 function lib(w: World, name: string): LibrarySkill | undefined {
   return w.library.find((l) => l.name === name);
 }
@@ -190,10 +196,11 @@ export function removeFromProject(w: World, projectName: string, name: string): 
 }
 
 export function moveGlobalToRepos(w: World, m: MachineSkill, repos: string[]): string {
+  if (!repos.length) throw new Error("Tick at least one repo");
   importToLibrary(w, m.name);
   for (const r of repos) addToProject(w, r, m.name);
   removeMachine(w, m, "");
-  return `${m.name} now loads only in ${repos.length ? repos.join(", ") : "no repo"} (original backed up)`;
+  return `${m.name} now loads only in ${repos.join(", ")} (original backed up)`;
 }
 
 // ─── Health ─────────────────────────────────────────────
@@ -287,17 +294,10 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
 
 /** Issues for one skill as seen from a project. */
 export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
-  const all = usable(w, projectName);
-  if (u.machine) {
-    const issues = machineIssues(w, u.machine);
-    // A local copy of the same skill: the fix lives on the local row.
-    if (u.source === "global" && all.some((x) => x.local && x.name === u.name))
-      issues.unshift({ id: `twice-g:${u.name}`, severity: "problem", title: "Loaded twice: this repo has its own copy", decision: false, fixes: [] });
-    if (u.source === "plugin" && all.some((x) => x.local && x.name === u.name))
-      issues.unshift({ id: `twice-p:${u.name}`, severity: "problem", title: "Same name as a skill in this repo", decision: false, fixes: [] });
-    return issues;
-  }
+  if (u.machine) return machineIssues(w, u.machine);
   const s = u.local!;
+  // Fixes look the skill up in the world they're given, not the render-time copy.
+  const here = (w: World) => localSkill(w, projectName, s.name);
   const issues: Issue[] = [];
   const p = project(w, projectName);
   const g = w.machine.find((m) => m.source === "global" && m.name === s.name && !m.broken);
@@ -310,7 +310,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "problem",
       title: "Listed in skilllib.json but the folder is missing",
       decision: false,
-      fixes: [{ label: "Restore it (sync)", preview: `Reinstall ${s.name} v${s.version} into ${s.dir}.`, run: () => ((s.missing = false), `Restored ${s.name}`) }],
+      fixes: [{ label: "Restore it (sync)", preview: `Reinstall ${s.name} v${s.version} into ${s.dir}.`, run: (w) => ((here(w).missing = false), `Restored ${s.name}`) }],
     });
   if (g) {
     issues.push({
@@ -359,12 +359,12 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
           run: (w) => {
             const ll = lib(w, s.name)!;
             ll.latest += 1;
-            s.version = ll.latest;
-            s.edited = false;
+            here(w).version = ll.latest;
+            here(w).edited = false;
             return `${s.name} v${ll.latest} saved to your library`;
           },
         },
-        { label: "Discard the edits", preview: `Replace ${s.dir}/${s.name} with library v${s.version} (edits backed up).`, run: () => ((s.edited = false), `${s.name} reset to v${s.version}`) },
+        { label: "Discard the edits", preview: `Replace ${s.dir}/${s.name} with library v${s.version} (edits backed up).`, run: (w) => ((here(w).edited = false), `${s.name} reset to v${s.version}`) },
       ],
     });
   if (s.source === "lib" && l && s.version! < l.latest && !s.edited)
@@ -373,7 +373,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "warning",
       title: `Update available: v${s.version} → v${l.latest}`,
       decision: false,
-      fixes: [{ label: `Update to v${l.latest}`, preview: `Replace ${s.dir}/${s.name} with library v${l.latest}.`, run: (w) => ((s.version = lib(w, s.name)!.latest), `${s.name} updated to v${s.version}`) }],
+      fixes: [{ label: `Update to v${l.latest}`, preview: `Replace ${s.dir}/${s.name} with library v${l.latest}.`, run: (w) => ((here(w).version = lib(w, s.name)!.latest), `${s.name} updated to v${here(w).version}`) }],
     });
   const blind = w.agents.filter((a) => !u.agents.includes(a));
   if (!s.missing && blind.length)
@@ -386,7 +386,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         {
           label: `Link it into ${s.dir === ".claude/skills" ? ".agents/skills" : ".claude/skills"}`,
           preview: `Add a link (nothing is copied or moved), so ${blind.map(agentName).join(", ")} load it too.`,
-          run: () => ((s.linked = true), `${s.name} is now visible to every agent`),
+          run: (w) => ((here(w).linked = true), `${s.name} is now visible to every agent`),
         },
       ],
     });
@@ -396,7 +396,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "hint",
       title: "Same as your library skill, but not tracked",
       decision: false,
-      fixes: [{ label: "Track it", preview: `Record ${s.name} v${l.latest} in skilllib.json so library updates reach it.`, run: () => ((s.source = "lib"), (s.version = l.latest), `${s.name} is tracked`) }],
+      fixes: [{ label: "Track it", preview: `Record ${s.name} v${l.latest} in skilllib.json so library updates reach it.`, run: (w) => (Object.assign(here(w), { source: "lib", version: l.latest }), `${s.name} is tracked`) }],
     });
   if (s.source === "untracked" && !l && !plugin)
     issues.push({
@@ -408,7 +408,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         {
           label: "Import it into your library",
           preview: `Copy ${s.name} into your library as v1 and track it here, so other repos can use it.`,
-          run: (w) => (importToLibrary(w, s.name), (s.source = "lib"), (s.version = 1), `${s.name} imported and tracked`),
+          run: (w) => (importToLibrary(w, s.name), Object.assign(here(w), { source: "lib", version: 1 }), `${s.name} imported and tracked`),
         },
       ],
     });
@@ -440,15 +440,14 @@ export function projectIssues(w: World, projectName: string): { skill: Usable; i
 }
 
 export function agentName(id: HarnessId): string {
-  return { "claude-code": "Claude Code", cursor: "Cursor", codex: "Codex", zed: "Zed" }[id];
+  return harness(id).name;
 }
 
 // ─── Adding skills ──────────────────────────────────────
 
-/** Substring, or word initials ("cfw" → cloudflare-workers). */
+/** Substring, or word initials ("cfw" → cloudflare-workers): the TUI's search. */
 export function matches(name: string, query: string): boolean {
-  const q = query.toLowerCase();
-  return name.toLowerCase().includes(q) || name.split(/[-_.]/).map((w) => w[0] ?? "").join("").startsWith(q);
+  return matchScore(name, query) !== null;
 }
 
 /** One row of the add box: a group title, a library skill, or a way to make a new one. */
@@ -470,14 +469,16 @@ export type AddRow = {
  * Only the library for now; GitHub and skills.sh come later.
  */
 export function addRows(w: World, target: string | null, q: string): AddRow[] {
-  const taken = new Set(target ? usable(w, target).map((u) => u.name) : []);
+  // A global or plugin copy doesn't block adding the library version: that's how a skill moves into the repo.
+  const taken = new Set(target ? project(w, target).skills.map((s) => s.name) : []);
+  const loaded = new Set(target ? usable(w, target).map((u) => u.name) : []);
   const hit = (name: string, description: string) => !q || matches(name, q) || (q.length >= 3 && description.toLowerCase().includes(q));
   const library: AddRow[] = target
     ? w.library
         .filter((l) => !taken.has(l.name) && hit(l.name, l.description))
         .map((l) => ({ key: `lib:${l.name}`, name: l.name, note: `v${l.latest}`, description: l.description, run: (w) => addToProject(w, target, l.name) }))
     : [];
-  const exists = q !== "" && (taken.has(q) || w.library.some((l) => l.name === q));
+  const exists = q !== "" && (loaded.has(q) || w.library.some((l) => l.name === q));
   const where = target ? ` for ${target}` : "";
   const fresh: AddRow[] = exists
     ? []

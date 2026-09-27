@@ -5,7 +5,7 @@
 import { pathToFileURL } from "node:url";
 import { useRef, useState, type ReactNode } from "react";
 import { Box, render, Text, useApp, useInput, useWindowSize, type Key } from "ink";
-import { HARNESSES, type HarnessId } from "../harnesses.js";
+import { HARNESSES, harness } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "../tui/components.js";
 import { color } from "../tui/theme.js";
 import * as W from "./world.js";
@@ -62,7 +62,7 @@ type Modal =
   | { kind: "help" };
 
 const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.SEVERITY_RANK[b.severity];
-const agentOf = (id: HarnessId) => HARNESSES.find((h) => h.id === id)!;
+const agentOf = harness;
 
 function tag(u: W.Usable, w: W.World): Seg {
   const s = u.local;
@@ -264,7 +264,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, notify: (m: string) =>
   const remove: W.Fix = { label: "Remove from this repo", preview: `Delete ${s?.dir}/${u.name} in ${p}. Your library keeps it.`, run: (w) => W.removeFromProject(w, p, u.name) };
   if (s?.source === "lib")
     return [
-      ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => ((s.version = inLibrary.latest), `${u.name} updated to v${s.version}`) })] : []),
+      ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => ((W.localSkill(w, p, u.name).version = inLibrary.latest), `${u.name} updated to v${inLibrary.latest}`) })] : []),
       stub("Edit it in your library", notify),
       fixOption(remove),
       reviewPrompt(notify),
@@ -277,8 +277,8 @@ function skillActions(w: W.World, p: string, u: W.Usable, notify: (m: string) =>
   if (s)
     return [
       inLibrary
-        ? fixOption({ label: "Track it", preview: `Record ${u.name} v${inLibrary.latest} in skilllib.json.`, run: () => ((s.source = "lib"), (s.version = inLibrary.latest), `${u.name} is tracked`) })
-        : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library as v1 and track it here.`, run: (w) => (W.importToLibrary(w, u.name), (s.source = "lib"), (s.version = 1), `${u.name} imported and tracked`) }),
+        ? fixOption({ label: "Track it", preview: `Record ${u.name} v${inLibrary.latest} in skilllib.json.`, run: (w) => (Object.assign(W.localSkill(w, p, u.name), { source: "lib", version: inLibrary.latest }), `${u.name} is tracked`) })
+        : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library as v1 and track it here.`, run: (w) => (W.importToLibrary(w, u.name), Object.assign(W.localSkill(w, p, u.name), { source: "lib", version: 1 }), `${u.name} imported and tracked`) }),
       fixOption(remove),
       reviewPrompt(notify),
     ];
@@ -382,12 +382,12 @@ function globalActions(u: W.Usable, notify: (m: string) => void): Option[] {
 
 function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): Item[] {
   return w.library.map((l): Item => {
-    const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib"));
+    const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
     const uses = W.totalUses(w, l.name);
     const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => (rs.forEach((r) => W.addToProject(w, r, l.name)), `Added ${l.name} to ${rs.join(", ") || "no repo"}`) };
     const delFix: W.Fix = { label: "Delete from your library", preview: `Move ${l.name} and its versions to the backup folder.`, run: (w) => ((w.library = w.library.filter((x) => x.name !== l.name)), `Deleted ${l.name} from your library`) };
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
-    const behind = repos.filter((p) => (p.skills.find((s) => s.name === l.name)?.version ?? 0) < l.latest).length;
+    const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
     return {
       key: l.name,
       name: l.name,
@@ -406,7 +406,7 @@ function libraryItems(w: W.World, nameW: number, notify: (m: string) => void): I
         for (const line of wrap(l.description, width - 4, 3)) b.line([line, color.muted]);
         b.line();
         b.line(["Versions  ", color.muted], [Array.from({ length: l.latest }, (_, i) => `v${i + 1}`).join(" · ") + "  (newest)", color.text]);
-        b.line(["In repos  ", color.muted], [repos.map((p) => `${p.name} v${p.skills.find((s) => s.name === l.name)!.version}`).join(" · ") || "none", color.text]);
+        b.line(["In repos  ", color.muted], [repos.map((p) => { const s = p.skills.find((x) => x.name === l.name)!; return `${p.name} ${s.source === "lib" ? `v${s.version}` : s.source}`; }).join(" · ") || "none", color.text]);
         b.line();
         b.issues(issues);
         b.actions([
@@ -514,8 +514,10 @@ export function App() {
     if (!o.fix) return setToast("Not in the prototype");
     if (o.fix.pickRepos) {
       const name = current?.name ?? "";
-      const picked = new Set(world.projects.filter((p) => (world.usage[p.name]?.[name] ?? 0) > 0 && !p.skills.some((s) => s.name === name)).map((p) => p.name));
       const only = o.fix.candidates?.(world);
+      const picked = new Set(
+        world.projects.filter((p) => (world.usage[p.name]?.[name] ?? 0) > 0 && !p.skills.some((s) => s.name === name) && (!only || only.includes(p.name))).map((p) => p.name),
+      );
       return setModal({ kind: "repos", fix: o.fix, picked, cursor: 0, only, query: "" });
     }
     setModal({ kind: "confirm", fix: o.fix });
@@ -607,9 +609,10 @@ export function App() {
     return [
       header("#agents", "Agents"),
       ...HARNESSES.map((h) =>
-        row(`agent:${h.id}`, `${world.agents.includes(h.id) ? "[x]" : "[ ]"} ${h.icon} ${h.name}`, h.projectDirs.join(", "), () =>
-          apply((w) => ((w.agents = w.agents.includes(h.id) ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${world.agents.includes(h.id) ? "off" : "on"}`)),
-        ),
+        row(`agent:${h.id}`, `${world.agents.includes(h.id) ? "[x]" : "[ ]"} ${h.icon} ${h.name}`, h.projectDirs.join(", "), () => {
+          const wasOn = world.agents.includes(h.id);
+          apply((w) => ((w.agents = wasOn ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${wasOn ? "off" : "on"}`));
+        }),
       ),
       header("#roots", "Project folders"),
       row("root", "~/Projects", `${world.projects.length} repos found`, () => setToast("Not in the prototype")),
@@ -711,11 +714,13 @@ export function App() {
       if (key.downArrow) return setModal({ ...m, cursor: Math.min(repos.length - 1, m.cursor + 1) });
       if (input === " ") {
         const picked = new Set(m.picked);
-        const r = repos[m.cursor]!;
+        const r = repos[m.cursor];
+        if (!r) return;
         if (!picked.delete(r)) picked.add(r);
         return setModal({ ...m, picked });
       }
       if (key.return) {
+        if (!m.picked.size) return setToast("Tick at least one repo with space, or esc to cancel");
         setModal(null);
         setFocus("list");
         apply((w) => m.fix.pickRepos!(w, [...m.picked]));
@@ -775,9 +780,9 @@ export function App() {
   const confirmH = modal?.kind === "confirm" ? 5 : 0;
   const bodyH = Math.max(8, termRows - 1 - bottomH - confirmH);
   // Same count as Global's Issues tab: skills with something to fix.
-  const globalFlagged = globalItems(world, nameW, setToast).filter((i) => i.issues.length);
-  const globalIssues = globalFlagged.length;
-  const globalProblem = globalFlagged.some((i) => i.issues.some((x) => x.severity === "problem"));
+  const globalFlagged = world.machine.map((m) => [m.name, W.machineIssues(world, m)] as const).filter(([, issues]) => issues.length);
+  const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
+  const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
 
   const topBar = (
     <Box height={1} width={columns} justifyContent="space-between">

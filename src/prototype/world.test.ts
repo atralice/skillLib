@@ -51,3 +51,13 @@ test("Global only offers fixes that act on global skills, never on a repo", () =
     });
   });
 });
+
+test("repo fixes change the world they're given, not the one they were built from", () => {
+  const base = sampleWorld();
+  const react = usable(base, "web-app").find((u) => u.local && u.name === "react-patterns")!;
+  const update = issuesOf(base, "web-app", react).find((i) => i.id.startsWith("outdated"))!.fixes[0]!;
+  const w = structuredClone(base);
+  update.run(w);
+  expect(usable(w, "web-app").find((u) => u.name === "react-patterns")!.local!.version).toBe(2);
+  expect(react.local!.version).toBe(1);
+});
