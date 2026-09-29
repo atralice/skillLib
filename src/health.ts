@@ -244,7 +244,17 @@ export function findIssues(
   }
   issues.push(...global.conflicts.map(conflictIssue));
 
+  // Your global skills you haven't decided about load in every repo. Where each lives is your call: no fix.
   const kept = keptGlobal();
+  const unreviewed = [...new Set(loaded.filter((m) => m.movable && !kept.has(m.name)).map((m) => m.name))];
+  if (unreviewed.length) {
+    issues.push({
+      id: "review:global",
+      severity: "suggestion",
+      title: `${plural(unreviewed.length, "global skill")} of yours ${unreviewed.length === 1 ? "loads" : "load"} in every repo`,
+      detail: `${unreviewed.join(", ")}. Choose which repos keep each (Global → Clean up…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
+    });
+  }
   const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
   const globalNames = new Set(loaded.filter((m) => m.kind !== "plugin").map((m) => m.name));
   for (const root of projects) {
