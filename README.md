@@ -15,7 +15,7 @@ and every agent you use can see them.
 npx skilllib
 ```
 
-<img src="docs/screenshot-project.svg" alt="skilllib: Places on the left, a repo's skills with their issues and uses, and the selected skill's fixes and actions below" width="100%">
+<img src="docs/design/repo.svg" alt="skilllib: Places on the left, a repo's skills with their issues and uses, and the selected skill's fixes and actions below" width="100%">
 
 </div>
 
@@ -169,7 +169,7 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 ### Global skills
 
-<img src="docs/screenshot-global.svg" alt="Global: everything that loads in every repo, with skills installed together folded into one group and actions for the whole group" width="100%">
+<img src="docs/design/global.svg" alt="Global: everything that loads in every repo, with skills installed together folded into one group and actions for the whole group" width="100%">
 
 **Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
@@ -378,8 +378,11 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 pnpm install
 pnpm test && pnpm type-check && pnpm build   # tests run on bun
 pnpm dev                                     # run from source
+pnpm design                                  # render the TUI screens in docs/design
 npm link                                     # use your checkout as `skilllib`
 ```
+
+How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 
 **Releasing:**
 1. Bump `version` in `package.json` and merge to `main`.

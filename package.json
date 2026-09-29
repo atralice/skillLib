@@ -39,6 +39,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --target node22 --clean",
     "dev": "tsx src/index.ts",
+    "design": "tsx src/tui/design.ts",
     "type-check": "tsc --noEmit",
     "test": "bun test src",
     "prepublishOnly": "npm run type-check && npm run build"

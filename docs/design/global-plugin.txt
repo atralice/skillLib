@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── Loads everywhere ────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 13   Issues 5   Global 6   Plugins 4   Vendor 3                                   │
+│ ▌ ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
+│   ✓ Health          16   ││   ✦ Fix 2 issues automatically…                                                        │
+│   Projects ───────────── ││   ⧉ Review prompt for your 5 global skills…                                            │
+│   ◆ web-app          ✕   ││   ✕ ▸ frontend + 2 more · installed together 2026-09-20 (3)                 3 to fix   │
+│     api-server       ✕   ││   ✕ old-helper         global            –  Broken link                                │
+│     docs-site        ·   ││   ⚠ tailwind-tips      global            –  Not reviewed                               │
+│     mobile-app           ││ ▌   ▸ ⧉ vercel plugin (3)                                                              │
+│     billing              ││     pr-review          global ✓          4                                             │
+│     blog                 ││     ▸ claude.ai skills (2)                                                             │
+│     cli-tools            ││     use-railway        ⧉ railway         2                                             │
+│     dotfiles             ││     create-rule        cursor            –                                             │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── ⧉ vercel plugin ─────────────────────────────────────────────────────────────────────╮
+│     infra                ││ nextjs, vercel-deploy, vercel-env                                                      │
+│     landing              ││                                                                                        │
+│     marketing-site       ││                                                                                        │
+│     playground           ││ Actions  Replace vercel with library skills…                                           │
+│     scripts              ││          Turn the plugin off with /plugin in Claude Code · Review prompt               │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                   type to filter · space ★ fix · enter actions · tab tabs · esc back
