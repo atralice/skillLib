@@ -85,7 +85,7 @@ function sourceGroup(m: { kind: string; origin: string; name: string }): Item["g
       label: `${name} plugin`,
       about: synced
         ? `A Claude Code plugin your claude.ai account syncs to this machine. Only Claude Code loads it, in every repo. Manage it in claude.ai or with /plugin.`
-        : `A Claude Code plugin you installed (${m.origin}), enabled in ~/.claude/settings.json. Only Claude Code loads it, in every repo. Turn it off with /plugin.`,
+        : `A Claude Code plugin you installed (${m.origin}). Only Claude Code loads it: in every repo when ~/.claude/settings.json turns it on, and a repo's .claude/settings(.local).json can turn it on or off just there. Turn it off with /plugin.`,
     };
   }
   if (m.kind === "claude.ai")
@@ -522,6 +522,8 @@ export function App() {
     const git = gitFor(root);
     const gitOf = (path: string): GitState | null => (git ? git.of(relativeTo(root, path)) : null);
     const rows = snapshot.rows.get(root) ?? [];
+    // What agents load here besides the repo's own skills: a repo can turn a plugin on or off just for itself.
+    const loaded = snapshot.loadedIn.get(root) ?? snapshot.machine;
     const projectActions: Action[] = [
       {
         label: `Update every skill in ${where}`,
@@ -588,7 +590,7 @@ export function App() {
       const notInLibrary = r.state === "local only" || r.state === "untracked, differs from library" || r.state === "repo skill" || r.state === "repo skill, differs from library";
       const behind = r.state.includes("update");
       const key = `${r.location}:${r.name}`;
-      const globalCopy = snapshot.machine.find((m) => m.name === r.name && !m.broken && m.harnesses.length > 0);
+      const globalCopy = loaded.find((m) => m.name === r.name && !m.broken && m.harnesses.length > 0);
 
       // .claude/skills skills become dependencies once they're in the library.
       const saveToLibrary = () =>
@@ -790,14 +792,14 @@ export function App() {
       };
     };
     // The same skill name reaching agents from several places (e.g. a skill and a plugin both named ponytail).
-    const usableGlobals = snapshot.machine.filter((m) => !m.broken && m.harnesses.length > 0);
+    const usableGlobals = loaded.filter((m) => !m.broken && m.harnesses.length > 0);
     const copiesOf = (name: string): string[] => [
       ...rows.filter((r) => r.installed && r.name === name).map((r) => `this repo (${r.location})`),
       ...usableGlobals.filter((m) => m.name === name).map((m) => (m.kind === "plugin" ? `plugin ${m.origin}` : m.kind === "claude.ai" ? "claude.ai" : `global ${tildify(m.path)}`)),
     ];
     const dupes = (name: string) => copiesOf(name).length;
     // Global skills load here too; show them so the view matches what agents actually have.
-    const globalItem = (m: (typeof snapshot.machine)[number]): Item => {
+    const globalItem = (m: (typeof loaded)[number]): Item => {
       const inLib = libraryNames.has(m.name);
       const kept = m.movable && snapshot.keptGlobal.has(m.name);
       const alsoLocal = rows.some((r) => r.installed && r.name === m.name);
@@ -870,7 +872,7 @@ export function App() {
     };
     const local = rows.filter((r) => r.installed);
     const installable = rows.filter((r) => !r.installed);
-    const globals = snapshot.machine.filter((m) => !m.broken && m.harnesses.length > 0);
+    const globals = loaded.filter((m) => !m.broken && m.harnesses.length > 0);
     // One action to make every local skill (the repo's own included) usable by all your agents.
     const partial = local.filter((r) => r.state !== "folder missing" && r.visibility.some((v) => v.paths === 0));
     const missingAgents = [...new Set(partial.flatMap((r) => r.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
@@ -993,7 +995,7 @@ export function App() {
           groupActions: (members) => [{
               label: `Copy review prompt for all ${members.length}`,
               hint: "for an agent to decide keep / move / delete",
-              run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
+              run: () => copyReviewPrompt(loaded.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
             }],
         },
       ],
@@ -1004,7 +1006,7 @@ export function App() {
           groupActions: (members) => [
             {
               label: `Add all ${members.length} to ${where}`,
-              hint: members.some((m) => snapshot.machine.some((g) => g.name === m.skill?.name && !g.broken)) ? "some already load globally" : "",
+              hint: members.some((m) => loaded.some((g) => g.name === m.skill?.name && !g.broken)) ? "some already load globally" : "",
               run: () =>
                 act(() => {
                   const added = members.map((m) => addSkill(root, m.skill!.name)).filter((c) => c.action !== "skipped").length;

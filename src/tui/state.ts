@@ -6,7 +6,7 @@ import type { HarnessId } from "../harnesses.js";
 import { findIssues, type Issue } from "../health.js";
 import { pluginBackups } from "../plugins.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
-import { libraryOrigins, machineSkills, type SourcedSkill } from "../sources.js";
+import { libraryOrigins, machineSkills, skillsLoadedIn, type SourcedSkill } from "../sources.js";
 import { readSkillInfo } from "../skills.js";
 import { forgetLatest, latestVersion, versionHistory, type Version } from "../versions.js";
 export { versionHistory, type Version };
@@ -46,6 +46,8 @@ export type Snapshot = {
   rows: Map<string, ProjectRow[]>;
   library: LibraryRow[];
   machine: SourcedSkill[];
+  /** Per project, what agents load there besides its own skills (machine, with that repo's plugin settings). */
+  loadedIn: Map<string, SourcedSkill[]>;
   issues: Issue[];
   backups: Backup[];
   roots: string[];
@@ -82,6 +84,7 @@ export function loadSnapshot(): Snapshot {
   ];
   const origins = libraryOrigins();
   const machine = machineSkills();
+  const loadedIn = new Map(projects.map((p) => [p, skillsLoadedIn(p, machine)]));
   // Skills imported before origins were recorded: infer from a same-named skill on this machine.
   const inferred = (name: string) => {
     // Only global and skills.sh skills could have been imported; vendor copies can share the name.
@@ -102,7 +105,8 @@ export function loadSnapshot(): Snapshot {
     rows: new Map(projects.map((p) => [p, projectRows(p, library, statusOf(p))])),
     library,
     machine,
-    issues: findIssues(projects, machine, new Set(library.map((l) => l.name)), statusOf),
+    loadedIn,
+    issues: findIssues(projects, machine, new Set(library.map((l) => l.name)), statusOf, (p) => loadedIn.get(p) ?? machine),
     backups: [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt)),
     roots: readConfig().roots,
     harnesses: enabledHarnesses(),

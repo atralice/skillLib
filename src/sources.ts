@@ -183,10 +183,24 @@ function claudeAiSkills(): SourcedSkill[] {
 }
 
 type InstalledPlugins = { plugins?: Record<string, { installPath?: string }[]> };
+type PluginSettings = { enabledPlugins?: Record<string, boolean> };
 
-function pluginSkills(): SourcedSkill[] {
+function repoSettingsFiles(root: string): string[] {
+  return [join(root, ".claude", "settings.json"), join(root, ".claude", "settings.local.json")];
+}
+
+/**
+ * enabledPlugins as Claude Code resolves it: ~/.claude/settings.json, then (in
+ * a repo) its .claude/settings.json and .claude/settings.local.json, each
+ * overriding the one before for the plugins it names.
+ */
+export function enabledPlugins(root?: string): Record<string, boolean> {
+  const files = [join(claudeDir(), "settings.json"), ...(root ? repoSettingsFiles(root) : [])];
+  return Object.assign({}, ...files.map((f) => readJson<PluginSettings>(f)?.enabledPlugins ?? {}));
+}
+
+function pluginSkills(enabled: Record<string, boolean>): SourcedSkill[] {
   const plugins = join(claudeDir(), "plugins");
-  const enabled = readJson<{ enabledPlugins?: Record<string, boolean> }>(join(claudeDir(), "settings.json"))?.enabledPlugins ?? {};
   const installed = readJson<InstalledPlugins>(join(plugins, "installed_plugins.json"))?.plugins ?? {};
 
   const fromMarketplaces = Object.entries(enabled)
@@ -203,7 +217,7 @@ function pluginSkills(): SourcedSkill[] {
       return root ? skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: id })) : [];
     });
 
-  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/.
+  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/; "<name>@synced": false turns one off.
   const syncedDir = join(plugins, "synced");
   const fromSynced = existsSync(syncedDir)
     ? readdirSync(syncedDir)
@@ -214,6 +228,7 @@ function pluginSkills(): SourcedSkill[] {
             .flatMap((d) => {
               const root = join(syncedDir, bucket, d.name);
               const name = readJson<{ name?: string }>(join(root, ".claude-plugin", "plugin.json"))?.name ?? d.name;
+              if (enabled[`${name}@synced`] === false) return [];
               return skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: `${name} (claude.ai)` }));
             }),
         )
@@ -232,21 +247,32 @@ function pluginSkills(): SourcedSkill[] {
   }));
 }
 
+const byKindAndName = (a: SourcedSkill, b: SourcedSkill) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name);
+
 /**
  * Every skill your harnesses load in all projects on this machine, with where
- * it came from. claude.ai and plugin skills only apply to Claude Code.
+ * it came from. claude.ai and plugin skills only apply to Claude Code; plugins
+ * are the ones ~/.claude/settings.json turns on (a repo can differ: skillsLoadedIn).
  */
 export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): SourcedSkill[] {
   const claude = enabled.includes("claude-code");
   return [
     ...globalFolderSkills(enabled),
     ...(claude ? claudeAiSkills() : []),
-    ...(claude ? pluginSkills() : []),
+    ...(claude ? pluginSkills(enabledPlugins()) : []),
     ...cursorBuiltInSkills(enabled),
     ...systemSkills(enabled),
-  ].sort(
-    (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name),
-  );
+  ].sort(byKindAndName);
+}
+
+/**
+ * The machine's skills as your agents see them in `root`: a repo's
+ * .claude/settings(.local).json can turn a plugin on just there, or off just there.
+ */
+export function skillsLoadedIn(root: string, machine: SourcedSkill[], enabled: HarnessId[] = enabledHarnesses()): SourcedSkill[] {
+  if (!enabled.includes("claude-code")) return machine;
+  if (!repoSettingsFiles(root).some((f) => readJson<PluginSettings>(f)?.enabledPlugins)) return machine;
+  return [...machine.filter((m) => m.kind !== "plugin"), ...pluginSkills(enabledPlugins(root))].sort(byKindAndName);
 }
 
 // ─── Library origins ────────────────────────────────────

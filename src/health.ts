@@ -3,8 +3,8 @@ import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./c
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { addSkill, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
-import { claudePlugins, cursorPluginSkills, removePlugin } from "./plugins.js";
-import type { SourcedSkill } from "./sources.js";
+import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
+import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
@@ -75,12 +75,15 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
  * Things worth fixing across the machine: broken links, skills loaded twice
  * (duplicate copies, plugins that duplicate your skills), copies that differ,
  * projects behind the library, and skills that only live in one project.
+ * `loadedIn` is what agents load in a repo besides its own skills: the machine's,
+ * with plugins that repo's Claude Code settings turn on or off.
  */
 export function findIssues(
   projects: string[],
   machine: SourcedSkill[],
   libraryNames: Set<string>,
   statusOf: (root: string) => ProjectSkill[] = projectStatus,
+  loadedIn: (root: string) => SourcedSkill[] = (root) => skillsLoadedIn(root, machine),
 ): Issue[] {
   const issues: Issue[] = [];
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
@@ -119,11 +122,45 @@ export function findIssues(
     });
   }
 
-  // Plugins that duplicate your skills: your skill wins, the plugin goes.
-  const loadedYours = new Set([...loaded.filter((m) => m.movable).map((m) => m.name), ...[...statuses.values()].flat().map((s) => s.name)]);
-  const yours = new Set([...libraryNames, ...loadedYours]);
-  for (const plugin of claudePlugins(machine)) {
-    const dupes = plugin.skills.map((p) => basename(p)).filter((n) => yours.has(n));
+  // Plugins that duplicate your skills: your skill wins, and the plugin goes, everywhere or only in the repos where both load.
+  const loadedHere = new Map(projects.map((root) => [root, loadedIn(root)]));
+  const namesIn = (root: string) => statuses.get(root)!.map((s) => s.name);
+  const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
+  const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
+  const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
+    const where = basename(root);
+    const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
+    return [
+      { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it", run: () => orThrow(turnOffIn(plugin, root)) },
+      // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
+      ...(copies.length && copies.every((s) => s.managed)
+        ? [
+            {
+              label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
+              hint: "the plugin's copy stays; Your skills keeps yours",
+              run: () => {
+                for (const s of copies) {
+                  const r = removeSkill(root, s.name);
+                  if (r.action !== "removed") throw new Error(`${s.name}: ${r.reason}`);
+                }
+                return `${copies.map((s) => s.name).join(", ")} removed from ${where}; the plugin's copy stays`;
+              },
+            },
+          ]
+        : []),
+    ];
+  };
+
+  const machinePlugins = claudePlugins(machine);
+  for (const plugin of machinePlugins) {
+    const names = plugin.skills.map((p) => basename(p));
+    // Repos where the plugin still loads (a repo can turn it off) and has a copy of one of its skills.
+    const inRepos = projects
+      .filter((root) => loadedHere.get(root)!.some((m) => plugin.skills.includes(m.path)))
+      .map((root) => [root, namesIn(root).filter((n) => names.includes(n))] as const)
+      .filter(([, d]) => d.length);
+    const loadedYours = new Set([...globalYours, ...inRepos.flatMap(([, d]) => d)]);
+    const dupes = names.filter((n) => libraryNames.has(n) || loadedYours.has(n));
     if (!dupes.length) continue;
     const others = plugin.skills.length - dupes.length;
     const pluginName = plugin.id.split("@")[0]!;
@@ -133,32 +170,54 @@ export function findIssues(
       run: () => orThrow(removePlugin(plugin, "delete")),
     };
     const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => orThrow(removePlugin(plugin, "off")) };
-    const notLoaded = dupes.filter((n) => !loadedYours.has(n));
+    const bothLoad = dupes.filter((n) => loadedYours.has(n));
+    const notInstalled = dupes.filter((n) => !installedYours.has(n));
     issues.push({
       id: `plugin:${plugin.id}`,
-      severity: notLoaded.length === dupes.length ? "suggestion" : "problem",
+      severity: bothLoad.length ? "problem" : "suggestion",
       title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}`,
       detail: [
-        notLoaded.length < dupes.length ? `Claude Code loads both (the plugin's as /${pluginName}:${dupes[0]}). Your skill wins.` : "",
-        notLoaded.length
-          ? `Your ${notLoaded.join(", ")} ${notLoaded.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notLoaded.length === 1 ? "it" : "them"} where you need ${notLoaded.length === 1 ? "it" : "them"}.`
+        bothLoad.length ? `Claude Code loads both (the plugin's as /${pluginName}:${bothLoad[0]}). Your skill wins.` : "",
+        notInstalled.length
+          ? `Your ${notInstalled.join(", ")} ${notInstalled.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notInstalled.length === 1 ? "it" : "them"} where you need ${notInstalled.length === 1 ? "it" : "them"}.`
           : "",
         others ? `The plugin's other ${plural(others, "skill")} are copied into Your skills first, so nothing is lost.` : "",
         plugin.extras.length
           ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
           : "",
         plugin.synced ? "It's synced from claude.ai, so it can only be turned off here." : "",
+        inRepos.length ? `Or keep it and turn it off only in ${inRepos.map(([root]) => basename(root)).join(", ")}.` : "",
       ]
         .filter(Boolean)
         .join(" "),
-      choices: plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off],
+      choices: [...(plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off]), ...inRepos.flatMap(([root, d]) => repoChoices(plugin, root, d))],
     });
+  }
+
+  // Plugins a repo's own Claude Code settings turn on: they collide only there.
+  const machinePluginSkills = new Set(machinePlugins.flatMap((p) => p.skills));
+  for (const root of projects) {
+    const where = basename(root);
+    const repoOnly = loadedHere.get(root)!.filter((m) => m.kind === "plugin" && !machinePluginSkills.has(m.path));
+    for (const plugin of claudePlugins(repoOnly, root)) {
+      const names = plugin.skills.map((p) => basename(p));
+      const inRepo = namesIn(root).filter((n) => names.includes(n));
+      const dupes = names.filter((n) => inRepo.includes(n) || globalYours.has(n));
+      if (!dupes.length) continue;
+      issues.push({
+        id: `plugin:${root}:${plugin.id}`,
+        severity: "problem",
+        title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}, on in ${where}`,
+        detail: `${where}'s Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /${plugin.id.split("@")[0]}:${dupes[0]}). Your skill wins.`,
+        choices: repoChoices(plugin, root, inRepo),
+      });
+    }
   }
 
   // Cursor plugins can't be read or changed from outside Cursor: report them.
   if (enabledHarnesses().includes("cursor")) {
     const byPlugin = new Map<string, string[]>();
-    for (const s of cursorPluginSkills().filter((x) => loadedYours.has(x.name))) byPlugin.set(s.plugin, [...(byPlugin.get(s.plugin) ?? []), s.name]);
+    for (const s of cursorPluginSkills().filter((x) => installedYours.has(x.name))) byPlugin.set(s.plugin, [...(byPlugin.get(s.plugin) ?? []), s.name]);
     for (const [plugin, names] of byPlugin) {
       issues.push({
         id: `cursor-plugin:${plugin}`,
