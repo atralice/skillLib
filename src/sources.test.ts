@@ -67,3 +67,18 @@ test("reads Codex's /etc/codex/skills as a system folder skilllib never changes"
     delete process.env.SKILLLIB_CODEX_SYSTEM_DIR;
   }
 });
+
+test("a CLAUDE_CONFIG_DIR outside your home is still your global folder, not a system one", () => {
+  const home = join(tmp, "cfg-home");
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  process.env.CLAUDE_CONFIG_DIR = join(tmp, "opt", "claude");
+  skill(join(tmp, "opt", "claude", "skills", "mine"));
+  try {
+    setHarnesses(["claude-code"]);
+    expect(machineSkills().map((s) => [s.kind, s.name, s.movable])).toEqual([["global", "mine", true]]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+  }
+});

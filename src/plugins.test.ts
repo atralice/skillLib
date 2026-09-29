@@ -185,3 +185,11 @@ test("a nested .claude/skills copy of a plugin's skill counts, and is never offe
   expect(issue?.severity).toBe("problem");
   expect(issue?.choices?.map((c) => c.label)).toEqual(["Remove the plugin pt@mk", "Turn the plugin pt@mk off", "Turn the plugin pt@mk off in mono only"]);
 });
+
+test("a repo copy Claude Code doesn't load (only in .agents/skills) doesn't collide with a plugin", () => {
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  const web = join(tmp, "web");
+  skill(join(web, ".agents", "skills", "alpha"));
+  expect(findIssues([web], machineSkills(), new Set()).find((i) => i.id.startsWith("plugin:"))).toBeUndefined();
+});

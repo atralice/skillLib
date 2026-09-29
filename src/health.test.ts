@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
-import { addSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
+import { addSkill, createSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
@@ -224,10 +224,14 @@ test("skills npx skills installed in a project keep their source and aren't call
 test("a repo's own skill that also loads globally is flagged, and never offered for removal", () => {
   setHarnesses(["claude-code", "codex"]);
   const project = join(tmp, "web");
-  skill(join(project, ".agents", "skills", "alpha")); // committed by the team
-  skill(join(tmp, ".claude", "skills", "alpha"));
+  skill(join(project, ".agents", "skills", "alpha")); // committed by the team; Codex loads it
+  skill(join(tmp, ".claude", "skills", "alpha")); // Claude Code loads this one
 
   const twice = () => findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:alpha");
+  // No agent loads both copies: nothing to fix (unloading the global one would take it from Claude Code).
+  expect(twice()).toBeUndefined();
+
+  skill(join(tmp, ".agents", "skills", "alpha")); // now Codex loads a global copy too
   expect(twice()?.title).toBe("alpha: in web and also loaded globally");
   expect(twice()?.detail).toContain("load both the repo's copy and the global one");
   expect(twice()?.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
@@ -303,6 +307,10 @@ test("usage hints: skills a repo hasn't used, and library skills in no repo; ski
   expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "web: removed alpha" });
   expect(runFix(issues[1]!.choices![0]!)).toEqual({ ok: true, message: "Deleted 1 skill from Your skills" });
   expect(listBackups().map((b) => [b.name, b.kind])).toEqual([["idle", "trash"]]);
+
+  // A skill `skilllib new` just made has no version yet: judged by its folder's age, so not flagged within the window.
+  expect(createSkill("fresh", "d").ok).toBe(true);
+  expect(usageIssues([], machineSkills(), new Set(["fresh"]), { ...none, days: 30 })).toEqual([]);
 
   // Used there: no hint. And without Claude Code there are no transcripts, so no hints at all.
   expect(usageIssues([project], machineSkills(), new Set(), { inProject: () => 1, total: () => 1, days: 0 })).toEqual([]);

@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 
 /**
@@ -61,15 +61,17 @@ function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
   return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().includes(dir));
 }
 
-/** The global skill folders in your home that your harnesses read (~/.claude/skills, ~/.agents/skills, …). */
+/** Machine-wide folders an admin manages: read, never changed. */
+const systemDirs = () => [codexSystemDir()];
+
+/** Your global skill folders that your harnesses read (~/.claude/skills or $CLAUDE_CONFIG_DIR/skills, ~/.agents/skills, …). */
 export function globalSkillDirs(): string[] {
-  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => d.startsWith(userHome()));
+  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !systemDirs().includes(d));
 }
 
-/** Global folders outside your home (/etc/codex/skills): read, never changed. */
+/** Skills in the system folders (/etc/codex/skills). */
 function systemSkills(enabled: HarnessId[]): SourcedSkill[] {
-  const dirs = [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !d.startsWith(userHome()));
-  return dirs.flatMap((dir) =>
+  return systemDirs().flatMap((dir) =>
     skillDirsIn(dir).map((path) => ({
       name: basename(path),
       kind: "system" as const,

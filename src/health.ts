@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, librarySkillDir, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
@@ -129,10 +129,9 @@ export function findIssues(
 
   // Plugins that duplicate your skills: your skill wins, and the plugin goes, everywhere or only in the repos where both load.
   const loadedHere = new Map(projects.map((root) => [root, loadedIn(root)]));
-  // Skill names Claude Code can load in a repo: its own, and nested .claude/skills ones.
-  const namesIn = (root: string) => [
-    ...new Set([...statuses.get(root)!, ...nested.get(root)!.filter((n) => n.visibility.some((v) => v.id === "claude-code" && v.paths))].map((s) => s.name)),
-  ];
+  // Skill names Claude Code loads in a repo (plugins are Claude Code only): its own and nested ones it can see.
+  const seenByClaude = (s: ProjectSkill) => s.visibility.some((v) => v.id === "claude-code" && v.paths > 0);
+  const namesIn = (root: string) => [...new Set([...statuses.get(root)!, ...nested.get(root)!].filter(seenByClaude).map((s) => s.name))];
   const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
   const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
   const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
@@ -265,7 +264,10 @@ export function findIssues(
     });
   }
   const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
-  const globalNames = new Set(loaded.filter((m) => m.kind !== "plugin").map((m) => m.name));
+  // A repo copy and a global copy load twice only if one of your agents loads both.
+  const globalCopies = loaded.filter((m) => m.kind !== "plugin");
+  const alsoLoadedGlobally = (s: ProjectSkill) =>
+    globalCopies.some((m) => m.name === s.name && m.harnesses.some((id) => s.visibility.some((v) => v.id === id && v.paths > 0)));
   for (const root of projects) {
     const where = basename(root);
     const status = statuses.get(root)!;
@@ -411,7 +413,7 @@ export function findIssues(
           ],
         });
       }
-      if (globalNames.has(s.name)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);
+      if (alsoLoadedGlobally(s)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);
     }
   }
 
@@ -419,7 +421,7 @@ export function findIssues(
   for (const root of projects) {
     for (const n of nested.get(root)!) {
       const copies = alsoGlobal.get(n.name) ?? [];
-      if (globalNames.has(n.name) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false }]);
+      if (alsoLoadedGlobally(n) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false }]);
     }
   }
 
@@ -543,8 +545,9 @@ export function usageIssues(
   // Library skills in no repo and not loaded globally, unused everywhere.
   const installed = new Set([...projects.flatMap((root) => statusOf(root).map((s) => s.name)), ...machine.filter((m) => !m.broken).map((m) => m.name)]);
   const idle = [...libraryNames].filter((name) => {
+    // No version yet (a skill `skilllib new` just made): its folder's age instead.
     const first = versionHistory(name)[0];
-    return !installed.has(name) && uses.total(name) === 0 && (!first || Date.parse(first.date) <= since);
+    return !installed.has(name) && uses.total(name) === 0 && (first ? Date.parse(first.date) : addedAt(librarySkillDir(name))) <= since;
   });
   if (idle.length) {
     issues.push({
