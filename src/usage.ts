@@ -100,12 +100,14 @@ export type UsageSummary = { skill: string; uses: number; lastUsed: string; proj
 export function summarize(uses: SkillUse[], projectOf: (cwd: string) => string | null = () => null): UsageSummary[] {
   const bySkill = new Map<string, UsageSummary>();
   for (const use of uses) {
-    const summary = bySkill.get(use.skill) ?? { skill: use.skill, uses: 0, lastUsed: "", projects: new Set<string>() };
+    // A plugin's copy (/plugin:name) counts for the skill, so moving it out of the plugin keeps its history.
+    const skill = use.skill.split(":").pop()!;
+    const summary = bySkill.get(skill) ?? { skill, uses: 0, lastUsed: "", projects: new Set<string>() };
     summary.uses += 1;
     if (use.at > summary.lastUsed) summary.lastUsed = use.at;
     const project = projectOf(use.cwd);
     if (project) summary.projects.add(project);
-    bySkill.set(use.skill, summary);
+    bySkill.set(skill, summary);
   }
   return [...bySkill.values()].sort((a, b) => b.uses - a.uses);
 }

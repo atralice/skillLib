@@ -42,6 +42,11 @@ function skillsShLock(): Record<string, { source?: string }> {
   return readJson<{ skills?: Record<string, { source?: string }> }>(join(resolve(claudeDir(), ".."), ".agents", ".skill-lock.json"))?.skills ?? {};
 }
 
+/** Skills `npx skills add` installed into a project (not globally), by name. */
+export function projectSkillsLock(root: string): Record<string, { source?: string }> {
+  return readJson<{ skills?: Record<string, { source?: string }> }>(join(root, "skills-lock.json"))?.skills ?? {};
+}
+
 function realpathOrNull(path: string): string | null {
   try {
     return realpathSync(path);
@@ -260,5 +265,7 @@ export function originFor(dir: string): string {
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
   const project = dir.split(/[\\/]\.(?:claude|agents)[\\/]skills[\\/]/)[0];
-  return project && project !== dir ? `project: ${basename(project)}` : dir;
+  if (!project || project === dir) return dir;
+  const locked = projectSkillsLock(project)[basename(dir)]?.source;
+  return locked ? `skills.sh: ${locked}` : `project: ${basename(project)}`;
 }

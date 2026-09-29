@@ -28,12 +28,14 @@ import {
   syncProject,
   unloadGlobal,
   updateProject,
+  type Backup,
   type Change,
   type ProjectSkill,
 } from "../library.js";
 import { userHome } from "../paths.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
 import { readSkillInfo } from "../skills.js";
+import { claudeBinary, pluginBackups, recordRemovedPlugin, restorePlugin } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, type SourcedSkill } from "../sources.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
@@ -170,7 +172,7 @@ export function loadWorld(): World {
       skills: status.map((s) => localSkill(root, s, git)),
     };
   });
-  const backups = listBackups();
+  const backups = [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt));
   return {
     agents,
     cwd: cwd ? names.get(cwd)! : null,
@@ -228,7 +230,7 @@ function said(c: Change, repo: string): string {
   return `${c.action === "installed" ? "Added" : "Updated"} ${c.name}${c.to ? ` v${c.to}` : ""} in ${repo}`;
 }
 
-function realOps(roots: Map<string, string>, backups: ReturnType<typeof listBackups>): Ops {
+function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   const rootOf = (repo: string) => roots.get(repo)!;
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
   const info = new Map<string, RepoInfo>();
@@ -341,18 +343,22 @@ function realOps(roots: Map<string, string>, backups: ReturnType<typeof listBack
       // Claude Code does the removing: uninstall (keeping its data, so a reinstall brings it back as it was),
       // or, when it can't (plugins synced from claude.ai), turn it off on this machine.
       // A timeout, so a slow or waiting `claude` can't freeze the app.
-      const claude = (...args: string[]) => spawnSync("claude", ["plugin", ...args], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 });
+      // `claude` on PATH, or where the installer puts it (~/.local/bin/claude).
+      const bin = claudeBinary();
+      const claude = (...args: string[]) => spawnSync(bin!, ["plugin", ...args], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 });
       const synced = id.endsWith("@synced");
-      if (!synced && claude("uninstall", id, "--keep-data").status === 0) return `${copied}; ${id} is uninstalled (reinstall it anytime with /plugin)`;
-      const off = claude("disable", id);
-      if (off.status === 0)
+      const off = bin && !synced && claude("uninstall", id, "--keep-data").status === 0 ? "uninstalled" : bin ? claude("disable", id) : null;
+      if (off === "uninstalled") {
+        recordRemovedPlugin(id, "user");
+        return `${copied}; ${id} is uninstalled (restore it from Settings › Backups, or reinstall with /plugin)`;
+      }
+      if (off?.status === 0)
         return synced ? `${copied}; ${id} is off (it's synced from claude.ai: remove it there to delete it for good)` : `${copied}; ${id} is off: finish with /plugin uninstall ${id}`;
-      const why =
-        (off.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
-          ? "the claude command isn't on your PATH"
-          : off.error
-            ? `claude didn't answer: ${off.error.message}`
-            : (off.stderr || off.stdout).trim().split("\n")[0] || `exit ${off.status}`;
+      const why = !off
+        ? "the claude command isn't on your PATH"
+        : off.error
+          ? `claude didn't answer: ${off.error.message}`
+          : (off.stderr || off.stdout).trim().split("\n")[0] || `exit ${off.status}`;
       // No claude command: the same setting `claude plugin disable` writes, so nothing loads twice.
       try {
         setPluginEnabled(id, false);
@@ -376,7 +382,7 @@ function realOps(roots: Map<string, string>, backups: ReturnType<typeof listBack
     },
     restoreBackup: (i) => {
       const b = backups[i]!;
-      const r = restoreBackup(b);
+      const r = b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b);
       return r.ok ? `Restored ${b.name} to ${tildify(r.to)}` : `${b.name}: ${r.reason}`;
     },
     setAgents: (ids) => (setHarnesses(ids), "Saved your agents"),

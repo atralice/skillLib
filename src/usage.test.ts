@@ -35,3 +35,8 @@ test("reads Skill calls, skill file reads, and slash commands from transcript li
   expect(summary?.lastUsed).toBe("2026-09-27T12:00:00.000Z");
   expect([...(summary?.projects ?? [])]).toEqual(["/code/app"]);
 });
+
+test("a plugin's copy of a skill counts as the skill", () => {
+  const use = (skill: string, key: string) => ({ skill, source: "slash" as const, cwd: "", at: "2026-09-27T12:00:00.000Z", key });
+  expect(summarize([use("ponytail:ponytail", "a"), use("ponytail", "b")]).map((s) => [s.skill, s.uses])).toEqual([["ponytail", 2]]);
+});

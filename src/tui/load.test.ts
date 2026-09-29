@@ -119,7 +119,7 @@ function withClaude(installed: boolean, body: () => void) {
   const path = process.env.PATH;
   const bin = join(tmp, "bin");
   mkdirSync(bin, { recursive: true });
-  if (installed) writeFileSync(join(bin, "claude"), `#!/bin/sh\necho "$@" > "${tmp}/claude-args"\n`, { mode: 0o755 });
+  if (installed) writeFileSync(join(bin, "claude"), `#!/bin/sh\n[ "$1" = --version ] && echo "2.1 (Claude Code)" && exit 0\necho "$@" > "${tmp}/claude-args"\n`, { mode: 0o755 });
   process.env.PATH = bin;
   try {
     body();
@@ -135,7 +135,8 @@ test("a plugin is replaced by library skills, then uninstalled", () => {
   const fix = replacePluginFix(w, "tools@mk");
   expect(fix.preview).toContain("then uninstalls tools@mk from Claude Code");
   expect(fix.preview).toContain("It also brings commands: those go too.");
-  withClaude(true, () => expect(fix.pickRepos!(w, ["app"])).toBe("2 skills from tools@mk are in your library and in app; tools@mk is uninstalled (reinstall it anytime with /plugin)"));
+  withClaude(true, () => expect(fix.pickRepos!(w, ["app"])).toBe("2 skills from tools@mk are in your library and in app; tools@mk is uninstalled (restore it from Settings › Backups, or reinstall with /plugin)"));
+  expect(loadWorld().backups[0]).toMatchObject({ name: "tools@mk", from: "tools@mk" });
   expect(readFileSync(join(tmp, "claude-args"), "utf-8").trim()).toBe("plugin uninstall tools@mk --keep-data");
   w = loadWorld();
   expect(w.library.map((l) => `${l.name}:${l.origin}`).sort()).toEqual(["fmt:plugin: tools@mk", "lint:plugin: tools@mk"]);
