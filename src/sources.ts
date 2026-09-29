@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 
 /**
@@ -121,6 +121,11 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
     const target_ = e.isLink ? readlinkSync(e.path).replace(/\\/g, "/") : "";
     const inAgents = e.dir === agentsDir || target_.includes(".agents/skills");
     const locked = lock[e.name]?.source;
+    if (existsSync(join(e.path, OWN_SKILL_MARKER))) {
+      // The skill that teaches agents to use skilllib: deliberately global, so not yours to clean up.
+      skills.push({ name: e.name, kind: "built-in", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
+      continue;
+    }
     skills.push({
       name: e.name,
       kind: locked || (e.isLink && inAgents) ? "skills.sh" : "global",

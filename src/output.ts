@@ -1,15 +1,31 @@
 import { sep } from "node:path";
 import { homedir } from "node:os";
 
-const color = (code: number) => (s: string) => (process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s);
+let jsonMode = false;
+
+/**
+ * JSON mode (--json): stdout carries exactly one JSON document, for agents and
+ * scripts. Messages, warnings and hints move to stderr, without color.
+ */
+export function setJsonMode(on: boolean) {
+  jsonMode = on;
+}
+
+/** Prints `data` as the command's JSON result, on one line: agents pay for every token. */
+export function json(data: unknown) {
+  process.stdout.write(JSON.stringify(data) + "\n");
+}
+
+const color = (code: number) => (s: string) => (process.stdout.isTTY && !jsonMode ? `\x1b[${code}m${s}\x1b[0m` : s);
 export const green = color(32);
 export const yellow = color(33);
 export const red = color(31);
 export const dim = color(2);
 
-export const info = (msg: string) => console.log(msg);
-export const success = (msg: string) => console.log(`${green("✓")} ${msg}`);
-export const warn = (msg: string) => console.log(`${yellow("!")} ${msg}`);
+const out = (msg: string) => (jsonMode ? console.error(msg) : console.log(msg));
+export const info = (msg: string) => out(msg);
+export const success = (msg: string) => out(`${green("✓")} ${msg}`);
+export const warn = (msg: string) => out(`${yellow("!")} ${msg}`);
 export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 
 /** Home-relative path for display. */

@@ -53,6 +53,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
   - which agents load it
   - whether it's committed to git or gitignored
   - how often it was used
+- **💬 Talk to your agents about your skills.** Ask Claude Code, Cursor or Codex "which skills can you use here, and where do they come from?" or "which of my skills should this repo use?". They answer with skilllib.
 - **✦ Ask an agent.** Copy a ready-made prompt with all of that data, and let Claude Code, Cursor or Codex tell you what to keep, move or delete.
 - **🛟 Nothing is lost.** Every removal goes to a backup you can restore with one key.
 
@@ -195,6 +196,25 @@ Paste it into Claude Code, Cursor or Codex. You get back **keep global / move to
 
 It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at the top of Global (all your global skills).
 
+### Ask your agents about skills
+
+Run this once:
+
+```bash
+skilllib agent-skill install
+```
+
+This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health offers the same install, and upgrading skilllib keeps the skill up to date.
+
+Then, in any repo, you can ask:
+
+- *Which skills can you use in this repo?*
+- *Where does each one come from?*
+- *Which skills from my library would you add to this project?*
+- *Is anything out of date? Update it.*
+
+The agent runs `skilllib status --json`, `skilllib list --json` and similar commands, reads the repo, and answers. It asks before it adds or removes anything. `skilllib agent-skill remove` uninstalls it.
+
 ### Duplicates
 
 The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case on the skill it's about, with its fix. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
@@ -304,10 +324,26 @@ skilllib new <name> [desc]      create a skill
 skilllib usage [--days N]       which skills Claude Code used
 skilllib doctor [--fix]         find (and fix) problems
 skilllib restore [name]         put back something skilllib moved out
+skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+
+**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
+
+- **`status --json`** answers everything about the repo in one call:
+  - the repo's skills, with their source, version, state and git state
+  - the global skills, grouped by where they come from
+  - every problem skilllib found here, with its fix
+  - how often Claude Code used each skill here
+  - the repo's top-level files
+
+  Skills that share every attribute are grouped, and attributes at their usual value are left out.
+- **`list --json`**: inside a repo, the library skills the repo already has (names only), and the others with the first sentence of their description.
+- **`add`, `remove`, `sync` and `update`** list each change and the folders it wrote to, so there's nothing left to check.
+
+The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so an agent usually answers "which skills can you use here?" in one step.
 
 ## Files
 
@@ -320,6 +356,7 @@ Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-track
 | `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/`, `edit-backup/` | Everything skilllib removed, restorable from Settings › Backups |
 | `~/.skilllib/plugin-backup.json` | Plugins skilllib uninstalled, so Settings › Backups can reinstall them |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
+| `~/.claude/skills/skilllib/` | The skill that lets your agents use skilllib (`agent-skill install`) |
 
 Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` is honored.
 
