@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { addRoot, allowTrackedLinks, discoverProjects, removeRoot, setHarnesses, setHidden, setKeepGlobal } from "../config.js";
 import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "../harnesses.js";
@@ -29,7 +29,7 @@ import {
   type Visibility,
 } from "../library.js";
 import { restorePlugin } from "../plugins.js";
-import { runFix, type Choice } from "../health.js";
+import { runFix, usageIssues, type Choice } from "../health.js";
 import { KeyBar, ListPanel, Panel, wrap, type Cell, type Hint, type Row } from "./components.js";
 import {
   loadSnapshot,
@@ -438,8 +438,25 @@ export function App() {
 
   // ─── Left pane: places and projects ───────────────
 
-  const issueCount = snapshot.issues.length;
-  const problems = snapshot.issues.filter((i) => i.severity === "problem").length;
+  // Usage hints (unused skills) join Health once transcripts are read.
+  const issues = useMemo(
+    () =>
+      usage
+        ? [
+            ...snapshot.issues,
+            ...usageIssues(
+              snapshot.projects,
+              snapshot.machine,
+              new Set(snapshot.library.map((l) => l.name)),
+              { inProject: (root, skill) => usage.byProject.get(root)?.get(skill) ?? 0, total: (skill) => usage.total.get(skill) ?? 0, days: USAGE_DAYS },
+              (root) => (snapshot.rows.get(root) ?? []).filter((r) => r.installed),
+            ),
+          ]
+        : snapshot.issues,
+    [snapshot, usage],
+  );
+  const issueCount = issues.length;
+  const problems = issues.filter((i) => i.severity === "problem").length;
   const placeRow = (key: string, icon: string, label: string, hint: string, hintColor = color.muted): Row => ({
     key,
     cells: [
@@ -1594,7 +1611,7 @@ export function App() {
     return [
       {
         title: "Issues",
-        items: snapshot.issues.map((issue): Item => {
+        items: issues.map((issue): Item => {
           const fix = issue.fix;
           const result = (c: Choice): Result => {
             const r = runFix(c);

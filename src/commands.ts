@@ -19,11 +19,11 @@ import { claudeDir, libraryDir } from "./paths.js";
 import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { dim, error, green, info, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
-import { scanUsage, summarize, type UsageSummary } from "./usage.js";
+import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
-import { findIssues, runFix } from "./health.js";
+import { findIssues, runFix, usageIssues } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -395,9 +395,24 @@ export function restore(args: Args) {
 }
 
 /** Lists problems and suggestions; --fix applies every automatic fix. */
-export function doctor(args: Args) {
+export async function doctor(args: Args) {
   const projects = visibleProjects();
-  const issues = findIssues(projects, machineSkills(), new Set(librarySkills().map((s) => s.name)));
+  const machine = machineSkills();
+  const libraryNames = new Set(librarySkills().map((s) => s.name));
+  const issues = findIssues(projects, machine, libraryNames);
+  if (enabledHarnesses().includes("claude-code")) {
+    const projectOf = projectOfFactory(projects);
+    const uses = await scanUsage(args.days);
+    const inProject = usesByProject(uses, projectOf);
+    const total = new Map(summarize(uses, projectOf).map((s) => [s.skill, s.uses]));
+    issues.push(
+      ...usageIssues(projects, machine, libraryNames, {
+        inProject: (root, skill) => inProject.get(root)?.get(skill) ?? 0,
+        total: (skill) => total.get(skill) ?? 0,
+        days: args.days,
+      }),
+    );
+  }
   if (issues.length === 0) return success("Everything looks good");
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);

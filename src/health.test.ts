@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { findIssues, runFix } from "./health.js";
+import { findIssues, runFix, usageIssues } from "./health.js";
 import { addSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
@@ -276,4 +276,36 @@ test("nested skills count for skills loaded twice, but are never linked, importe
   expect(issues.find((i) => i.id === "twice:alpha")?.title).toBe("alpha: in mono and also loaded globally");
   // Codex doesn't load them from the root, but a link there would make them repo-wide.
   expect(issues.map((i) => i.id).filter((id) => /^(usable|local|adopt|tidy):/.test(id))).toEqual([]);
+});
+
+test("usage hints: skills a repo hasn't used, and library skills in no repo; skills newer than the window are left out", () => {
+  const project = join(tmp, "web");
+  skill(join(tmp, "src", "alpha"));
+  skill(join(tmp, "src", "idle"));
+  importSkill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "idle"));
+  addSkill(project, "alpha");
+  skill(join(project, ".agents", "skills", "team"));
+  const library = new Set(["alpha", "idle"]);
+  const none = { inProject: () => 0, total: () => 0 };
+
+  // Everything was just added: nothing is "unused in 30 days" yet.
+  expect(usageIssues([project], machineSkills(), library, { ...none, days: 30 })).toEqual([]);
+
+  Bun.sleepSync(5); // file times have sub-millisecond precision; "0 days" means added before now
+  const issues = usageIssues([project], machineSkills(), library, { ...none, days: 0 });
+  expect(issues.map((i) => [i.id, i.title])).toEqual([
+    [`unused:${project}`, "web: 2 skills unused in 0 days"],
+    ["unused:library", "1 skill in Your skills: in no repo, unused in 0 days"],
+  ]);
+  // Only what skilllib installed is offered for removal; the repo's own is the team's.
+  expect(issues[0]?.choices?.map((c) => c.label)).toEqual(["Remove the 1 skill skilllib installed from web"]);
+  expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "web: removed alpha" });
+  expect(runFix(issues[1]!.choices![0]!)).toEqual({ ok: true, message: "Deleted 1 skill from Your skills" });
+  expect(listBackups().map((b) => [b.name, b.kind])).toEqual([["idle", "trash"]]);
+
+  // Used there: no hint. And without Claude Code there are no transcripts, so no hints at all.
+  expect(usageIssues([project], machineSkills(), new Set(), { inProject: () => 1, total: () => 1, days: 0 })).toEqual([]);
+  setHarnesses(["codex"]);
+  expect(usageIssues([project], machineSkills(), library, { ...none, days: 0 })).toEqual([]);
 });

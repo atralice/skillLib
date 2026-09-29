@@ -10,7 +10,7 @@ import { libraryOrigins, machineSkills, skillsLoadedIn, type SourcedSkill } from
 import { readSkillInfo } from "../skills.js";
 import { forgetLatest, latestVersion, versionHistory, type Version } from "../versions.js";
 export { versionHistory, type Version };
-import { scanUsage, summarize } from "../usage.js";
+import { scanUsage, summarize, usesByProject } from "../usage.js";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 export const USAGE_DAYS = 30;
@@ -187,14 +187,7 @@ export async function loadUsage(projects: string[]): Promise<Usage> {
       .filter((u) => u.cwd && (existsSync(join(u.cwd, ".claude", "skills", u.skill)) || existsSync(join(u.cwd, ".agents", "skills", u.skill))))
       .map((u) => u.skill),
   );
-  const byProject = new Map<string, Map<string, number>>();
-  for (const use of uses) {
-    const root = projectOf(use.cwd);
-    if (!root) continue;
-    const counts = byProject.get(root) ?? new Map<string, number>();
-    counts.set(use.skill, (counts.get(use.skill) ?? 0) + 1);
-    byProject.set(root, counts);
-  }
+  const byProject = usesByProject(uses, projectOf);
   return {
     total: new Map(summaries.map((s) => [s.skill, s.uses])),
     byProject,

@@ -1,10 +1,12 @@
+import { lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
+import { versionHistory } from "./versions.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
@@ -478,5 +480,90 @@ export function findIssues(
     });
   }
 
+  return issues;
+}
+
+/** When a skill folder appeared (creation time where the OS keeps it, else last change). */
+function addedAt(path: string): number {
+  try {
+    const st = lstatSync(path);
+    return st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+  } catch {
+    return Date.now();
+  }
+}
+
+/**
+ * Hints from usage: skills a repo has that you haven't used there in `days`
+ * days, and library skills in no repo that you haven't used at all. Apart from
+ * findIssues because usage comes from reading transcripts (slow, async). Only
+ * Claude Code leaves transcripts skilllib can read, so without it there are no
+ * hints: everything would look unused. Skills added within `days` are left out.
+ */
+export function usageIssues(
+  projects: string[],
+  machine: SourcedSkill[],
+  libraryNames: Set<string>,
+  uses: { inProject: (root: string, skill: string) => number; total: (skill: string) => number; days: number },
+  statusOf: (root: string) => { name: string; managed: boolean; path: string; state: string }[] = projectStatus,
+): Issue[] {
+  if (!enabledHarnesses().includes("claude-code")) return [];
+  const issues: Issue[] = [];
+  const since = Date.now() - uses.days * 24 * 60 * 60 * 1000;
+
+  for (const root of projects) {
+    const where = basename(root);
+    const unused = statusOf(root).filter((s) => s.state !== "folder missing" && uses.inProject(root, s.name) === 0 && addedAt(s.path) <= since);
+    if (!unused.length) continue;
+    const removable = unused.filter((s) => s.managed);
+    issues.push({
+      id: `unused:${root}`,
+      severity: "suggestion",
+      title: `${where}: ${plural(unused.length, "skill")} unused in ${uses.days} days`,
+      detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
+        unused.length > removable.length ? " The repo's own skills are the team's: remove those in the repo if nobody needs them." : ""
+      }`,
+      choices: removable.length
+        ? [
+            {
+              label: `Remove ${removable.length === unused.length ? "them" : `the ${plural(removable.length, "skill")} skilllib installed`} from ${where}`,
+              hint: "Your skills keeps them; edited ones stay",
+              run: () => {
+                const changes = removable.map((s) => removeSkill(root, s.name));
+                const removed = changes.filter((c) => c.action === "removed").map((c) => c.name);
+                const kept = changes.filter((c) => c.action !== "removed").map((c) => c.name);
+                return `${where}: removed ${removed.join(", ") || "nothing"}${kept.length ? `; kept ${kept.join(", ")} (local edits)` : ""}`;
+              },
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  // Library skills in no repo and not loaded globally, unused everywhere.
+  const installed = new Set([...projects.flatMap((root) => statusOf(root).map((s) => s.name)), ...machine.filter((m) => !m.broken).map((m) => m.name)]);
+  const idle = [...libraryNames].filter((name) => {
+    const first = versionHistory(name)[0];
+    return !installed.has(name) && uses.total(name) === 0 && (!first || Date.parse(first.date) <= since);
+  });
+  if (idle.length) {
+    issues.push({
+      id: "unused:library",
+      severity: "suggestion",
+      title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${uses.days} days`,
+      detail: `${idle.sort().join(", ")}. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.`,
+      choices: [
+        {
+          label: `Delete ${idle.length === 1 ? "it" : `all ${idle.length}`} from Your skills`,
+          hint: "restorable from Health",
+          run: () => {
+            const done = idle.map((name) => [name, deleteLibrarySkill(name)] as const);
+            const failed = done.filter(([, r]) => !r.ok).map(([name]) => name);
+            return `Deleted ${plural(done.length - failed.length, "skill")} from Your skills${failed.length ? `; kept ${failed.join(", ")}` : ""}`;
+          },
+        },
+      ],
+    });
+  }
   return issues;
 }
