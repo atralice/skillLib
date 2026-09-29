@@ -10,6 +10,16 @@ import { matchScore } from "../search.js";
 export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
 
+/** Same-name copies that should be one real copy plus links (see tidy.ts). */
+export type Dupes = {
+  /** What tidy would change: identical copies become links, links no agent you use needs go. */
+  steps: string[];
+  /** The steps git would see: the fix asks before making them. */
+  git: string[];
+  /** Copies whose content differs; `dir` is what `ops.tidy` keeps. Only `canWin` ones can (skilllib.json pins one). */
+  differ?: { dir: string; label: string; runs: HarnessId[]; canWin: boolean }[];
+};
+
 export type LocalSkill = {
   name: string;
   /** lib: tracked in skilllib.json · repo: the team's, in .agents/skills · untracked: only on this machine. */
@@ -27,6 +37,9 @@ export type LocalSkill = {
   library?: "same" | "differs" | "missing";
   /** Its git state; null when the repo isn't a git repo. */
   git: GitState | null;
+  dupes?: Dupes;
+  /** A Cursor plugin with the same skill (Cursor's plugin state can't be read: maybe off). */
+  cursorPlugin?: string;
 };
 
 export type MachineSkill = {
@@ -46,6 +59,9 @@ export type MachineSkill = {
   installed?: string;
   /** For plugin skills: what else the plugin brings, e.g. ["commands", "hooks"]. */
   pluginParts?: string[];
+  /** Global skills: copies in your other global folders. */
+  dupes?: Dupes;
+  cursorPlugin?: string;
 };
 
 export type LibrarySkill = {
@@ -89,6 +105,11 @@ export type Ops = {
   importLocal(repo: string, name: string): Result;
   /** This repo's copy into your library (new skill, or a new version); the repo's copy stays. */
   copyToLibrary(repo: string, name: string): Result;
+  /**
+   * One real copy plus the links your agents need, in a repo (or your global folders when null).
+   * `keep` picks the copy that wins when they differ; unless `allowGit`, it asks before changing what git tracks.
+   */
+  tidy(repo: string | null, name: string, opts?: { keep?: string; allowGit?: boolean }): Result;
   unloadGlobal(m: MachineSkill): Result;
   deleteGlobal(m: MachineSkill): Result;
   keepGlobal(name: string, keep: boolean): Result;
@@ -217,6 +238,64 @@ function lib(w: World, name: string): LibrarySkill | undefined {
 
 // ─── Health ─────────────────────────────────────────────
 
+const agentNames = (ids: HarnessId[]) => ids.map((a) => harness(a).name).join(", ");
+
+/** Duplicate copies of a skill in a repo, or in your global folders (`repo` null). */
+function dupeIssues(repo: string | null, name: string, d: Dupes): Issue[] {
+  const g = repo === null ? "-g" : "";
+  if (d.differ)
+    return [
+      {
+        id: `conflict${g}:${name}`,
+        severity: "problem",
+        title: `Copies differ: ${d.differ.map((c) => c.label + (c.runs.length ? ` (${agentNames(c.runs)})` : "")).join(" vs ")}`,
+        short: "Copies differ",
+        decision: true,
+        fixes: d.differ
+          .filter((c) => c.canWin)
+          .map((c) => ({
+            label: `Keep the ${c.label} copy`,
+            preview: `The other ${d.differ!.length === 2 ? "copy becomes a link" : "copies become links"} to it, so every agent runs this one. Replaced copies go to Settings › Backups.${repo ? " If git tracks a copy that changes, skilllib asks first." : ""}`,
+            run: (w: World) => w.ops.tidy(repo, name, { keep: c.dir }),
+          })),
+      },
+    ];
+  return [
+    {
+      id: `copies${g}:${name}`,
+      severity: "warning",
+      title: repo ? "More copies or links in this repo than your agents need" : "Identical copies in several global folders",
+      short: "Extra copies",
+      decision: false,
+      fixes: [
+        {
+          label: "Keep one copy, plus the links your agents need",
+          preview: `${d.steps.join("; ")}. Replaced copies go to Settings › Backups.${d.git.length ? ` Git would see ${d.git.join(", ")}: skilllib asks before ${d.git.length === 1 ? "that one" : "those"}.` : ""}`,
+          run: (w) => w.ops.tidy(repo, name),
+        },
+      ],
+    },
+  ];
+}
+
+/** Cursor can't be read or changed from outside: reported, and left to you. */
+function cursorPluginIssue(name: string, plugin: string): Issue {
+  return {
+    id: `cursor-plugin:${name}`,
+    severity: "warning",
+    title: `Also in the Cursor plugin ${plugin}: Cursor lists both while it's on`,
+    short: "Also in a Cursor plugin",
+    decision: true,
+    fixes: [
+      {
+        label: "Turn the plugin off in Cursor (Settings › Plugins)",
+        preview: "skilllib can't read or change Cursor's plugins. Your skill wins once the plugin is off.",
+        run: () => `Turn ${plugin} off in Cursor; skilllib can't tell whether it's on`,
+      },
+    ],
+  };
+}
+
 /** What you can do with one of your global skills. */
 export function globalFixes(m: MachineSkill): Fix[] {
   return [
@@ -273,17 +352,8 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
         },
       ],
     });
-  // Two of your own folders with the same skill, both loaded by one agent: keep one.
-  const twins = w.machine.filter((x) => x.source === "global" && x.name === m.name && !x.broken && x.agents.some((a) => m.agents.includes(a)));
-  if (m.source === "global" && twins.length > 1)
-    issues.push({
-      id: `dup-global:${m.name}`,
-      severity: "problem",
-      title: `Loaded twice: in ${twins.map((t) => t.where).join(" and ")}`,
-      short: "Loaded twice",
-      decision: true,
-      fixes: twins.map((t) => ({ label: `Delete the copy in ${t.where}`, preview: `Move ${t.path} to Settings › Backups; the other copy stays.`, run: (w: World) => w.ops.deleteGlobal(t) })),
-    });
+  if (m.source === "global" && m.dupes) issues.push(...dupeIssues(null, m.name, m.dupes));
+  if (m.source === "global" && m.cursorPlugin && m.agents.includes("cursor")) issues.push(cursorPluginIssue(m.name, m.cursorPlugin));
   if (m.source === "global" && !m.kept)
     issues.push({ id: `global:${m.name}`, severity: "warning", title: "Global, not reviewed: loads in every repo", short: "Not reviewed", decision: true, fixes: globalFixes(m) });
   return issues;
@@ -321,7 +391,24 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       decision: false,
       fixes: [{ label: "Copy it back into your library", preview: `Copy this repo's ${s.name} into your library, so it can be restored and shared again.`, run: (w) => w.ops.copyToLibrary(projectName, s.name) }],
     });
-  if (g)
+  // You keep it global on purpose: this repo's copy is the extra one (Claude Code runs the global one anyway).
+  if (g?.kept)
+    issues.push({
+      id: `kept-g:${s.name}`,
+      severity: "warning",
+      title: `Also global in ${g.where}, and you keep it global: this repo's copy is extra`,
+      short: "Extra: you keep it global",
+      decision: true,
+      fixes: [
+        ...(s.source !== "repo" ? [{ ...remove, label: "Remove this repo's copy, keep it global" }] : []),
+        {
+          label: "Stop loading it globally after all",
+          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Other repos stop seeing it.`,
+          run: (w: World) => w.ops.unloadGlobal(g),
+        },
+      ],
+    });
+  else if (g)
     issues.push({
       id: `twice-g:${s.name}`,
       severity: "problem",
@@ -353,6 +440,8 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         },
       ],
     });
+  if (s.dupes) issues.push(...dupeIssues(projectName, s.name, s.dupes));
+  if (s.cursorPlugin && s.agents.includes("cursor")) issues.push(cursorPluginIssue(s.name, s.cursorPlugin));
   if (s.source === "lib" && s.edited)
     issues.push({
       id: `edited:${s.name}`,
@@ -390,7 +479,9 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         },
       ],
     });
-  if (s.source !== "lib" && s.library === "differs")
+  // Copies that differ need a winner first: comparing one of them with your library says nothing.
+  const differ = !!s.dupes?.differ;
+  if (s.source !== "lib" && s.library === "differs" && !differ)
     issues.push({
       id: `differs:${s.name}`,
       severity: "hint",
@@ -404,7 +495,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
           : []),
       ],
     });
-  if (s.source === "untracked" && s.library === "same")
+  if (s.source === "untracked" && s.library === "same" && !differ)
     issues.push({
       id: `adopt:${s.name}`,
       severity: "hint",
@@ -413,7 +504,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       decision: false,
       fixes: [{ label: "Track it", preview: `Record ${s.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(projectName, s.name) }],
     });
-  if (s.source === "untracked" && !l && !vendor)
+  if (s.source === "untracked" && !l && !vendor && !differ)
     issues.push({
       id: `local:${s.name}`,
       severity: "hint",
