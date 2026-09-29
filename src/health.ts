@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
@@ -368,6 +368,38 @@ export function findIssues(
           title: `${s.name} in ${where} isn't tracked`,
           detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
           choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
+        });
+      }
+      if (s.state === "edited locally" || s.state === "edited locally, update available") {
+        // Keeping the edits is also fine: skilllib never overwrites them. So these are choices, and "keep" is doing nothing.
+        const newer = s.state !== "edited locally";
+        const pinned = s.version ? `v${s.version}` : "the library version";
+        issues.push({
+          id: `edited:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} has local edits`,
+          detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.`,
+          choices: [
+            {
+              label: "Save as a new version in Your skills",
+              hint: newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`,
+              run: () => {
+                importSkill(s.path, { force: true });
+                const c = addSkill(root, s.name);
+                if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
+                return `${s.name}: saved as v${c.to}; ${where} uses it`;
+              },
+            },
+            {
+              label: "Discard the edits",
+              hint: `back to ${pinned}; the edited copy is restorable from Health`,
+              run: () => {
+                const c = discardEdits(root, s.name);
+                if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
+                return `${s.name}: edits discarded, back to v${c.to}`;
+              },
+            },
+          ],
         });
       }
       if (globalNames.has(s.name)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);

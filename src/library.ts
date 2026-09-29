@@ -5,7 +5,7 @@ import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibH
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
-import { globalSkillDirs, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
+import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
@@ -391,6 +391,20 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
   });
 }
 
+/**
+ * Puts a managed skill back to the version skilllib.json pins (or the newest,
+ * if none is pinned). The edited copy goes to ~/.skilllib/edit-backup first,
+ * restorable from Health.
+ */
+export function discardEdits(root: string, name: string): Change {
+  const dep = readManifest(root).skills[name];
+  if (!dep) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
+  const dir = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
+  const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
+  if (existsSync(dir) && !isLink(dir)) stash(dir, "edit-backup");
+  return addSkill(root, name, { force: true, version: pinned });
+}
+
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
 export function updateProject(root: string, names?: string[], { force = false } = {}): Change[] {
   const { skills } = readManifest(root);
@@ -419,9 +433,10 @@ export function importSkill(dir: string, { force = false } = {}): { name: string
   if (existing === incoming) return { name, status: "unchanged" };
   if (existing !== null && !force) return { name, status: "exists" };
   mkdirSync(libraryDir(), { recursive: true });
-  const origin = originFor(dir);
+  // A new version keeps where the skill first came from (saving a repo's edits doesn't make it "from that repo").
+  const origin = existing !== null && libraryOrigins()[name] ? null : originFor(dir);
   copySkill(dir, to);
-  recordOrigin(name, origin);
+  if (origin) recordOrigin(name, origin);
   forgetLatest(name);
   latestVersion(name);
   return { name, status: existing === null ? "added" : "updated" };
@@ -516,14 +531,15 @@ export function createSkill(name: string, description: string): { ok: true; dir:
 
 /**
  * trash: deleted from the library · global-backup: unloaded from global ·
- * tidy-backup: a duplicate copy replaced by a link · plugin: a Claude Code
- * plugin skilllib removed (path holds its scope; see plugins.ts)
+ * tidy-backup: a duplicate copy replaced by a link · edit-backup: a project
+ * copy's local edits, discarded · plugin: a Claude Code plugin skilllib removed
+ * (path holds its scope; see plugins.ts)
  */
-export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "plugin"; path: string; movedAt: string; from: string };
+export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "edit-backup" | "plugin"; path: string; movedAt: string; from: string };
 
 /** Everything skilllib moved out of the way, newest first. */
 export function listBackups(): Backup[] {
-  return (["trash", "global-backup", "tidy-backup"] as const)
+  return (["trash", "global-backup", "tidy-backup", "edit-backup"] as const)
     .flatMap((kind) => {
       const dir = join(skilllibHome(), kind);
       if (!existsSync(dir)) return [];
@@ -541,12 +557,14 @@ export function listBackups(): Backup[] {
 
 /**
  * Puts a backup back where it came from: trash → library, global-backup →
- * ~/.claude/skills, tidy-backup → the folder it was in. A link tidy left in
- * its place is replaced by the original.
+ * ~/.claude/skills, tidy-backup and edit-backup → the folder it was in. A link
+ * tidy left in its place is replaced by the original, and so is the library
+ * version that replaced discarded edits (it's still in the library).
  */
 export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: false; reason: string } {
   const to = backup.from;
   if (backup.kind === "tidy-backup" && isLink(to)) unlinkSync(to);
+  if (backup.kind === "edit-backup" && !isLink(to) && versionForHash(backup.name, treeHash(to) ?? "") !== null) rmSync(to, { recursive: true, force: true });
   let taken = existsSync(to);
   try {
     taken = taken || lstatSync(to) !== null;

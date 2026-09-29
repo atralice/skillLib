@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
@@ -236,4 +236,31 @@ test("a repo's own skill that also loads globally is flagged, and never offered 
   setKeepGlobal(["alpha"], true);
   expect(twice()?.choices).toBeUndefined();
   expect(twice()?.detail).toContain("web has its own copy");
+});
+
+test("local edits to an installed skill: save them as a new version, or discard them (restorable)", () => {
+  const project = join(tmp, "web");
+  mkdirSync(project);
+  skill(join(tmp, "src", "alpha"), "v1");
+  importSkill(join(tmp, "src", "alpha"));
+  const origin = libraryOrigins().alpha;
+  addSkill(project, "alpha");
+  const copy = join(project, ".claude", "skills", "alpha", "SKILL.md");
+  const edited = () => findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `edited:${project}:alpha`);
+
+  expect(edited()).toBeUndefined();
+  writeFileSync(copy, "---\ndescription: d\n---\nmy edit\n");
+  expect(edited()?.choices?.map((c) => c.label)).toEqual(["Save as a new version in Your skills", "Discard the edits"]);
+  expect(runFix(edited()!.choices![0]!)).toEqual({ ok: true, message: "alpha: saved as v2; web uses it" });
+  expect(readManifest(project).skills.alpha?.version).toBe(2);
+  expect(readFileSync(join(tmp, "home", "library", "alpha", "SKILL.md"), "utf-8")).toContain("my edit");
+  expect(libraryOrigins().alpha).toBe(origin); // still where it first came from
+  expect(edited()).toBeUndefined();
+
+  writeFileSync(copy, "---\ndescription: d\n---\noops\n");
+  expect(runFix(edited()!.choices![1]!)).toEqual({ ok: true, message: "alpha: edits discarded, back to v2" });
+  expect(readFileSync(copy, "utf-8")).toContain("my edit");
+  const backup = listBackups().find((b) => b.kind === "edit-backup");
+  expect(backup && restoreBackup(backup)).toMatchObject({ ok: true });
+  expect(readFileSync(copy, "utf-8")).toContain("oops");
 });

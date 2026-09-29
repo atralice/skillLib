@@ -266,6 +266,7 @@ const BACKUP_LABEL: Record<Backup["kind"], string> = {
   trash: "deleted from library",
   "global-backup": "unloaded from global",
   "tidy-backup": "duplicate replaced by a link",
+  "edit-backup": "local edits discarded",
   plugin: "plugin removed",
 };
 
