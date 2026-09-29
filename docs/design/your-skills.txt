@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── Your skills ─────────────────────────────────────────────────────────────────────────╮
+│ ▌ ▤ Your skills     7    ││  All 7   Issues 1                                                                      │
+│   ◈ Global          13   ││     Skill              Ver  Used in            Uses  Issue / description               │
+│   ✓ Health          16   ││   + New skill…                                                                         │
+│   Projects ───────────── ││ ▌ · sql-migrations     v1   0 repos               –  Used in no repo                   │
+│   ◆ web-app          ✕   ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │
+│     api-server       ✕   ││     api-conventions    v1   2 repos              13  Our REST conventions: resource n… │
+│     docs-site        ·   ││     react-patterns     v2   2 repos (1 behind)   11  Component patterns for React 19:… │
+│     mobile-app           ││     mdx-tips           v1   1 repo                1  MDX components and frontmatter u… │
+│     billing              ││     seo-meta           v1   1 repo                –  Page titles, Open Graph and stru… │
+│     blog                 ││     testing-guide      v3   1 repo                –  How we write unit and e2e tests:… │
+│     cli-tools            ││                                                                                        │
+│     dotfiles             ││                                                                                        │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── sql-migrations ──────────────────────────────────────────────────────────────────────╮
+│     infra                ││ Write reversible SQL migrations and backfills safely.                                  │
+│     landing              ││                                                                                        │
+│     marketing-site       ││ Versions  v1  (newest)                                                                 │
+│     playground           ││ In repos  none                                                                         │
+│     scripts              ││                                                                                        │
+│     status-page          ││ · Used in no repo  · your call                                                         │
+│    ───────────────────── ││       Add to repos…                                                                    │
+│   ⚙ Settings             ││       Delete from your library                                                         │
+│   ? Help                 ││                                                                                        │
+│                          ││ Actions  Edit SKILL.md · Review prompt                                                 │
+│                          ││                                                                                        │
+│                          ││ Usage   not used in 30 days                                                            │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                   type to filter · space ★ fix · enter actions · tab tabs · esc back

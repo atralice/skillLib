@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── To fix  2/17 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 16                                                                                │
+│   ◈ Global          13   ││     Skill              Where            Issue                                          │
+│ ▌ ✓ Health          16   ││   ✦ Fix 11 issues automatically…                                                       │
+│   Projects ───────────── ││ ▌ ✕ stripe-payments    web-app          Loaded twice                                   │
+│   ◆ web-app          ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
+│     api-server       ✕   ││   ✕ vercel-deploy      web-app          Same name as a plugin skill                    │
+│     docs-site        ·   ││   ✕ frontend-design    Global           Loaded twice                                   │
+│     mobile-app           ││   ✕ old-helper         Global           Broken link                                    │
+│     billing              ││   ✕ seo-meta           web-app          Folder missing                                 │
+│     blog                 ││   ⚠ commit-style       Global           Not reviewed                                   │
+│     cli-tools            ││   ⚠ stripe-payments    Global           Not reviewed                                   │
+│     dotfiles             ││   ⚠ react-patterns     web-app          Update to v2                                   │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── stripe-payments ─────────────────────────────────────────────────────────────────────╮
+│     infra                ││ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and proration.  │
+│     landing              ││                                                                                        │
+│     marketing-site       ││ ✕ Loaded twice: also global in ~/.claude/skills                                        │
+│     playground           ││     ★ Keep this repo's copy, stop loading it globally                                  │
+│     scripts              ││       Keep it global, remove it from this repo                                         │
+│     status-page          ││ ⚠ Codex can't see it                                                                   │
+│    ───────────────────── ││     ★ Link it for every agent                                                          │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│                          ││                                                                                        │
+│                          ││ Usage here   last used yesterday                                                       │
+│                          ││                                                         █                              │
+│                          ││     ▄         ▄   ▄           ▄ ▄       ▄ ▄           ▄ █ ▄                            │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                   type to filter · space ★ fix · enter actions · tab tabs · esc back
