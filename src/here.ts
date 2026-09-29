@@ -1,10 +1,11 @@
-import { readdirSync } from "node:fs";
-import { basename } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
+import { MANIFEST_FILE } from "./paths.js";
 import { librarySkills, projectStatus, type SkillState } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo, type GitState } from "./git.js";
 import type { HarnessId } from "./harnesses.js";
-import { readManifest } from "./project.js";
+import { isProjectCandidate, readManifest } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, type SourceKind } from "./sources.js";
 import { findIssues } from "./health.js";
@@ -103,7 +104,9 @@ function topLevel(root: string): string[] {
 export function usableHere(root: string, uses: Map<string, number> = new Map()): Here {
   const agents = enabledHarnesses();
   const git = gitInfo(root);
-  const project = projectStatus(root);
+  // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills.
+  const inRepo = isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE)));
+  const project = inRepo ? projectStatus(root) : [];
   const skills = groupBy<HereGroup>(
     project.map((s) => {
       const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
@@ -131,7 +134,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
       }),
   );
   const issues = new Map<string, HereIssue>();
-  for (const i of findIssues([root], machine, new Set(librarySkills().map((l) => l.name)))) {
+  for (const i of findIssues(inRepo ? [root] : [], machine, new Set(librarySkills().map((l) => l.name)))) {
     const choices = i.choices?.map((c) => c.label);
     const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
     const issue = issues.get(key) ?? { problems: [], detail: i.detail, ...(i.fix && { fix: i.fix.label }), ...(choices && { choices }) };

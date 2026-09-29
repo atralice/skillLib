@@ -35,6 +35,11 @@ function isOurs(dir: string): boolean {
   return existsSync(join(dir, OWN_SKILL_MARKER));
 }
 
+/** A link left pointing at nothing, e.g. after the real copy was deleted: safe to replace or remove. */
+function isDangling(path: string): boolean {
+  return entryExists(path) && lstatSync(path).isSymbolicLink() && !existsSync(path);
+}
+
 function entryExists(path: string): boolean {
   try {
     lstatSync(path);
@@ -60,8 +65,9 @@ export function agentSkillState(enabled: HarnessId[] = enabledHarnesses()): Agen
 export function installAgentSkill(enabled: HarnessId[] = enabledHarnesses()): { ok: true; dirs: string[] } | { ok: false; reason: string } {
   const [primary, ...links] = agentSkillDirs(enabled);
   if (!primary) return { ok: false, reason: "no agents chosen yet (skilllib harnesses <id>...)" };
-  const foreign = [primary, ...links].find((d) => entryExists(d) && !isOurs(d));
+  const foreign = [primary, ...links].find((d) => entryExists(d) && !isOurs(d) && !isDangling(d));
   if (foreign) return { ok: false, reason: `${foreign} already exists and isn't skilllib's` };
+  for (const d of [primary, ...links]) if (isDangling(d)) unlinkSync(d);
   mkdirSync(primary, { recursive: true });
   writeFileSync(join(primary, "SKILL.md"), shippedSkill());
   writeFileSync(join(primary, OWN_SKILL_MARKER), "Installed by skilllib. `skilllib agent-skill remove` removes it.\n");
@@ -77,7 +83,7 @@ export function installAgentSkill(enabled: HarnessId[] = enabledHarnesses()): { 
 export function removeAgentSkill(): string[] {
   const all = agentSkillDirs(["claude-code", "codex"]);
   // Decide before deleting: once the real copy is gone, links no longer show the marker.
-  const removed = all.filter((d) => entryExists(d) && isOurs(d));
+  const removed = all.filter((d) => entryExists(d) && (isOurs(d) || isDangling(d)));
   for (const d of removed) {
     if (lstatSync(d).isSymbolicLink()) unlinkSync(d);
     else rmSync(d, { recursive: true, force: true });

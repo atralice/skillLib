@@ -124,3 +124,25 @@ test("descriptions shorten to their first sentence", () => {
   expect(firstSentence("Short. But this is only one sentence really")).toBe("Short. But this is only one sentence really");
   expect(firstSentence("x".repeat(300))).toHaveLength(200);
 });
+
+test("a link left dangling by a deleted skilllib skill doesn't block install or remove", () => {
+  setHarnesses(["claude-code", "codex"]);
+  expect(installAgentSkill().ok).toBe(true);
+  const real = join(tmp, ".claude", "skills", "skilllib");
+  const link = join(tmp, ".agents", "skills", "skilllib");
+  rmSync(real, { recursive: true });
+  expect(installAgentSkill().ok).toBe(true);
+  expect(agentSkillState()).toBe("installed");
+  rmSync(real, { recursive: true });
+  expect(removeAgentSkill()).toEqual([link]);
+  expect(lstatSync(link, { throwIfNoEntry: false })).toBeUndefined();
+});
+
+test("outside a repo, status --json reports no project skills (the folders there are global)", () => {
+  setHarnesses(["claude-code"]);
+  skill(join(tmp, ".claude", "skills", "everywhere"));
+  project = tmp;
+  const status = JSON.parse(cli("status", "--json"));
+  expect(status.skills).toEqual([]);
+  expect(status.global.flatMap((g: { skills: string[] }) => g.skills)).toContain("everywhere");
+});
