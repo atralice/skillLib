@@ -20,15 +20,18 @@ export type Dependency = {
 };
 export type Manifest = { skills: Record<string, Dependency> };
 
-/** Nearest ancestor with skilllib.json, else the git root, else `from`. */
+/**
+ * Nearest ancestor with skilllib.json, up to the git root; else the git root,
+ * else `from`. The search stops at the git root (a .git folder, or the .git
+ * file of a worktree or submodule): a skilllib.json above it belongs to
+ * another checkout.
+ */
 export function findProjectRoot(from: string = process.cwd()): string {
   let dir = resolve(from);
-  let gitRoot: string | null = null;
   while (true) {
-    if (existsSync(join(dir, MANIFEST_FILE))) return dir;
-    if (!gitRoot && existsSync(join(dir, ".git"))) gitRoot = dir;
+    if (existsSync(join(dir, MANIFEST_FILE)) || existsSync(join(dir, ".git"))) return dir;
     const parent = dirname(dir);
-    if (parent === dir) return gitRoot ?? resolve(from);
+    if (parent === dir) return resolve(from);
     dir = parent;
   }
 }

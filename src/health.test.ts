@@ -52,7 +52,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   skill(join(tmp, ".claude", "skills", "synced", "b", "twice"));
 
   const issues = findIssues([project], machineSkills(), new Set());
-  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`]);
+  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`, "agent-skill"]);
 
   // doctor --fix only runs the fixes; importing is a choice.
   expect(issues.find((i) => i.id.startsWith("local:"))?.fix).toBeUndefined();
@@ -84,7 +84,7 @@ test("flags a project skill that also loads globally", () => {
   addSkill(other, "alpha");
 
   // One issue for both projects, and a choice: doctor --fix never moves your global skills.
-  const issues = findIssues([project, other], machineSkills(), new Set(["alpha"]));
+  const issues = findIssues([project, other], machineSkills(), new Set(["alpha"])).filter((i) => i.id !== "agent-skill");
   expect(issues.map((i) => [i.id, i.title, i.fix])).toEqual([["twice:alpha", "alpha: in web, api and also loaded globally", undefined]]);
   expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "alpha no longer loads globally" });
   expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);

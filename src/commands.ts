@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   addSkill,
@@ -17,11 +18,14 @@ import {
 import { claudeDir, libraryDir } from "./paths.js";
 import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
-import { dim, error, green, info, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
+import { latestVersion } from "./versions.js";
+import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
+import { libraryFor, usableHere } from "./here.js";
+import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
+import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues, runFix } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
@@ -35,6 +39,7 @@ export type Args = {
   global: boolean;
   fix: boolean;
   allowTracked: boolean;
+  json: boolean;
   days: number;
   dryRun: boolean;
   allowGit: boolean;
@@ -53,6 +58,7 @@ export function parseArgs(argv: string[]): Args {
     global: argv.includes("--global"),
     fix: argv.includes("--fix"),
     allowTracked: argv.includes("--allow-tracked"),
+    json: argv.includes("--json"),
     days: Number.isFinite(days) && days > 0 ? days : USAGE_DAYS,
     dryRun: argv.includes("--dry-run"),
     allowGit: argv.includes("--allow-git"),
@@ -67,7 +73,17 @@ function colorState(state: SkillState): string {
   return yellow(state);
 }
 
-function printChanges(changes: Change[]) {
+/** For agents: where each installed or updated skill now is, so they needn't look. */
+function withDirs(root: string, changes: Change[]) {
+  const { skills } = readManifest(root);
+  return changes.map((c) => {
+    const dep = c.action === "installed" || c.action === "updated" ? skills[c.name] : undefined;
+    return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
+  });
+}
+
+function printChanges(root: string, changes: Change[], args: Args) {
+  if (args.json) return json(withDirs(root, changes));
   for (const c of changes) {
     if (c.blocked?.length) {
       warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
@@ -104,6 +120,12 @@ async function usageBySkill(days: number, onlyProject?: string): Promise<Map<str
   return new Map(summarize(scoped, projectOf).map((s) => [s.skill, s]));
 }
 
+/** The project you're in, or null when the working directory isn't one. */
+function currentProject(): string | null {
+  const root = findProjectRoot();
+  return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, "skilllib.json"))) ? root : null;
+}
+
 function lastUsed(summary: UsageSummary | undefined): string {
   return summary ? summary.lastUsed.slice(0, 10) : "-";
 }
@@ -113,6 +135,13 @@ function lastUsed(summary: UsageSummary | undefined): string {
 /** Skills in the current project and how they compare to the library. */
 export async function status(args: Args) {
   const root = findProjectRoot();
+  if (args.json) {
+    const usage = await usageBySkill(args.days, root);
+    json(usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
+    // The skilllib skill runs this wherever an agent is; only remember real repos.
+    if (currentProject()) rememberProjects([root]);
+    return;
+  }
   const skills = projectStatus(root);
   info(`${basename(root)} ${dim(tildify(root))}\n`);
   if (skills.length === 0) {
@@ -144,6 +173,9 @@ export async function status(args: Args) {
 
 /** Everything in the library, where each skill is installed, and how much it's used. */
 export async function list(args: Args) {
+  if (args.json) {
+    return json(libraryFor(currentProject()));
+  }
   const skills = librarySkills();
   if (skills.length === 0) {
     info(`Your library (${tildify(libraryDir())}) is empty.`);
@@ -185,8 +217,17 @@ export async function list(args: Args) {
   }
 }
 
-export function projects() {
+export function projects(args: Args) {
   const roots = visibleProjects();
+  if (args.json) {
+    return json(
+      roots.map((root) => ({
+        name: basename(root),
+        path: root,
+        skills: projectStatus(root).map((s) => ({ name: s.name, managed: s.managed, state: s.state, version: s.version, latest: s.latest })),
+      })),
+    );
+  }
   if (roots.length === 0) {
     info("No known projects. Run `skilllib scan <dir>` to find them, or `skilllib add` inside one.");
     return;
@@ -214,7 +255,7 @@ export function add(args: Args) {
   }
   const root = findProjectRoot();
   if (args.allowTracked) allowTrackedLinks(root);
-  printChanges(args.positional.map((name) => addSkill(root, name, { force: args.force })));
+  printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force })), args);
   rememberProjects([root]);
 }
 
@@ -224,42 +265,52 @@ export function remove(args: Args) {
     process.exit(1);
   }
   const root = findProjectRoot();
-  printChanges(args.positional.map((name) => removeSkill(root, name, { force: args.force })));
+  printChanges(root, args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
 }
 
 /** Installs exactly the versions in skilllib.json (--all: every project). */
 export function sync(args: Args) {
   const roots = args.all ? visibleProjects() : [findProjectRoot()];
-  for (const root of roots) {
+  const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = syncProject(root, { force: args.force });
-    if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
-    if (changes.length === 0) success("Installed versions match skilllib.json");
-    else printChanges(changes);
-  }
+    if (!args.json) {
+      if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
+      if (changes.length === 0) success("Installed versions match skilllib.json");
+      else printChanges(root, changes, args);
+    }
+    return { project: basename(root), path: root, changes: withDirs(root, changes) };
+  });
+  if (args.json) json(args.all ? results : results[0]!.changes);
   if (!args.all) rememberProjects(roots);
 }
 
 /** Moves skills to their newest library version (all, or the ones named). */
 export function update(args: Args) {
   const roots = args.all ? visibleProjects() : [findProjectRoot()];
-  for (const root of roots) {
+  const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = updateProject(root, args.positional.length ? args.positional : undefined, { force: args.force });
-    if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
-    if (changes.length === 0) success("Everything is on the latest version");
-    else printChanges(changes);
-  }
+    if (!args.json) {
+      if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
+      if (changes.length === 0) success("Everything is on the latest version");
+      else printChanges(root, changes, args);
+    }
+    return { project: basename(root), path: root, changes: withDirs(root, changes) };
+  });
+  if (args.json) json(args.all ? results : results[0]!.changes);
 }
 
 /** Skills with a newer library version, per project. */
 export function outdated(args: Args) {
   const roots = args.all ? visibleProjects() : [findProjectRoot()];
-  const rows = roots.flatMap((root) =>
+  const behind = roots.flatMap((root) =>
     projectStatus(root)
       .filter((s) => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
-      .map((s) => ({ Project: basename(root), Skill: s.name, Installed: `v${s.version}`, Latest: `v${s.latest}`, Status: colorState(s.state) })),
+      .map((s) => ({ project: basename(root), path: root, skill: s.name, installed: s.version, latest: s.latest, state: s.state })),
   );
+  if (args.json) return json(behind);
+  const rows = behind.map((b) => ({ Project: b.project, Skill: b.skill, Installed: `v${b.installed}`, Latest: `v${b.latest}`, Status: colorState(b.state) }));
   if (rows.length === 0) return success("Everything is on the latest version");
   table(rows);
   info(dim(`\n→ skilllib update${args.all ? " --all" : ""}`));
@@ -275,12 +326,15 @@ export function importSkills(args: Args) {
     error("Usage: skilllib import <skill-dir>... [--force] | skilllib import --global");
     process.exit(1);
   }
+  const results: { path: string; name?: string; status: string }[] = [];
   for (const dir of dirs) {
     if (!isSkillDir(dir)) {
       warn(`${tildify(dir)}: no SKILL.md, skipping`);
+      results.push({ path: dir, status: "no SKILL.md" });
       continue;
     }
     const { name, status: result } = importSkill(dir, { force: args.force });
+    results.push({ path: dir, name, status: result });
     if (result === "exists") {
       warn(`${name}: the library already has a different version (use --force to replace it)`);
       continue;
@@ -298,6 +352,7 @@ export function importSkills(args: Args) {
       rememberProjects([root]);
     }
   }
+  if (args.json) json(results);
 }
 
 /** Adds folders (default: the configured ones) and scans them for projects. */
@@ -383,6 +438,16 @@ export function restore(args: Args) {
 export function doctor(args: Args) {
   const projects = visibleProjects();
   const issues = findIssues(projects, machineSkills(), new Set(librarySkills().map((s) => s.name)));
+  if (args.json) {
+    return json(
+      issues.map(({ fix, choices, ...issue }) => ({
+        ...issue,
+        ...(fix && { fix: fix.label }),
+        ...(choices && { choices: choices.map((c) => c.label) }),
+        ...(args.fix && fix && { fixed: runFix(fix) }),
+      })),
+    );
+  }
   if (issues.length === 0) return success("Everything looks good");
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
@@ -399,6 +464,15 @@ export function doctor(args: Args) {
 /** Skill usage across all Claude Code sessions, from transcripts. */
 export async function usage(args: Args) {
   const summaries = summarize(await scanUsage(args.days), projectOfFactory(knownProjects()));
+  if (args.json) {
+    const library = new Set(librarySkills().map((s) => s.name));
+    return json({
+      usageDays: args.days,
+      source: "Claude Code transcripts",
+      skills: summaries.map((s) => ({ skill: s.skill, uses: s.uses, lastUsed: s.lastUsed, projects: [...s.projects].map((p) => basename(p)), inLibrary: library.has(s.skill) })),
+      unusedLibrarySkills: librarySkills().filter((l) => !summaries.some((u) => u.skill === l.name)).map((l) => l.name),
+    });
+  }
   if (summaries.length === 0) {
     info(`No skill usage in Claude Code transcripts from the last ${args.days} days.`);
     return;
@@ -430,6 +504,17 @@ export function show(args: Args) {
     process.exit(1);
   }
   const { description } = readSkillInfo(dir);
+  if (args.json) {
+    return json({
+      name,
+      description,
+      path: dir,
+      latest: latestVersion(name)?.version ?? null,
+      origin: libraryOrigins()[name] ?? "",
+      projects: knownProjects().filter((p) => name in readManifest(p).skills).map((p) => basename(p)),
+      skillMd: readFileSync(join(dir, "SKILL.md"), "utf-8"),
+    });
+  }
   info(`${name} ${dim(tildify(dir))}`);
   if (description) info(`\n${description}`);
   const using = knownProjects().filter((p) => name in readManifest(p).skills);
@@ -531,4 +616,31 @@ export function tidy(args: Args) {
   if (args.dryRun) info(dim("\nNothing changed (--dry-run)."));
   else if (changed) info(dim("\nReplaced copies are in ~/.skilllib/tidy-backup; `skilllib restore` puts them back."));
   if (held) info(dim(`${held} change${held === 1 ? "" : "s"} held back because git would see them. Re-run with --allow-git to make them.`));
+}
+
+/** Show, install or remove the skill that lets your agents use skilllib. */
+export function agentSkill(args: Args) {
+  const action = args.positional[0];
+  if (action === "install") {
+    const r = installAgentSkill();
+    if (!r.ok) {
+      error(`Can't install the skilllib skill: ${r.reason}`);
+      process.exit(1);
+    }
+    if (args.json) return json({ state: agentSkillState(), dirs: r.dirs });
+    success(`Installed in ${r.dirs.map((d) => tildify(d)).join(" and ")}`);
+    if (!onPath("skilllib")) warn("`skilllib` isn't on your PATH, so agents can't run it. Install it: npm install -g skilllib");
+    info(dim("New agent sessions can now answer questions like “which skills can you use here?”"));
+    return;
+  }
+  if (action === "remove" || action === "rm") {
+    const removed = removeAgentSkill();
+    if (args.json) return json({ state: agentSkillState(), removed });
+    return removed.length ? success(`Removed from ${removed.map((d) => tildify(d)).join(" and ")}`) : info("The skilllib skill isn't installed.");
+  }
+  const state = agentSkillState();
+  if (args.json) return json({ state, dirs: agentSkillDirs() });
+  if (state === "installed") success(`Your agents can use skilllib ${dim(`(${agentSkillDirs().map((d) => tildify(d)).join(", ")})`)}`);
+  else if (state === "outdated") warn("The skilllib skill is out of date. Run `skilllib agent-skill install` to update it.");
+  else info("Your agents don't know about skilllib yet. Run `skilllib agent-skill install` so you can ask them about your skills.");
 }

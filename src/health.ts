@@ -5,6 +5,7 @@ import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { addSkill, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin } from "./plugins.js";
 import type { SourcedSkill } from "./sources.js";
+import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
@@ -349,6 +350,28 @@ export function findIssues(
             },
           ]
         : undefined,
+    });
+  }
+
+  // The skill that lets your agents use skilllib. Installing it adds a global skill, so it's a choice;
+  // refreshing one you installed is a repair.
+  const agentSkill = agentSkillState();
+  if (agentSkill !== "installed") {
+    const install: Choice = {
+      label: agentSkill === "missing" ? "Install the skilllib skill for your agents" : "Update the skilllib skill",
+      hint: "one global skill, in ~/.claude/skills (and ~/.agents/skills)",
+      run: () => {
+        const r = installAgentSkill();
+        if (!r.ok) throw new Error(`skilllib skill: ${r.reason}`);
+        return `Your agents can now use skilllib (${plural(r.dirs.length, "folder")})`;
+      },
+    };
+    issues.push({
+      id: "agent-skill",
+      severity: "suggestion",
+      title: agentSkill === "missing" ? "Your agents don't know about skilllib" : "The skilllib skill for your agents is out of date",
+      detail: "The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.",
+      ...(agentSkill === "missing" ? { choices: [install] } : { fix: install }),
     });
   }
 

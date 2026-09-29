@@ -73,7 +73,7 @@ export const HARNESSES: Harness[] = [
   },
 ];
 
-function onPath(bin: string): boolean {
+export function onPath(bin: string): boolean {
   const exts = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
   return (process.env.PATH ?? "")
     .split(delimiter)
