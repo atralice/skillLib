@@ -168,6 +168,8 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 ### Global skills
 
+<img src="docs/screenshot-global.svg" alt="Global: everything that loads in every repo, with skills installed together folded into one group and actions for the whole group" width="100%">
+
 **Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
 - **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally.
