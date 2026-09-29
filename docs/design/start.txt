@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── Skills  4/20 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 20   Issues 8   Local 9   Global 5   Plugins 3   Vendor 3                         │
+│   ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
+│   ✓ Health          16   ││   + Add a skill…                                                                       │
+│   Projects ───────────── ││   ✦ Fix 6 issues automatically…                                                        │
+│ ▌ ◆ web-app          ✕   ││   ⋯ web-app…                                                                           │
+│     api-server       ✕   ││ ▌ ✕ stripe-payments    lib v2           11  Loaded twice                               │
+│     docs-site        ·   ││   ✕ vercel-deploy      untracked         3  Same name as a plugin skill                │
+│     mobile-app           ││   ✕ seo-meta           lib v1            –  Folder missing                             │
+│     billing              ││   ⚠ react-patterns     lib v1            9  Update to v2                               │
+│     blog                 ││   ⚠ api-conventions    lib v1            6  Edited here                                │
+│     cli-tools            ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
+│     dotfiles             ││   · my-scratchpad      untracked         –  Only in this repo                          │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── web-app ─────────────────────────────────────────────────────────────────────────────╮
+│     infra                ││ Folder    ~/Projects/web-app               Remote    github.com/atralice/web-app       │
+│     landing              ││ Branch    main                             Manifest  skilllib.json ✓ committed         │
+│     marketing-site       ││                                                                                        │
+│     playground           ││                                                                                        │
+│     scripts              ││                                                                                        │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                        ↑↓ choose · enter open · type to filter repos
