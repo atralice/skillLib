@@ -8,7 +8,7 @@ import { basename, dirname, join } from "node:path";
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
-import { gitInfo, relativeTo } from "../git.js";
+import { gitInfo, relativeTo, type GitInfo } from "../git.js";
 import {
   addSkill,
   createSkill,
@@ -35,11 +35,12 @@ import {
 import { userHome } from "../paths.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
 import { readSkillInfo } from "../skills.js";
-import { claudeBinary, pluginBackups, recordRemovedPlugin, restorePlugin } from "../plugins.js";
+import { claudeBinary, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, type SourcedSkill } from "../sources.js";
+import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import type { Fix, LocalSkill, MachineSkill, Ops, Project, RepoInfo, Result, World } from "./world.js";
+import type { Dupes, Fix, LocalSkill, MachineSkill, Ops, Project, RepoInfo, Result, World } from "./world.js";
 
 /** Home-relative path for labels. */
 export function tildify(p: string): string {
@@ -131,6 +132,15 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   };
 }
 
+/** tidy.ts's plans and conflicts, per skill; `root` null for your global folders. */
+function dupesOf(r: TidyReport, root: string | null, git: GitInfo | null = null): Map<string, Dupes> {
+  const out = new Map<string, Dupes>();
+  for (const p of r.plans) out.set(p.name, { steps: p.steps.map((s) => describeStep(s, root)), git: gitVisibleSteps(p, git).map((s) => describeStep(s, root)) });
+  for (const c of r.conflicts)
+    out.set(c.name, { steps: [], git: [], differ: c.copies.map((x) => ({ dir: x.dir, label: root ? copyLabel(c, x.dir) : tildify(x.dir), runs: x.runs, canWin: !c.managed || x.dir === c.managed })) });
+  return out;
+}
+
 /** Everything on disk the screens show, except usage. */
 export function loadWorld(): World {
   forgetLatest();
@@ -156,20 +166,32 @@ export function loadWorld(): World {
     return { name: s.name, latest: latestVersion(s.name)?.version ?? 1, origin: origins[s.name] };
   });
   const kept = keptGlobal();
+  // Cursor plugins: reported only (Cursor's plugin state can't be read).
+  const cursorPlugin = new Map(agents.includes("cursor") ? cursorPluginSkills().map((s) => [s.name, s.plugin]) : []);
+  const globalDupes = dupesOf(planGlobalTidy({ enabled: agents }), null);
   const machine = machineSkills(agents).map((s) => {
     descriptions[s.name] ??= s.description;
-    return machineSkill(s, kept);
+    const m = machineSkill(s, kept);
+    if (m.source !== "global" || m.broken) return m;
+    const dupes = globalDupes.get(m.name);
+    const plugin = cursorPlugin.get(m.name);
+    return { ...m, ...(dupes ? { dupes } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
   });
   const projects = roots.map((root): Project => {
     const status = projectStatus(root);
     const hasManifest = existsSync(join(root, "skilllib.json"));
     const git = status.length || hasManifest ? gitInfo(root) : null;
     for (const s of status) if (!descriptions[s.name] && !s.state.includes("missing")) descriptions[s.name] = readSkillInfo(s.path).description;
+    const dupes = status.length ? dupesOf(planProjectTidy(root, { enabled: agents }), root, git) : new Map<string, Dupes>();
     return {
       name: names.get(root)!,
       path: root,
       manifest: hasManifest ? (git ? git.of("skilllib.json") : "no git") : "none",
-      skills: status.map((s) => localSkill(root, s, git)),
+      skills: status.map((s) => {
+        const d = dupes.get(s.name);
+        const plugin = cursorPlugin.get(s.name);
+        return { ...localSkill(root, s, git), ...(d ? { dupes: d } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
+      }),
     };
   });
   const backups = [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt));
@@ -300,6 +322,25 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       return withLinks(addSkill(rootOf(repo), name), repo, name);
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
+    tidy: (repo, name, { keep, allowGit = false } = {}) => {
+      // Planned again: the folders may have changed since the world was read.
+      const root = repo === null ? null : rootOf(repo);
+      const opts = keep ? { keep: { [name]: keep } } : {};
+      const plan = (root ? planProjectTidy(root, opts) : planGlobalTidy(opts)).plans.find((p) => p.name === name);
+      if (!plan) return `${name}: nothing to tidy`;
+      const r = applyTidy(plan, { git: allowGit ? "go" : "keep" });
+      const steps = (list: typeof r.applied) => list.map((s) => describeStep(s, root)).join(", ");
+      const message = r.applied.length ? `${name}: ${steps(r.applied)}` : `${name}: nothing changed yet`;
+      if (!r.held.length) return message;
+      return {
+        message,
+        then: {
+          label: "Also change what git tracks",
+          preview: `${steps(r.held)}: these changes will show in git status in ${repo}. Replaced copies go to Settings › Backups.`,
+          run: (w) => w.ops.tidy(repo, name, { keep, allowGit: true }),
+        },
+      };
+    },
     unloadGlobal: (m) => {
       if (!m.broken && !latestVersion(m.name)) importSkill(m.path);
       const r = unloadGlobal(m.path, m.links);

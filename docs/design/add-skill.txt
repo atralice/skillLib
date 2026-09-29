@@ -1,12 +1,12 @@
 ╭── ◆ skilllib ────────────╮╭── Add a skill to web-app ──────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ ⌕ sq▏                                                                                  │
 │   ◈ Global          13   ││   Your library ─────────────────────────────────────────────────────────────────────── │
-│   ✓ Health          16   ││ ▌ sql-migrations        v1    Write reversible SQL migrations and backfills safely.    │
+│   ✓ Health          17   ││ ▌ sql-migrations        v1    Write reversible SQL migrations and backfills safely.    │
 │   Projects ───────────── ││   New ──────────────────────────────────────────────────────────────────────────────── │
 │ ▌ ◆ web-app          ✕   ││   + Create "sq" for web-app                                                            │
 │     api-server       ✕   ││   ✦ Write "sq" with an agent                                                           │
 │     docs-site        ·   ││                                                                                        │
-│     mobile-app           ││                                                                                        │
+│     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
 │     blog                 ││                                                                                        │
 │     cli-tools            ││                                                                                        │

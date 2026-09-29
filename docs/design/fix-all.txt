@@ -1,12 +1,12 @@
-╭── ◆ skilllib ────────────╮╭── Fix automatically (6 of 6) ──────────────────────────────────────────────────────────╮
+╭── ◆ skilllib ────────────╮╭── Fix automatically (7 of 7) ──────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ Decisions are never listed here: they stay with you.                                   │
 │   ◈ Global          13   ││ ▌ [x] stripe-payments: Loaded twice: also global in ~/.claude/skills → Keep this repo… │
-│   ✓ Health          16   ││   [x] stripe-payments: Codex can't see it → Link it for every agent                    │
+│   ✓ Health          17   ││   [x] stripe-payments: Codex can't see it → Link it for every agent                    │
 │   Projects ───────────── ││   [x] react-patterns: Update available: v1 → v2 → Update to v2                         │
 │ ▌ ◆ web-app          ✕   ││   [x] seo-meta: Listed in skilllib.json but the folder is missing → Restore it (sync)  │
-│     api-server       ✕   ││   [x] deploy-preview: Claude Code can't see it → Link it for every agent               │
-│     docs-site        ·   ││   [x] my-scratchpad: Only exists in this repo → Import it into your library            │
-│     mobile-app           ││                                                                                        │
+│     api-server       ✕   ││   [x] testing-guide: More copies or links in this repo than your agents need → Keep o… │
+│     docs-site        ·   ││   [x] deploy-preview: Claude Code can't see it → Link it for every agent               │
+│     mobile-app       ⚠   ││   [x] my-scratchpad: Only exists in this repo → Import it into your library            │
 │     billing              ││                                                                                        │
 │     blog                 ││                                                                                        │
 │     cli-tools            ││                                                                                        │

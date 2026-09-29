@@ -1,12 +1,12 @@
 ╭── ◆ skilllib ────────────╮╭── Settings ────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││   Agents ───────────────────────────────────────────────────────────────────────────── │
 │   ◈ Global          13   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
-│   ✓ Health          16   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
+│   ✓ Health          17   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
 │   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills                                     │
 │   ◆ web-app          ✕   ││   [ ] ℤ Zed                         .agents/skills                                     │
 │     api-server       ✕   ││   Project folders ──────────────────────────────────────────────────────────────────── │
 │     docs-site        ·   ││   ~/Projects                        scanned for git repos                              │
-│     mobile-app           ││   + Add a folder…                                                                      │
+│     mobile-app       ⚠   ││   + Add a folder…                                                                      │
 │     billing              ││   Backups ──────────────────────────────────────────────────────────────────────────── │
 │     blog                 ││   No backups yet                    anything skilllib removes lands here               │
 │     cli-tools            ││                                                                                        │

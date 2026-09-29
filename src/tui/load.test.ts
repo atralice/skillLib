@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
-import { importSkill, listBackups } from "../library.js";
+import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
@@ -13,9 +14,9 @@ let tmp: string;
 let repo: string;
 const env = { HOME: process.env.HOME, cwd: process.cwd() };
 
-function writeSkill(dir: string) {
+function writeSkill(dir: string, body = "body") {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "SKILL.md"), `---\nname: x\ndescription: d\n---\nbody\n`);
+  writeFileSync(join(dir, "SKILL.md"), `---\nname: x\ndescription: d\n---\n${body}\n`);
 }
 
 beforeEach(() => {
@@ -40,6 +41,7 @@ afterEach(() => {
 });
 
 const local = (w: World, name: string) => usable(w, "app").find((u) => u.local && u.name === name)!;
+const issue = (w: World, id: string) => issuesOf(w, "app", local(w, id.split(":")[1]!)).find((i) => i.id === id);
 const run = (w: World, issueId: string, name: string, fix = 0) => issuesOf(w, "app", local(w, name)).find((i) => i.id.startsWith(issueId))!.fixes[fix]!.run(w);
 
 test("a skill only in the repo gets imported and tracked", () => {
@@ -171,6 +173,93 @@ test.skipIf(process.platform === "win32")("with the claude command, a synced plu
   const w = loadWorld();
   withClaude(true, () => expect(replacePluginFix(w, "rail@synced").pickRepos!(w, [])).toBe("1 skill from rail@synced is in your library; rail@synced is off (it's synced from claude.ai: remove it there to delete it for good)"));
   expect(readFileSync(join(tmp, "claude-args"), "utf-8").trim()).toBe("plugin disable rail@synced");
+});
+
+test("identical copies in a repo become one copy plus a link", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(repo, ".claude", "skills", "notes"));
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  let w = loadWorld();
+  const copies = issue(w, "copies:notes")!;
+  expect(copies.decision).toBe(false);
+  expect(copies.fixes[0]!.run(w)).toBe("notes: .claude/skills/notes: duplicate copy → link");
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  w = loadWorld();
+  expect(issue(w, "copies:notes")).toBeUndefined();
+  expect(w.backups.map((b) => b.name)).toEqual(["notes"]);
+});
+
+test("differing copies in a repo: which agent runs which, and you pick the one to keep", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(repo, ".claude", "skills", "notes"), "mine");
+  writeSkill(join(repo, ".agents", "skills", "notes"), "theirs");
+  let w = loadWorld();
+  const conflict = issue(w, "conflict:notes")!;
+  expect(conflict.title).toBe("Copies differ: .claude/skills (Claude Code) vs .agents/skills (Codex)");
+  expect(conflict.decision).toBe(true);
+  // Which copy the library comparison looked at is arbitrary: only the conflict shows.
+  expect(issue(w, "local:notes")).toBeUndefined();
+  conflict.fixes.find((f) => f.label === "Keep the .agents/skills copy")!.run(w);
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  expect(readFileSync(join(repo, ".claude", "skills", "notes", "SKILL.md"), "utf-8")).toContain("theirs");
+  w = loadWorld();
+  expect(issue(w, "conflict:notes")).toBeUndefined();
+});
+
+test("tidying asks before changing what git tracks", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".claude", "skills", "notes"));
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "skills");
+  const w = loadWorld();
+  const fix = issue(w, "copies:notes")!.fixes[0]!;
+  expect(fix.preview).toContain("Git would see");
+  const r = fix.run(w);
+  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
+  expect(r.message).toBe("notes: nothing changed yet");
+  const links = () => [".claude", ".agents"].filter((d) => isLink(join(repo, d, "skills", "notes")));
+  expect(links()).toEqual([]);
+  r.then.run(w);
+  expect(links()).toEqual([".claude"]);
+});
+
+test("identical global copies become one copy plus a link", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, ".claude", "skills", "beta"));
+  writeSkill(join(tmp, ".agents", "skills", "beta"));
+  let w = loadWorld();
+  const beta = w.machine.find((m) => m.name === "beta")!;
+  const copies = machineIssues(w, beta).find((i) => i.id === "copies-g:beta")!;
+  copies.fixes[0]!.run(w);
+  expect(isLink(join(tmp, ".claude", "skills", "beta"))).toBe(true);
+  w = loadWorld();
+  expect(w.machine.filter((m) => m.name === "beta").flatMap((m) => machineIssues(w, m).map((i) => i.id))).toEqual(["global:beta"]);
+});
+
+test("a repo copy of a skill you keep global is the extra one", () => {
+  writeSkill(join(tmp, ".claude", "skills", "beta"));
+  writeSkill(join(repo, ".claude", "skills", "beta"));
+  let w = loadWorld();
+  w.ops.keepGlobal("beta", true);
+  w = loadWorld();
+  expect(issue(w, "twice-g:beta")).toBeUndefined();
+  issue(w, "kept-g:beta")!.fixes[0]!.run(w);
+  w = loadWorld();
+  expect(w.projects[0]!.skills).toEqual([]);
+  expect(w.machine.map((m) => m.name)).toEqual(["beta"]);
+});
+
+test("a skill also in a Cursor plugin is reported", () => {
+  setHarnesses(["cursor"]);
+  writeSkill(join(tmp, ".cursor", "plugins", "cache", "mk", "kit", "1.0", "skills", "notes"));
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  const found = issue(loadWorld(), "cursor-plugin:notes")!;
+  expect(found.title).toBe("Also in the Cursor plugin kit: Cursor lists both while it's on");
+  expect(found.decision).toBe(true);
 });
 
 test("repo names stay unique however deep folders clash", () => {

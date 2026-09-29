@@ -1,12 +1,12 @@
 ╭── ◆ skilllib ────────────╮╭── Your skills ─────────────────────────────────────────────────────────────────────────╮
 │ ▌ ▤ Your skills     7    ││  All 7   Issues 1                                                                      │
 │   ◈ Global          13   ││     Skill              Ver  Used in            Uses  Issue / description               │
-│   ✓ Health          16   ││   + New skill…                                                                         │
+│   ✓ Health          17   ││   + New skill…                                                                         │
 │   Projects ───────────── ││ ▌ · sql-migrations     v1   0 repos               –  Used in no repo                   │
 │   ◆ web-app          ✕   ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │
 │     api-server       ✕   ││     api-conventions    v1   2 repos              13  Our REST conventions: resource n… │
 │     docs-site        ·   ││     react-patterns     v2   2 repos (1 behind)   11  Component patterns for React 19:… │
-│     mobile-app           ││     mdx-tips           v1   1 repo                1  MDX components and frontmatter u… │
+│     mobile-app       ⚠   ││     mdx-tips           v1   1 repo                1  MDX components and frontmatter u… │
 │     billing              ││     seo-meta           v1   1 repo                –  Page titles, Open Graph and stru… │
 │     blog                 ││     testing-guide      v3   1 repo                –  How we write unit and e2e tests:… │
 │     cli-tools            ││                                                                                        │

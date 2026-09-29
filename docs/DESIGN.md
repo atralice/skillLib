@@ -184,7 +184,11 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Repo | Folder missing | ✕ | | Restore it (sync) |
 | Repo | Not in your library | ✕ | | Copy it back into your library |
 | Repo | Loaded twice (also global) | ✕ | | Keep this repo's copy, stop loading it globally · Keep it global, remove it from this repo |
+| Repo | Extra: you keep it global | ⚠ | yes | Remove this repo's copy, keep it global · Stop loading it globally after all |
 | Repo | Same name as a plugin/claude.ai/cursor skill | ✕ | yes | Remove this repo's copy · Turn the plugin off |
+| Repo | Extra copies (identical copies, or links no agent needs) | ⚠ | | Keep one copy, plus the links your agents need |
+| Repo | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy that can win) |
+| Repo | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
 | Repo | Edited here | ⚠ | yes | Save as vN+1 in your library · Discard the edits |
 | Repo | Update to vN | ⚠ | | Update to vN |
 | Repo | *Agent* can't see it | ⚠ | | Link it for every agent |
@@ -194,9 +198,13 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Repo | Unused 30 days | · | yes | Remove it from this repo |
 | Global | Broken link | ✕ | | Remove the link |
 | Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | | Keep that copy, stop loading yours globally |
-| Global | Loaded twice (two global copies) | ✕ | yes | Delete the copy in … (one per copy) |
+| Global | Extra copies (identical copies in several global folders) | ⚠ | | Keep one copy, plus the links your agents need |
+| Global | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy) |
+| Global | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
 | Global | Not reviewed | ⚠ | yes | Move it to the repos that need it… · Keep it global on purpose · Delete it |
 | Your skills | Used in no repo | · | yes | Add to repos… · Delete from your library |
+
+Extra copies and copies that differ come from `tidy.ts` (read in `load.ts`); their fix asks before changing a file git tracks, and **Fix all** skips those changes. While a skill's copies differ, the library hints (*Differs from library*, *Not tracked*, *Only in this repo*) are hidden: the copy they'd compare is arbitrary.
 
 Severity: `✕` problem (`red`), `⚠` warning (`yellow`), `·` hint (`blue`). A row shows only its worst; a repo in Places shows the worst of its skills.
 

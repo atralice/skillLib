@@ -1,30 +1,30 @@
-╭── ◆ skilllib ────────────╮╭── To fix  2/17 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 16                                                                                │
+╭── ◆ skilllib ────────────╮╭── To fix  2/18 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 17                                                                                │
 │   ◈ Global          13   ││     Skill              Where            Issue                                          │
-│ ▌ ✓ Health          16   ││   ✦ Fix 11 issues automatically…                                                       │
-│   Projects ───────────── ││ ▌ ✕ stripe-payments    web-app          Loaded twice                                   │
-│   ◆ web-app          ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
-│     api-server       ✕   ││   ✕ vercel-deploy      web-app          Same name as a plugin skill                    │
-│     docs-site        ·   ││   ✕ frontend-design    Global           Loaded twice                                   │
-│     mobile-app           ││   ✕ old-helper         Global           Broken link                                    │
-│     billing              ││   ✕ seo-meta           web-app          Folder missing                                 │
-│     blog                 ││   ⚠ commit-style       Global           Not reviewed                                   │
-│     cli-tools            ││   ⚠ stripe-payments    Global           Not reviewed                                   │
-│     dotfiles             ││   ⚠ react-patterns     web-app          Update to v2                                   │
+│ ▌ ✓ Health          17   ││   ✦ Fix 13 issues automatically…                                                       │
+│   Projects ───────────── ││ ▌ ✕ commit-style       Global           Copies differ                                  │
+│   ◆ web-app          ✕   ││   ✕ stripe-payments    web-app          Loaded twice                                   │
+│     api-server       ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
+│     docs-site        ·   ││   ✕ vercel-deploy      web-app          Same name as a plugin skill                    │
+│     mobile-app       ⚠   ││   ✕ db-seed            api-server       Copies differ                                  │
+│     billing              ││   ✕ frontend-design    Global           Loaded twice                                   │
+│     blog                 ││   ✕ old-helper         Global           Broken link                                    │
+│     cli-tools            ││   ✕ seo-meta           web-app          Folder missing                                 │
+│     dotfiles             ││   ⚠ stripe-payments    Global           Not reviewed                                   │
 │     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     e2e-tests            │╭── stripe-payments ─────────────────────────────────────────────────────────────────────╮
-│     infra                ││ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and proration.  │
+│     e2e-tests            │╭── commit-style ────────────────────────────────────────────────────────────────────────╮
+│     infra                ││ Conventional commits with a short imperative subject and a why-focused body.           │
 │     landing              ││                                                                                        │
-│     marketing-site       ││ ✕ Loaded twice: also global in ~/.claude/skills                                        │
-│     playground           ││     ★ Keep this repo's copy, stop loading it globally                                  │
-│     scripts              ││       Keep it global, remove it from this repo                                         │
-│     status-page          ││ ⚠ Codex can't see it                                                                   │
-│    ───────────────────── ││     ★ Link it for every agent                                                          │
-│   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│     marketing-site       ││ ✕ Copies differ: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex)  … │
+│     playground           ││       Keep the ~/.claude/skills copy                                                   │
+│     scripts              ││       Keep the ~/.agents/skills copy                                                   │
+│     status-page          ││ ⚠ Global, not reviewed: loads in every repo  · your call                               │
+│    ───────────────────── ││       Move it to the repos that need it…                                               │
+│   ⚙ Settings             ││       Keep it global on purpose                                                        │
+│   ? Help                 ││       Delete it                                                                        │
 │                          ││                                                                                        │
-│                          ││ Usage here   last used yesterday                                                       │
-│                          ││                                                         █                              │
-│                          ││     ▄         ▄   ▄           ▄ ▄       ▄ ▄           ▄ █ ▄                            │
+│                          ││ Actions  Edit SKILL.md · Review prompt                                                 │
+│                          ││                                                                                        │
+│                          ││ Usage   last used yesterday                                                            │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back
