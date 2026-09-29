@@ -114,7 +114,7 @@ function fakePlugin() {
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "tools@mk": true } }));
 }
 
-/** A `claude` command that records what it was asked, or no `claude` at all. */
+/** A `claude` command that records what it was asked, or no `claude` at all. It's a shell script, so the tests that run it skip Windows. */
 function withClaude(installed: boolean, body: () => void) {
   const path = process.env.PATH;
   const bin = join(tmp, "bin");
@@ -128,7 +128,7 @@ function withClaude(installed: boolean, body: () => void) {
   }
 }
 
-test("a plugin is replaced by library skills, then uninstalled", () => {
+test.skipIf(process.platform === "win32")("a plugin is replaced by library skills, then uninstalled", () => {
   fakePlugin();
   let w = loadWorld();
   expect(w.machine.map((m) => `${m.name}:${m.source}`).sort()).toEqual(["fmt:plugin", "lint:plugin"]);
@@ -166,7 +166,7 @@ test("a plugin synced from claude.ai is copied in and turned off (it can't be un
   expect(w.machine).toEqual([]);
 });
 
-test("with the claude command, a synced plugin is disabled, not uninstalled", () => {
+test.skipIf(process.platform === "win32")("with the claude command, a synced plugin is disabled, not uninstalled", () => {
   writeSkill(join(tmp, ".claude", "plugins", "synced", "b1", "rail", "skills", "deploy"));
   const w = loadWorld();
   withClaude(true, () => expect(replacePluginFix(w, "rail@synced").pickRepos!(w, [])).toBe("1 skill from rail@synced is in your library; rail@synced is off (it's synced from claude.ai: remove it there to delete it for good)"));
