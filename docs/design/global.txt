@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── Loads everywhere ────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 13   Issues 5   Global 6   Plugins 4   Vendor 3                                   │
+│ ▌ ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
+│   ✓ Health          17   ││   ✦ Fix 3 issues automatically…                                                        │
+│   Projects ───────────── ││   ⧉ Review prompt for your 5 global skills…                                            │
+│   ◆ web-app          ✕   ││ ▌ ✕ ▸ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
+│     api-server       ✕   ││   ✕ old-helper         global            –  Broken link                                │
+│     docs-site        ·   ││   ⚠ tailwind-tips      global            –  Extra copies                               │
+│     mobile-app       ⚠   ││     ▸ ⧉ vercel plugin (3)                                                              │
+│     billing              ││     pr-review          global ✓          4                                             │
+│     blog                 ││     ▸ claude.ai skills (2)                                                             │
+│     cli-tools            ││     use-railway        ⧉ railway         2                                             │
+│     dotfiles             ││     create-rule        cursor            –                                             │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── commit + 2 more · installed together 2026-09-20 ─────────────────────────────────────╮
+│     infra                ││ commit-style, frontend-design, stripe-payments                                         │
+│     landing              ││                                                                                        │
+│     marketing-site       ││ 3 of them have issues   open the group to fix them one by one                          │
+│     playground           ││                                                                                        │
+│     scripts              ││ Actions  Move all 3 to repos… · Keep all 3 global on purpose · Delete all 3            │
+│     status-page          ││          Review prompt                                                                 │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                   type to filter · space ★ fix · enter actions · tab tabs · esc back

@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── To fix  2/18 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 17                                                                                │
+│   ◈ Global          13   ││     Skill              Where            Issue                                          │
+│ ▌ ✓ Health          17   ││   ✦ Fix 13 issues automatically…                                                       │
+│   Projects ───────────── ││ ▌ ✕ commit-style       Global           Copies differ                                  │
+│   ◆ web-app          ✕   ││   ✕ stripe-payments    web-app          Loaded twice                                   │
+│     api-server       ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
+│     docs-site        ·   ││   ✕ vercel-deploy      web-app          Same name as a plugin skill                    │
+│     mobile-app       ⚠   ││   ✕ db-seed            api-server       Copies differ                                  │
+│     billing              ││   ✕ frontend-design    Global           Loaded twice                                   │
+│     blog                 ││   ✕ old-helper         Global           Broken link                                    │
+│     cli-tools            ││   ✕ seo-meta           web-app          Folder missing                                 │
+│     dotfiles             ││   ⚠ stripe-payments    Global           Not reviewed                                   │
+│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     e2e-tests            │╭── commit-style ────────────────────────────────────────────────────────────────────────╮
+│     infra                ││ Conventional commits with a short imperative subject and a why-focused body.           │
+│     landing              ││                                                                                        │
+│     marketing-site       ││ ✕ Copies differ: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex)  … │
+│     playground           ││       Keep the ~/.claude/skills copy                                                   │
+│     scripts              ││       Keep the ~/.agents/skills copy                                                   │
+│     status-page          ││ ⚠ Global, not reviewed: loads in every repo  · your call                               │
+│    ───────────────────── ││       Move it to the repos that need it…                                               │
+│   ⚙ Settings             ││       Keep it global on purpose                                                        │
+│   ? Help                 ││       Delete it                                                                        │
+│                          ││                                                                                        │
+│                          ││ Actions  Edit SKILL.md · Review prompt                                                 │
+│                          ││                                                                                        │
+│                          ││ Usage   last used yesterday                                                            │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                   type to filter · space ★ fix · enter actions · tab tabs · esc back

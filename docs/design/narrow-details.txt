@@ -1,0 +1,24 @@
+ ◆ skilllib   Projects  Your skills  Global  Health 17  Settings
+╭── stripe-payments ─────────────────────────────────────────────────────────╮
+│ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and │
+│ proration.                                                                 │
+│                                                                            │
+│ ✕ Loaded twice: also global in ~/.claude/skills                            │
+│   ▸ ★ Keep this repo's copy, stop loading it globally                      │
+│       Keep it global, remove it from this repo                             │
+│ ⚠ Codex can't see it                                                       │
+│     ★ Link it for every agent                                              │
+│                                                                            │
+│ Actions  Edit in library · Other versions… · Remove from repo              │
+│          Review prompt                                                     │
+│                                                                            │
+│ Usage here   last used yesterday                                           │
+│                                                         █                  │
+│     ▄         ▄   ▄           ▄ ▄       ▄ ▄           ▄ █ ▄                │
+│     █         █   █           █ █       █ █           █ █ █                │
+│   30 days ago                                       today                  │
+│                                                                            │
+│ Loaded from                                                                │
+│   .claude/skills/stripe-payments  ∅ gitignored                             │
+╰────────────────────────────────────────────────────────────────────────────╯
+                                        ↑↓ ←→ choose · enter apply · esc back
