@@ -85,10 +85,19 @@ export function sampleWorld(): World {
     projects: [
       repo("web-app", "committed", [
         { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: false, version: 2, library: "same", git: "ignored" },
-        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 1, library: "same", git: "ignored" },
+        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 1, library: "same", git: "ignored", cursorPlugin: "react-kit" },
         { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, edited: true, library: "same", git: "ignored" },
         { name: "seo-meta", source: "lib", dir: ".claude/skills", linked: true, version: 1, missing: true, library: "same", git: "ignored" },
-        { name: "testing-guide", source: "lib", dir: ".claude/skills", linked: true, version: 3, library: "same", git: "ignored" },
+        {
+          name: "testing-guide",
+          source: "lib",
+          dir: ".claude/skills",
+          linked: true,
+          version: 3,
+          library: "same",
+          git: "ignored",
+          dupes: { steps: [".agents/skills/testing-guide: duplicate copy → link"], git: [".agents/skills/testing-guide: duplicate copy → link"] },
+        },
         { name: "deploy-preview", source: "repo", dir: ".agents/skills", linked: false, git: "committed" },
         { name: "release-notes", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
         { name: "my-scratchpad", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
@@ -97,7 +106,21 @@ export function sampleWorld(): World {
       repo("api-server", "changed", [
         { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: true, version: 2, library: "same", git: "ignored" },
         { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, library: "same", git: "ignored" },
-        { name: "db-seed", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
+        {
+          name: "db-seed",
+          source: "untracked",
+          dir: ".claude/skills",
+          linked: true,
+          git: "ignored",
+          dupes: {
+            steps: [],
+            git: [],
+            differ: [
+              { dir: "~/Projects/api-server/.claude/skills", label: ".claude/skills", runs: ["claude-code", "cursor"], canWin: true },
+              { dir: "~/Projects/api-server/.agents/skills", label: ".agents/skills", runs: ["codex"], canWin: true },
+            ],
+          },
+        },
       ]),
       repo("docs-site", "none", [
         { name: "writing-style", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
@@ -106,13 +129,24 @@ export function sampleWorld(): World {
       repo("mobile-app", "committed", [
         { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 2, library: "same", git: "ignored" },
         { name: "expo-release", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
+        { name: "pr-review", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
       ]),
       ...emptyRepos.map((name) => repo(name, "none", [])),
     ],
     machine: [
-      machine("commit-style", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
+      machine("commit-style", "global", "~/.claude/skills", {
+        installed: "2026-09-20 10:00",
+        dupes: {
+          steps: [],
+          git: [],
+          differ: [
+            { dir: "~/.claude/skills", label: "~/.claude/skills", runs: ["claude-code", "cursor"], canWin: true },
+            { dir: "~/.agents/skills", label: "~/.agents/skills", runs: ["codex"], canWin: true },
+          ],
+        },
+      }),
       machine("stripe-payments", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
-      machine("tailwind-tips", "global", "~/.agents/skills", { origin: "skills.sh: tailwindlabs/skills" }),
+      machine("tailwind-tips", "global", "~/.agents/skills", { origin: "skills.sh: tailwindlabs/skills", dupes: { steps: ["~/.claude/skills/tailwind-tips: duplicate copy → link"], git: [] } }),
       machine("frontend-design", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
       machine("pr-review", "global", "~/.claude/skills", { kept: true }),
       machine("old-helper", "global", "~/.claude/skills", { broken: true }),
@@ -195,6 +229,11 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
     track: (repo, name) => (Object.assign(skill(repo, name), { source: "lib", version: lib(name)!.latest, library: "same" }), `${name} is tracked`),
     importLocal: (repo, name) => (toLibrary(name), Object.assign(skill(repo, name), { source: "lib", version: lib(name)!.latest, library: "same" }), `${name} imported and tracked`),
     copyToLibrary: (repo, name) => (toLibrary(name), (skill(repo, name).library = "same"), `${name} copied into your library`),
+    tidy: (repo, name, { keep } = {}) => {
+      if (repo === null) for (const m of w.machine.filter((x) => x.name === name && x.dupes)) delete m.dupes;
+      else Object.assign(skill(repo, name), { dupes: undefined, linked: true });
+      return done(`${name}: one copy${keep ? ` (${keep})` : ""}, plus links`);
+    },
     unloadGlobal: (m) => (lib(m.name) || toLibrary(m.name), drop(m), `${m.name} no longer loads globally (backed up)`),
     deleteGlobal: (m) => (drop(m), m.broken ? `Removed broken link ${m.name}` : `Deleted ${m.name} (backed up)`),
     keepGlobal: (name, keep) => {

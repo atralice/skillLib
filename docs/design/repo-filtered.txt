@@ -1,12 +1,12 @@
 ╭── ◆ skilllib ────────────╮╭── Skills ──────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 20   Issues 8   Local 9   Global 5   Plugins 3   Vendor 3     ⌕ re▏               │
 │   ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          16   ││ ▌ ⚠ react-patterns     lib v1            9  Update to v2                               │
+│   ✓ Health          17   ││ ▌ ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
 │   Projects ───────────── ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
 │ ▌ ◆ web-app          ✕   ││     pr-review          global ✓          4                                             │
 │     api-server       ✕   ││     release-notes      repo              2                                             │
 │     docs-site        ·   ││     create-rule        cursor            –                                             │
-│     mobile-app           ││                                                                                        │
+│     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
 │     blog                 ││                                                                                        │
 │     cli-tools            ││                                                                                        │
@@ -15,16 +15,16 @@
 │     e2e-tests            │╭── react-patterns ──────────────────────────────────────────────────────────────────────╮
 │     infra                ││ Component patterns for React 19: composition, server components, suspense boundaries.  │
 │     landing              ││                                                                                        │
-│     marketing-site       ││ ⚠ Update available: v1 → v2                                                            │
-│     playground           ││     ★ Update to v2                                                                     │
-│     scripts              ││                                                                                        │
-│     status-page          ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│     marketing-site       ││ ⚠ Also in the Cursor plugin react-kit: Cursor lists both while it's on  · your call    │
+│     playground           ││       Turn the plugin off in Cursor (Settings › Plugins)                               │
+│     scripts              ││ ⚠ Update available: v1 → v2                                                            │
+│     status-page          ││     ★ Update to v2                                                                     │
 │    ───────────────────── ││                                                                                        │
-│   ⚙ Settings             ││ Usage here   last used yesterday                                                       │
-│   ? Help                 ││   █                                                                                    │
+│   ⚙ Settings             ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│   ? Help                 ││                                                                                        │
+│                          ││ Usage here   last used yesterday                                                       │
+│                          ││   █                                                                                    │
 │                          ││   █   ▄ ▄   ▄           ▄ ▄                           ▄   ▄                            │
 │                          ││   █   █ █   █           █ █                           █   █                            │
-│                          ││   30 days ago today                                                                    │
-│                          ││                                                                                        │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back

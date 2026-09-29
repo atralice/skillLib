@@ -24,7 +24,7 @@
 <text x="1004.3" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">16  </text>
+<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">17  </text>
 <text x="245.6" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">enter  →    </text>
 <text x="372.1" y="111.0" fill="#e5e7eb" xml:space="preserve" textLength="581.7" lengthAdjust="spacingAndGlyphs">one pane deeper: Places → list → details (and applies the chosen fix)</text>
@@ -61,7 +61,8 @@
 <text x="372.1" y="187.0" fill="#e5e7eb" xml:space="preserve" textLength="345.6" lengthAdjust="spacingAndGlyphs">one pane back (esc clears a filter first)</text>
 <text x="1004.3" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  mobile-app           </text>
+<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
+<text x="211.9" y="206.0" fill="#f2c94c" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⚠  </text>
 <text x="245.6" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">ctrl+r      </text>
 <text x="372.1" y="206.0" fill="#e5e7eb" xml:space="preserve" textLength="261.3" lengthAdjust="spacingAndGlyphs">read everything again from disk</text>

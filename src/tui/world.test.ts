@@ -6,8 +6,9 @@ const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
 test("sample data shows every kind of issue", () => {
   const w = sampleWorld();
-  const found = new Set([...ids(w, "web-app"), ...w.machine.flatMap((m) => machineIssues(w, m).map((i) => i.id))].map((id) => id.split(":")[0]));
-  for (const kind of ["missing", "twice-g", "twice-p", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "broken"]) expect(found).toContain(kind);
+  const found = new Set([...w.projects.flatMap((p) => ids(w, p.name)), ...w.machine.flatMap((m) => machineIssues(w, m).map((i) => i.id))].map((id) => id.split(":")[0]));
+  for (const kind of ["missing", "twice-g", "kept-g", "twice-p", "copies", "conflict", "cursor-plugin", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "copies-g", "conflict-g", "broken"])
+    expect(found).toContain(kind);
 });
 
 test("keeping the repo copy unloads the global one and clears the duplicate", () => {
@@ -42,14 +43,40 @@ test("Global only offers fixes that act on global skills, never on a repo", () =
   );
 });
 
-test("two of your own global copies of one skill: either can go", () => {
+test("differing global copies: your call which to keep, the other becomes a link", () => {
   const w = sampleWorld();
-  w.ops.keepGlobal("commit-style", true);
-  w.machine.push({ ...w.machine.find((m) => m.name === "commit-style")!, where: "~/.cursor/skills", path: "~/.cursor/skills/commit-style" });
-  const issue = machineIssues(w, w.machine[0]!).find((i) => i.id === "dup-global:commit-style")!;
-  expect(issue.fixes.map((f) => f.label)).toEqual(["Delete the copy in ~/.claude/skills", "Delete the copy in ~/.cursor/skills"]);
+  const commit = w.machine.find((m) => m.name === "commit-style")!;
+  const issue = machineIssues(w, commit).find((i) => i.id === "conflict-g:commit-style")!;
+  expect(issue.title).toBe("Copies differ: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex)");
+  expect(issue.decision).toBe(true);
+  expect(issue.fixes.map((f) => f.label)).toEqual(["Keep the ~/.claude/skills copy", "Keep the ~/.agents/skills copy"]);
   issue.fixes[1]!.run(w);
-  expect(w.machine.filter((m) => m.name === "commit-style").map((m) => m.where)).toEqual(["~/.claude/skills"]);
+  expect(machineIssues(w, commit).map((i) => i.id)).not.toContain("conflict-g:commit-style");
+});
+
+test("identical copies are fixed automatically; differing ones and Cursor plugins are your call", () => {
+  const w = sampleWorld();
+  const issue = (repo: string, name: string, id: string) => issuesOf(w, repo, usable(w, repo).find((u) => u.local && u.name === name)!).find((i) => i.id === `${id}:${name}`)!;
+  const copies = issue("web-app", "testing-guide", "copies");
+  expect(copies.decision).toBe(false);
+  expect(copies.fixes[0]!.preview).toContain("skilllib asks before that one");
+  expect(issue("api-server", "db-seed", "conflict").decision).toBe(true);
+  expect(issue("web-app", "react-patterns", "cursor-plugin").decision).toBe(true);
+  // While copies differ, comparing one of them with your library says nothing.
+  expect(ids(w, "api-server")).not.toContain("local:db-seed");
+  copies.fixes[0]!.run(w);
+  expect(ids(w, "web-app")).not.toContain("copies:testing-guide");
+});
+
+test("a repo copy of a skill you keep global is the extra one", () => {
+  const w = sampleWorld();
+  const pr = usable(w, "mobile-app").find((u) => u.local && u.name === "pr-review")!;
+  const issue = issuesOf(w, "mobile-app", pr).find((i) => i.id === "kept-g:pr-review")!;
+  expect(ids(w, "mobile-app")).not.toContain("twice-g:pr-review");
+  expect(issue.fixes.map((f) => f.label)).toEqual(["Remove this repo's copy, keep it global", "Stop loading it globally after all"]);
+  issue.fixes[0]!.run(w);
+  expect(ids(w, "mobile-app")).not.toContain("kept-g:pr-review");
+  expect(w.machine.some((m) => m.name === "pr-review")).toBe(true);
 });
 
 test("related skills group by source, then install time, then first word", () => {

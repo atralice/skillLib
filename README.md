@@ -46,7 +46,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 - **📚 Your skills: one versioned library.** Every skill has a single master copy in `~/.skilllib/library`, and each change becomes a new version.
 - **📦 Per-repo installs, pinned like dependencies.** Each repo lists its skills and versions in `skilllib.json`. `sync` reproduces them exactly, and `update` moves to the newest.
 - **🤝 One copy, every agent.** skilllib puts one real copy in the repo and links it into whichever folders your other agents read.
-- **🧹 Health: one list of what to fix.** Global skills you haven't decided about, skills loaded twice, updates, broken links, each with its fix. For a global skill: move it to the repos that need it, keep it global, or delete it. Usage numbers and descriptions help you decide.
+- **🧹 Health: one list of what to fix.** Global skills you haven't decided about, skills loaded twice, duplicate copies, updates, broken links, each with its fix. For a global skill: move it to the repos that need it, keep it global, or delete it. Usage numbers and descriptions help you decide.
 - **✓ Global on purpose.** Some skills belong everywhere. Mark them once and skilllib stops warning about them.
 - **🔎 See everything in a repo:**
   - where each skill comes from (the repo, your library, global, a plugin, claude.ai…)
@@ -197,21 +197,21 @@ It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at
 
 ### Duplicates
 
-The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. `skilllib doctor` lists each case, and `skilllib tidy` fixes the folder ones.
+The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case on the skill it's about, with its fix. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
 
 | What it finds | What it does |
 |---|---|
 | Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
-| **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. |
+| **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
 | A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
-| A repo copy of a skill you keep global | The repo copy is the extra one. Claude Code runs the global copy anyway. |
+| A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
 | A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |
 
 - **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
 - **It never adds links.** That's `skilllib link`, or a skill's *can't see it* fix.
-- **It leaves committed files alone** unless you pass `--allow-git`.
+- **It leaves committed files alone** unless you say so: Health asks first, and `skilllib tidy` needs `--allow-git`.
 - **Cursor lists a skill once** even when it reaches it through several folders (tested September 2026). It lists a plugin's copy and your copy separately.
 
 ### Backups
@@ -354,7 +354,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.4.0 && git push --tags
+   git tag v1.5.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

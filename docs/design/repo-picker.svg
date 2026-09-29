@@ -6,8 +6,8 @@
 <text x="43.3" y="54.0" fill="#8a93a6" font-weight="bold" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs"> ◆ skilllib </text>
 <text x="144.4" y="54.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">────────────╮</text>
 <text x="254.0" y="54.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
-<text x="279.3" y="54.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs"> Move all 3 to repos: frontend + 2 more · installed together 2026-09-20 </text>
-<text x="886.3" y="54.0" fill="#8b9dff" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">──────────────╮</text>
+<text x="279.3" y="54.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="590.1" lengthAdjust="spacingAndGlyphs"> Move all 3 to repos: commit + 2 more · installed together 2026-09-20 </text>
+<text x="869.4" y="54.0" fill="#8b9dff" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">────────────────╮</text>
 <text x="18.0" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="73.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">▤ Your skills     </text>
 <text x="203.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">7   </text>
@@ -25,7 +25,7 @@
 <text x="1004.3" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">16  </text>
+<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">17  </text>
 <text x="245.6" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="270.9" y="111.0" fill="#8a93a6" xml:space="preserve" textLength="404.6" lengthAdjust="spacingAndGlyphs">ticked: repos where it was used · type to filter</text>
@@ -68,7 +68,8 @@
 <text x="321.5" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs">mobile-app          </text>
 <text x="1004.3" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="206.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  mobile-app           </text>
+<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
+<text x="211.9" y="206.0" fill="#f2c94c" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⚠  </text>
 <text x="245.6" y="206.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="270.9" y="206.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">  [ ] </text>
