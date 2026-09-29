@@ -82,7 +82,8 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 
 /** Where a global skill comes from, stated once for its whole group. */
 function globalFrom(kind: SourceKind, origin: string, path: string): string {
-  if (kind === "global") return tildify(path.replace(/[\\/][^\\/]+$/, ""));
+  // Always "/", like the other source labels, so it reads the same on every OS.
+  if (kind === "global") return tildify(path.replace(/[\\/][^\\/]+$/, "")).replace(/\\/g, "/");
   return origin;
 }
 
