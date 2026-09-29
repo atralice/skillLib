@@ -483,11 +483,11 @@ export function findIssues(
   return issues;
 }
 
-/** When a skill folder appeared (creation time where the OS keeps it, else last change). */
+/** When a skill folder appeared: creation time where the filesystem keeps it, else its inode change time (a copy can't carry an old one over). */
 function addedAt(path: string): number {
   try {
     const st = lstatSync(path);
-    return st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    return st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
   } catch {
     return Date.now();
   }

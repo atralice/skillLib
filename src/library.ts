@@ -236,6 +236,8 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
       for (const [skillsDir, readers] of NESTED_READERS) {
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
         for (const path of skillDirsIn(join(sub, skillsDir))) {
+          // A link to a skill elsewhere in the repo is that skill, already reported.
+          if (isLink(path) && (realpathOrNull(path) ?? "").startsWith((realpathOrNull(root) ?? root) + sep)) continue;
           const name = basename(path);
           found.push({
             name,

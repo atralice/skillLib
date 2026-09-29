@@ -348,10 +348,13 @@ test("nested skill folders in a monorepo are found apart from the repo's own, wi
   writeSkill(join(project, "packages", "api", ".agents", "skills", "lint"), "api");
   writeSkill(join(project, "packages", "web", ".claude", "skills", "alpha"), "v1");
   writeSkill(join(project, "node_modules", "dep", ".claude", "skills", "junk"), "x");
+  writeSkill(join(project, ".agents", "skills", "shared"), "x");
+  mkdirSync(join(project, "packages", "api", ".claude", "skills"), { recursive: true });
+  symlinkSync(join(project, ".agents", "skills", "shared"), join(project, "packages", "api", ".claude", "skills", "shared"));
   mkdirSync(join(project, "vendored", ".git"), { recursive: true }); // a repo of its own
   writeSkill(join(project, "vendored", ".claude", "skills", "theirs"), "x");
 
-  expect(projectStatus(project)).toEqual([]);
+  expect(projectStatus(project).map((s) => s.name)).toEqual(["shared"]);
   expect(nestedSkills(project).map((s) => [s.location, s.name, s.state, s.visibility])).toEqual([
     ["packages/api/.agents/skills", "lint", "repo skill", [{ id: "claude-code", paths: 0 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 1 }]],
     ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
