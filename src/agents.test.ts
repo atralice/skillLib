@@ -13,6 +13,8 @@ import { machineSkills } from "./sources.js";
 let tmp: string;
 let project: string;
 const realHome = process.env.HOME;
+// Node reads the home folder from USERPROFILE on Windows, HOME elsewhere.
+const realProfile = process.env.USERPROFILE;
 
 function skill(dir: string, description = "d") {
   mkdirSync(dir, { recursive: true });
@@ -32,6 +34,7 @@ function cli(...args: string[]): string {
 beforeEach(() => {
   tmp = realpathSync(mkdtempSync(join(tmpdir(), "skilllib-agents-")));
   process.env.HOME = tmp;
+  process.env.USERPROFILE = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
   project = join(tmp, "project");
@@ -41,6 +44,8 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
   process.env.HOME = realHome;
+  if (realProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = realProfile;
   delete process.env.CLAUDE_CONFIG_DIR;
 });
 
