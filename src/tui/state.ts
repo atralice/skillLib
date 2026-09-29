@@ -1,6 +1,6 @@
 import { basename, join } from "node:path";
 import { projectOfFactory } from "../commands.js";
-import { librarySkillDir, librarySkills, listBackups, projectStatus, type Backup, type ProjectSkill, type Visibility } from "../library.js";
+import { librarySkillDir, librarySkills, listBackups, nestedSkills, projectStatus, type Backup, type ProjectSkill, type Visibility } from "../library.js";
 import { enabledHarnesses, harnessesChosen, keptGlobal, readConfig, visibleProjects } from "../config.js";
 import type { HarnessId } from "../harnesses.js";
 import { findIssues, type Issue } from "../health.js";
@@ -48,6 +48,8 @@ export type Snapshot = {
   machine: SourcedSkill[];
   /** Per project, what agents load there besides its own skills (machine, with that repo's plugin settings). */
   loadedIn: Map<string, SourcedSkill[]>;
+  /** Per project, skill folders below its root (monorepos: packages/web/.claude/skills). */
+  nested: Map<string, ProjectSkill[]>;
   issues: Issue[];
   backups: Backup[];
   roots: string[];
@@ -85,6 +87,7 @@ export function loadSnapshot(): Snapshot {
   const origins = libraryOrigins();
   const machine = machineSkills();
   const loadedIn = new Map(projects.map((p) => [p, skillsLoadedIn(p, machine)]));
+  const nested = new Map(projects.map((p) => [p, nestedSkills(p)]));
   // Skills imported before origins were recorded: infer from a same-named skill on this machine.
   const inferred = (name: string) => {
     // Only global and skills.sh skills could have been imported; vendor copies can share the name.
@@ -106,7 +109,15 @@ export function loadSnapshot(): Snapshot {
     library,
     machine,
     loadedIn,
-    issues: findIssues(projects, machine, new Set(library.map((l) => l.name)), statusOf, (p) => loadedIn.get(p) ?? machine),
+    nested,
+    issues: findIssues(
+      projects,
+      machine,
+      new Set(library.map((l) => l.name)),
+      statusOf,
+      (p) => loadedIn.get(p) ?? machine,
+      (p) => nested.get(p) ?? [],
+    ),
     backups: [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt)),
     roots: readConfig().roots,
     harnesses: enabledHarnesses(),

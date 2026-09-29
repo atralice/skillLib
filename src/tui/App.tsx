@@ -25,6 +25,7 @@ import {
   visibilityOf,
   type Backup,
   type Change,
+  type ProjectSkill,
   type Visibility,
 } from "../library.js";
 import { restorePlugin } from "../plugins.js";
@@ -919,6 +920,55 @@ export function App() {
           },
         ]
       : [];
+    // Skill folders below the root (monorepos). They load only in their part of the repo, so they're
+    // shown, not linked, tracked or tidied: that would make them load repo-wide.
+    const nestedItem = (n: ProjectSkill): Item => {
+      const copy = () =>
+        act(() => {
+          const imported = importSkill(n.path, { force: true });
+          return ok(
+            imported.status === "unchanged"
+              ? `${n.name} is already in the library`
+              : `${n.name} ${imported.status === "added" ? "copied into" : "updated in"} the library; ${n.location} keeps its copy`,
+          );
+        });
+      const badge = stateBadge(n.state);
+      const readers = n.visibility.filter((v) => v.paths > 0).map((v) => harnessName(v.id));
+      return {
+        key: `nested:${n.path}`,
+        search: `${n.name} ${n.location}`,
+        tags: ["in this project"],
+        skill: { name: n.name, path: n.path },
+        row: {
+          key: `nested:${n.path}`,
+          cells: [
+            { text: "◇ ", color: color.accentDim },
+            { text: n.name, grow: true },
+            { text: ` ${n.location.replace(/\/\.(claude|agents)\/skills$/, "")}`, color: color.faint },
+            ...harnessChips(n.visibility, true),
+            { text: `  ${badge.icon} ${badge.label}`, width: 19, color: badge.color },
+            { text: usesText(n.name, root).padStart(4), color: color.muted },
+          ],
+        },
+        primary: { label: "copy to your skills", run: copy },
+        actions: [
+          { label: "Copy to Your skills", hint: "so other repos can use it; this folder keeps its copy", run: copy },
+          { label: "Edit SKILL.md", run: () => void edit(join(n.path, "SKILL.md")) },
+          { label: "Open folder", run: () => openFolder(n.path) },
+        ],
+        preview: {
+          title: n.name,
+          dir: n.path,
+          meta: [
+            `in ${n.location}`,
+            readers.length ? `loaded by ${readers.join(", ")} when working in ${n.location.replace(/\/\.(claude|agents)\/skills$/, "")}` : "not loaded by your harnesses",
+            n.latest ? `in Your skills (v${n.latest})` : "not in Your skills",
+          ],
+          description: "A skill folder below the repo's root, as monorepos have. It loads only in that part of the repo, so skilllib shows it but doesn't link, track or tidy it.",
+        },
+      };
+    };
+    const nestedHere = snapshot.nested.get(root) ?? [];
     const fromLibrary = local.filter((r) => r.managed || r.state === "untracked copy of library skill");
     const fromNpx = local.filter((r) => r.state === "from npx skills");
     const repoOwn = local.filter((r) => !fromLibrary.includes(r) && !fromNpx.includes(r));
@@ -980,6 +1030,7 @@ export function App() {
         },
         { title: `From npx skills (${fromNpx.length})`, items: fromNpx.map(item), groupActions: copyAllToLibrary },
         { title: `The repo's own (${repoOwn.length})`, items: repoOwn.map(item), groupActions: copyAllToLibrary },
+        { title: `In subfolders (${nestedHere.length})`, items: nestedHere.map(nestedItem), groupActions: copyAllToLibrary },
         {
           title: `⚠ Global · yours, not reviewed, loaded in every repo (${unreviewed.length})`,
           items: [...cleanupItem, ...unreviewed.map(globalItem)],

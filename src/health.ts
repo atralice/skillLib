@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, discardEdits, importSkill, isGitTracked, isLink, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
@@ -76,7 +76,8 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
  * (duplicate copies, plugins that duplicate your skills), copies that differ,
  * projects behind the library, and skills that only live in one project.
  * `loadedIn` is what agents load in a repo besides its own skills: the machine's,
- * with plugins that repo's Claude Code settings turn on or off.
+ * with plugins that repo's Claude Code settings turn on or off. `nestedOf` lists
+ * skill folders below a repo's root (monorepos); they count for skills loaded twice.
  */
 export function findIssues(
   projects: string[],
@@ -84,9 +85,11 @@ export function findIssues(
   libraryNames: Set<string>,
   statusOf: (root: string) => ProjectSkill[] = projectStatus,
   loadedIn: (root: string) => SourcedSkill[] = (root) => skillsLoadedIn(root, machine),
+  nestedOf: (root: string) => ProjectSkill[] = nestedSkills,
 ): Issue[] {
   const issues: Issue[] = [];
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
+  const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
   for (const skill of machine.filter((m) => m.broken)) {
     issues.push({
@@ -124,16 +127,20 @@ export function findIssues(
 
   // Plugins that duplicate your skills: your skill wins, and the plugin goes, everywhere or only in the repos where both load.
   const loadedHere = new Map(projects.map((root) => [root, loadedIn(root)]));
-  const namesIn = (root: string) => statuses.get(root)!.map((s) => s.name);
+  // Skill names Claude Code can load in a repo: its own, and nested .claude/skills ones.
+  const namesIn = (root: string) => [
+    ...new Set([...statuses.get(root)!, ...nested.get(root)!.filter((n) => n.visibility.some((v) => v.id === "claude-code" && v.paths))].map((s) => s.name)),
+  ];
   const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
   const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
   const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
     const where = basename(root);
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
+    const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
     return [
       { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it", run: () => orThrow(turnOffIn(plugin, root)) },
       // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
-      ...(copies.length && copies.every((s) => s.managed)
+      ...(names.length && allManaged
         ? [
             {
               label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
@@ -403,6 +410,14 @@ export function findIssues(
         });
       }
       if (globalNames.has(s.name)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);
+    }
+  }
+
+  // Nested skill folders load too, in their part of the repo.
+  for (const root of projects) {
+    for (const n of nested.get(root)!) {
+      const copies = alsoGlobal.get(n.name) ?? [];
+      if (globalNames.has(n.name) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false }]);
     }
   }
 

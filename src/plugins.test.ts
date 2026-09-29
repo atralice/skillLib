@@ -174,3 +174,14 @@ test("a synced plugin is turned off in one repo by its settings.local.json", () 
     enabledPlugins: { "railway@synced": false },
   });
 });
+
+test("a nested .claude/skills copy of a plugin's skill counts, and is never offered for removal", () => {
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  const mono = join(tmp, "mono");
+  skill(join(mono, "packages", "web", ".claude", "skills", "alpha"));
+
+  const issue = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === "plugin:pt@mk");
+  expect(issue?.severity).toBe("problem");
+  expect(issue?.choices?.map((c) => c.label)).toEqual(["Remove the plugin pt@mk", "Turn the plugin pt@mk off", "Turn the plugin pt@mk off in mono only"]);
+});

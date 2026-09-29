@@ -6,6 +6,7 @@ import {
   restoreBackup,
   importSkill,
   librarySkills,
+  nestedSkills,
   projectStatus,
   removeSkill,
   linkAll,
@@ -114,20 +115,34 @@ function lastUsed(summary: UsageSummary | undefined): string {
 export async function status(args: Args) {
   const root = findProjectRoot();
   const skills = projectStatus(root);
+  const nested = nestedSkills(root);
   info(`${basename(root)} ${dim(tildify(root))}\n`);
-  if (skills.length === 0) {
+  if (skills.length === 0 && nested.length === 0) {
     info("No skills in this project yet. Add one from your library with: skilllib add <name>");
     return;
   }
   const usage = await usageBySkill(args.days, root);
-  table(
-    skills.map((s) => ({
-      Skill: s.name,
-      Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
-      [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
-      "Last used": lastUsed(usage.get(s.name)),
-    })),
-  );
+  if (skills.length) {
+    table(
+      skills.map((s) => ({
+        Skill: s.name,
+        Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
+        [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
+        "Last used": lastUsed(usage.get(s.name)),
+      })),
+    );
+  }
+  if (nested.length) {
+    info(`${skills.length ? "\n" : ""}In subfolders ${dim("(Claude Code loads .claude/skills when you work there; Codex loads .agents/skills when started there)")}`);
+    table(
+      nested.map((s) => ({
+        Skill: s.name,
+        Folder: s.location,
+        Status: colorState(s.state),
+        [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
+      })),
+    );
+  }
 
   const states = new Set(skills.map((s) => s.state));
   const hints: string[] = [];

@@ -264,3 +264,16 @@ test("local edits to an installed skill: save them as a new version, or discard 
   expect(backup && restoreBackup(backup)).toMatchObject({ ok: true });
   expect(readFileSync(copy, "utf-8")).toContain("oops");
 });
+
+test("nested skills count for skills loaded twice, but are never linked, imported or tracked from Health", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "mono");
+  skill(join(project, "packages", "web", ".claude", "skills", "alpha"));
+  skill(join(project, "packages", "web", ".claude", "skills", "solo"));
+  skill(join(tmp, ".claude", "skills", "alpha"));
+
+  const issues = findIssues([project], machineSkills(), new Set());
+  expect(issues.find((i) => i.id === "twice:alpha")?.title).toBe("alpha: in mono and also loaded globally");
+  // Codex doesn't load them from the root, but a link there would make them repo-wide.
+  expect(issues.map((i) => i.id).filter((id) => /^(usable|local|adopt|tidy):/.test(id))).toEqual([]);
+});

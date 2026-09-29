@@ -175,30 +175,13 @@ export function projectStatus(root: string): ProjectSkill[] {
   for (const [name, paths] of byName) {
     const real = paths.find((p) => !isLink(p)) ?? paths[0]!;
     const location = relative(root, join(real, "..")).split(sep).join("/");
-    const latest = latestVersion(name);
-    const local = treeHash(real);
-    const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
-    const committed = location === AGENTS_SKILLS_DIR;
     const source = lock[name]?.source;
-    const state: SkillState = source
-      ? "from npx skills"
-      : committed
-        ? latest === null
-          ? "repo skill"
-          : sameAsLibrary
-            ? "repo skill, in library"
-            : "repo skill, differs from library"
-        : latest === null
-          ? "local only"
-          : sameAsLibrary
-            ? "untracked copy of library skill"
-            : "untracked, differs from library";
     unmanaged.push({
       name,
       managed: false,
-      state,
+      state: unmanagedState(name, real, location === AGENTS_SKILLS_DIR, source),
       version: null,
-      latest: latest?.version ?? null,
+      latest: latestVersion(name)?.version ?? null,
       location,
       path: real,
       visibility: visibilityOf(root, name, enabled),
@@ -207,6 +190,63 @@ export function projectStatus(root: string): ProjectSkill[] {
   }
 
   return [...managed, ...unmanaged].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills). */
+function unmanagedState(name: string, real: string, committed: boolean, source: string | undefined): SkillState {
+  if (source) return "from npx skills";
+  const latest = latestVersion(name);
+  const local = treeHash(real);
+  const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
+  if (committed) return latest === null ? "repo skill" : sameAsLibrary ? "repo skill, in library" : "repo skill, differs from library";
+  return latest === null ? "local only" : sameAsLibrary ? "untracked copy of library skill" : "untracked, differs from library";
+}
+
+/** Folders never searched for nested skills: dependencies and build output. */
+const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "target", "coverage"]);
+
+/**
+ * Skill folders below a repo's root, as monorepos have (packages/web/.claude/skills).
+ * Claude Code loads <folder>/.claude/skills when you work on files in <folder>;
+ * Codex loads <folder>/.agents/skills when it starts there (it walks up to the
+ * repo root). They're reported apart from projectStatus: they aren't repo-wide,
+ * so linking, tracking or tidying them into the root folders would change who loads them.
+ * A nested git repo is a project of its own and isn't searched.
+ */
+export function nestedSkills(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): ProjectSkill[] {
+  const found: ProjectSkill[] = [];
+  const walk = (dir: string, left: number) => {
+    let subs: string[] = [];
+    try {
+      subs = readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !NESTED_SKIP.has(d.name))
+        .map((d) => join(dir, d.name));
+    } catch {
+      return;
+    }
+    for (const sub of subs) {
+      if (existsSync(join(sub, ".git"))) continue;
+      for (const [skillsDir, reader] of [[PROJECT_SKILLS_DIR, "claude-code"], [AGENTS_SKILLS_DIR, "codex"]] as const) {
+        const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
+        for (const path of skillDirsIn(join(sub, skillsDir))) {
+          const name = basename(path);
+          found.push({
+            name,
+            managed: false,
+            state: unmanagedState(name, path, skillsDir === AGENTS_SKILLS_DIR, undefined),
+            version: null,
+            latest: latestVersion(name)?.version ?? null,
+            location,
+            path,
+            visibility: enabled.map((id) => ({ id, paths: id === reader ? 1 : 0 })),
+          });
+        }
+      }
+      if (left > 1) walk(sub, left - 1);
+    }
+  };
+  walk(root, depth);
+  return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
 export type LinkResult = { created: string[]; blocked: string[] };
