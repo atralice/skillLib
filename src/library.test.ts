@@ -343,7 +343,7 @@ describe("harnesses", () => {
 });
 
 test("nested skill folders in a monorepo are found apart from the repo's own, with who loads them", () => {
-  setHarnesses(["claude-code", "codex"]);
+  setHarnesses(["claude-code", "codex", "cursor"]);
   writeSkill(join(project, "packages", "web", ".claude", "skills", "lint"), "web");
   writeSkill(join(project, "packages", "api", ".agents", "skills", "lint"), "api");
   writeSkill(join(project, "packages", "web", ".claude", "skills", "alpha"), "v1");
@@ -353,8 +353,8 @@ test("nested skill folders in a monorepo are found apart from the repo's own, wi
 
   expect(projectStatus(project)).toEqual([]);
   expect(nestedSkills(project).map((s) => [s.location, s.name, s.state, s.visibility])).toEqual([
-    ["packages/api/.agents/skills", "lint", "repo skill", [{ id: "claude-code", paths: 0 }, { id: "codex", paths: 1 }]],
-    ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "codex", paths: 0 }]],
-    ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "codex", paths: 0 }]],
+    ["packages/api/.agents/skills", "lint", "repo skill", [{ id: "claude-code", paths: 0 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 1 }]],
+    ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
+    ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
   ]);
 });

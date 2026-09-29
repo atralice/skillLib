@@ -202,14 +202,21 @@ function unmanagedState(name: string, real: string, committed: boolean, source: 
   return latest === null ? "local only" : sameAsLibrary ? "untracked copy of library skill" : "untracked, differs from library";
 }
 
+/** Nested skill folders and who reads them (Zed reads only the worktree root). */
+const NESTED_READERS: [string, HarnessId[]][] = [
+  [PROJECT_SKILLS_DIR, ["claude-code"]],
+  [AGENTS_SKILLS_DIR, ["codex", "cursor"]],
+  [".cursor/skills", ["cursor"]],
+];
+
 /** Folders never searched for nested skills: dependencies and build output. */
 const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "target", "coverage"]);
 
 /**
  * Skill folders below a repo's root, as monorepos have (packages/web/.claude/skills).
  * Claude Code loads <folder>/.claude/skills when you work on files in <folder>;
- * Codex loads <folder>/.agents/skills when it starts there (it walks up to the
- * repo root). They're reported apart from projectStatus: they aren't repo-wide,
+ * Cursor does the same with .agents/skills and .cursor/skills; Codex loads
+ * <folder>/.agents/skills when it starts there (it walks up to the repo root). They're reported apart from projectStatus: they aren't repo-wide,
  * so linking, tracking or tidying them into the root folders would change who loads them.
  * A nested git repo is a project of its own and isn't searched.
  */
@@ -226,7 +233,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
     }
     for (const sub of subs) {
       if (existsSync(join(sub, ".git"))) continue;
-      for (const [skillsDir, reader] of [[PROJECT_SKILLS_DIR, "claude-code"], [AGENTS_SKILLS_DIR, "codex"]] as const) {
+      for (const [skillsDir, readers] of NESTED_READERS) {
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
         for (const path of skillDirsIn(join(sub, skillsDir))) {
           const name = basename(path);
@@ -238,7 +245,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
             latest: latestVersion(name)?.version ?? null,
             location,
             path,
-            visibility: enabled.map((id) => ({ id, paths: id === reader ? 1 : 0 })),
+            visibility: enabled.map((id) => ({ id, paths: readers.includes(id) ? 1 : 0 })),
           });
         }
       }
