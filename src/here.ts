@@ -80,9 +80,9 @@ function groupBy<T extends { skills: string[] }>(items: [key: string, name: stri
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
-/** Where a global skill comes from, stated once for its whole group. */
+/** Where a global skill comes from, stated once for its whole group; "/" on every OS, like the other labels. */
 function globalFrom(kind: SourceKind, origin: string, path: string): string {
-  if (kind === "global") return tildify(path.replace(/[\\/][^\\/]+$/, ""));
+  if (kind === "global") return tildify(path.replace(/[\\/][^\\/]+$/, "")).replace(/\\/g, "/");
   return origin;
 }
 
