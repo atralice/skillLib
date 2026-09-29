@@ -245,7 +245,7 @@ export function findIssues(
   issues.push(...global.conflicts.map(conflictIssue));
 
   const kept = keptGlobal();
-  const alsoGlobal = new Map<string, string[]>(); // skill → projects with a managed copy
+  const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
   const globalNames = new Set(loaded.filter((m) => m.kind !== "plugin").map((m) => m.name));
   for (const root of projects) {
     const where = basename(root);
@@ -360,31 +360,39 @@ export function findIssues(
           choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
         });
       }
-      if (globalNames.has(s.name) && s.managed) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), root]);
+      if (globalNames.has(s.name)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);
     }
   }
 
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
-  for (const [name, roots] of alsoGlobal) {
-    const wheres = roots.map((r) => basename(r)).join(", ");
+  for (const [name, copies] of alsoGlobal) {
+    const wheres = copies.map((c) => basename(c.root)).join(", ");
+    // Only copies skilllib installed can be removed from here; a repo's own skill is the team's.
+    const removable = copies.filter((c) => c.managed).map((c) => c.root);
+    const repoOwn = copies.filter((c) => !c.managed).map((c) => basename(c.root));
     if (kept.has(name)) {
       // You keep it global on purpose: the project copies are the extra ones (Claude Code runs the global one anyway).
+      const removeWheres = removable.map((r) => basename(r)).join(", ");
       issues.push({
         id: `twice:${name}`,
         severity: "suggestion",
         title: `${name}: in ${wheres}, and you keep it global`,
-        detail: "The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.",
-        choices: [
-          {
-            label: `Remove the copies in ${wheres}`,
-            hint: "the global copy stays",
-            run: () => {
-              const removed = roots.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
-              return `${name}: removed from ${removed.join(", ") || "no project"}; the global copy stays`;
-            },
-          },
-        ],
+        detail: `The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.${
+          repoOwn.length ? ` ${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : ""
+        }`,
+        choices: removable.length
+          ? [
+              {
+                label: `Remove the copies in ${removeWheres}`,
+                hint: "the global copy stays",
+                run: () => {
+                  const removed = removable.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
+                  return `${name}: removed from ${removed.join(", ") || "no project"}; the global copy stays`;
+                },
+              },
+            ]
+          : undefined,
       });
       continue;
     }
@@ -393,7 +401,9 @@ export function findIssues(
       id: `twice:${name}`,
       severity: "suggestion",
       title: `${name}: in ${wheres} and also loaded globally`,
-      detail: "The project copies are enough; the global one loads it in every other project too. Or keep it global on purpose (Global → Enter).",
+      detail: `${
+        repoOwn.length === copies.length ? `Agents there load both the repo's copy and the global one.` : "The project copies are enough; the global one loads it in every other project too."
+      } ${movable ? "Stop loading it globally, or keep it global on purpose (Global → Enter)." : `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`}`,
       choices: movable
         ? [
             {

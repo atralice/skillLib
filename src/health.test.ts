@@ -216,3 +216,20 @@ test("skills npx skills installed in a project keep their source and aren't call
   importSkill(join(project, ".claude", "skills", "video-edit"));
   expect(libraryOrigins()["video-edit"]).toBe("skills.sh: genmedia-labs/skills");
 });
+
+test("a repo's own skill that also loads globally is flagged, and never offered for removal", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  skill(join(project, ".agents", "skills", "alpha")); // committed by the team
+  skill(join(tmp, ".claude", "skills", "alpha"));
+
+  const twice = () => findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:alpha");
+  expect(twice()?.title).toBe("alpha: in web and also loaded globally");
+  expect(twice()?.detail).toContain("load both the repo's copy and the global one");
+  expect(twice()?.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
+
+  // Kept global on purpose: skilllib can't remove the team's copy, so it only says so.
+  setKeepGlobal(["alpha"], true);
+  expect(twice()?.choices).toBeUndefined();
+  expect(twice()?.detail).toContain("web has its own copy");
+});
