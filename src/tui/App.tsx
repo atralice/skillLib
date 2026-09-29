@@ -100,6 +100,12 @@ function sourceGroup(m: { kind: string; origin: string; name: string }): Item["g
       label: `${m.origin} built-in`,
       about: "Skills that ship with Cursor (~/.cursor/skills-cursor). Only Cursor loads them, in every repo. They update with Cursor and can't be removed.",
     };
+  if (m.kind === "system")
+    return {
+      key: `system:${m.origin}`,
+      label: m.origin,
+      about: "A machine-wide folder Codex reads in every repo. An admin manages it; skilllib only reads it.",
+    };
   if (m.kind === "skills.sh" && m.origin.includes("/"))
     return {
       key: `repo:${m.origin}`,
@@ -982,7 +988,7 @@ export function App() {
           groupActions: (members) => [...keepGroupActions(members), ...yourGlobalActions(members)],
         },
         {
-          title: `Global · from vendors: plugins, claude.ai, built-in (${vendor.length})`,
+          title: `Global · from vendors: plugins, claude.ai, built-in, system (${vendor.length})`,
           items: vendor.map(globalItem),
           groupActions: (members) => [{
               label: `Copy review prompt for all ${members.length}`,
@@ -1156,6 +1162,7 @@ export function App() {
       ["claude.ai · synced to your account", (m) => m.kind === "claude.ai"],
       ["Claude Code plugins", (m) => m.kind === "plugin"],
       ["Cursor built-in", (m) => m.kind === "built-in"],
+      ["System · /etc/codex/skills", (m) => m.kind === "system"],
     ];
     const launcher: Item = {
       key: "__cleanup",
@@ -1389,11 +1396,13 @@ export function App() {
       plugin: m.origin.includes("(claude.ai)") ? `a Claude Code plugin synced from my claude.ai account (${m.origin})` : `the Claude Code plugin ${m.origin} (/plugin install)`,
       "claude.ai": "synced from my claude.ai account (Settings → Capabilities)",
       "built-in": "ships with Cursor",
+      system: `the machine-wide folder ${m.origin}, managed by an admin`,
     };
     const vendor: Record<string, string> = {
       plugin: `turn it off with /plugin in Claude Code (disable ${m.origin.replace(" (claude.ai)", "")}), or in claude.ai if it's synced`,
       "claude.ai": "remove it from my claude.ai account's skills",
       "built-in": "bundled with Cursor; it can't be removed",
+      system: `ask whoever manages ${m.origin} to remove it`,
     };
     return {
       name: m.name,

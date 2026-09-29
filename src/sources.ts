@@ -11,8 +11,9 @@ import { readSkillInfo, skillDirsIn } from "./skills.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
+ * - system: a machine-wide folder an admin manages (/etc/codex/skills)
  */
-export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in";
+export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system";
 
 export type SourcedSkill = {
   name: string;
@@ -60,9 +61,27 @@ function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
   return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().includes(dir));
 }
 
-/** The global skill folders your harnesses read (~/.claude/skills, ~/.agents/skills, …). */
+/** The global skill folders in your home that your harnesses read (~/.claude/skills, ~/.agents/skills, …). */
 export function globalSkillDirs(): string[] {
   return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => d.startsWith(userHome()));
+}
+
+/** Global folders outside your home (/etc/codex/skills): read, never changed. */
+function systemSkills(enabled: HarnessId[]): SourcedSkill[] {
+  const dirs = [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !d.startsWith(userHome()));
+  return dirs.flatMap((dir) =>
+    skillDirsIn(dir).map((path) => ({
+      name: basename(path),
+      kind: "system" as const,
+      origin: dir.replace(/\\/g, "/"),
+      path,
+      description: readSkillInfo(path).description,
+      movable: false,
+      broken: false,
+      harnesses: harnessesReading(dir, enabled),
+      links: [],
+    })),
+  ).filter((s) => s.harnesses.length > 0);
 }
 
 /**
@@ -224,6 +243,7 @@ export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): Source
     ...(claude ? claudeAiSkills() : []),
     ...(claude ? pluginSkills() : []),
     ...cursorBuiltInSkills(enabled),
+    ...systemSkills(enabled),
   ].sort(
     (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name),
   );

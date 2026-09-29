@@ -44,3 +44,25 @@ test("classifies global, skills.sh, claude.ai, and plugin skills", () => {
   process.env.HOME = realHome;
   delete process.env.CLAUDE_CONFIG_DIR;
 });
+
+test("reads Codex's /etc/codex/skills as a system folder skilllib never changes", () => {
+  const home = join(tmp, "sys-home");
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  process.env.CLAUDE_CONFIG_DIR = join(home, ".claude");
+  process.env.SKILLLIB_CODEX_SYSTEM_DIR = join(tmp, "etc", "codex", "skills");
+  skill(join(tmp, "etc", "codex", "skills", "house-style"));
+  try {
+    setHarnesses(["codex"]);
+    expect(machineSkills().map((s) => [s.kind, s.name, s.origin, s.movable, s.harnesses])).toEqual([
+      ["system", "house-style", join(tmp, "etc", "codex", "skills"), false, ["codex"]],
+    ]);
+    // Only Codex reads it.
+    setHarnesses(["claude-code"]);
+    expect(machineSkills()).toEqual([]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.SKILLLIB_CODEX_SYSTEM_DIR;
+  }
+});

@@ -101,7 +101,7 @@ export function findIssues(
     });
   }
 
-  // Your global skill and a vendor copy (claude.ai, a built-in) loaded by the same agent. Your skill wins,
+  // Your global skill and a vendor copy (claude.ai, a built-in, /etc/codex/skills) loaded by the same agent. Your skill wins,
   // but only the vendor can turn theirs off. Plugins get their own issue; two copies of yours are tidy's job.
   const loaded = machine.filter((m) => !m.broken);
   const byName = new Map<string, SourcedSkill[]>();
@@ -115,7 +115,7 @@ export function findIssues(
       id: `dup:${name}`,
       severity: "problem",
       title: `${name}: loaded twice in ${harnesses.join(" and ")}`,
-      detail: `${copies.map((c) => `${c.kind} (${c.origin})`).join(" and ")}. Your skill wins: turn the ${vendor.map((c) => c.kind).join(" and ")} copy off at its source${vendor.some((c) => c.kind === "claude.ai") ? " (claude.ai → Settings → Skills)" : ""}.`,
+      detail: `${copies.map((c) => `${c.kind} (${c.origin})`).join(" and ")}. Your skill wins: turn the ${vendor.map((c) => c.kind).join(" and ")} copy off at its source${vendor.some((c) => c.kind === "claude.ai") ? " (claude.ai → Settings → Skills)" : ""}${vendor.some((c) => c.kind === "system") ? ` (whoever manages ${vendor.find((c) => c.kind === "system")!.origin})` : ""}.`,
     });
   }
 

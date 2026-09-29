@@ -56,4 +56,5 @@ export const kindColor: Record<SourceKind, string> = {
   "claude.ai": color.blue,
   plugin: color.accent,
   "built-in": color.muted,
+  system: color.muted,
 };
