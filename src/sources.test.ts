@@ -55,7 +55,8 @@ test("reads Codex's /etc/codex/skills as a system folder skilllib never changes"
   try {
     setHarnesses(["codex"]);
     expect(machineSkills().map((s) => [s.kind, s.name, s.origin, s.movable, s.harnesses])).toEqual([
-      ["system", "house-style", join(tmp, "etc", "codex", "skills"), false, ["codex"]],
+      // Shown with "/" on every OS.
+      ["system", "house-style", join(tmp, "etc", "codex", "skills").replace(/\\/g, "/"), false, ["codex"]],
     ]);
     // Only Codex reads it.
     setHarnesses(["claude-code"]);
