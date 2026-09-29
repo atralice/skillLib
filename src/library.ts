@@ -3,20 +3,19 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
-import { enabledHarnesses, readConfig } from "./config.js";
+import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
-import { originFor, recordOrigin } from "./sources.js";
+import { globalSkillDirs, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
-export type LibrarySkill = { name: string; description: string; dir: string; hash: string };
+export type LibrarySkill = { name: string; description: string; dir: string };
 
 export function librarySkills(): LibrarySkill[] {
   return skillDirsIn(libraryDir()).map((dir) => ({
     name: basename(dir),
     description: readSkillInfo(dir).description,
     dir,
-    hash: treeHash(dir) ?? "",
   }));
 }
 
@@ -36,7 +35,8 @@ export type SkillState =
   | "local only"
   | "repo skill"
   | "repo skill, in library"
-  | "repo skill, differs from library";
+  | "repo skill, differs from library"
+  | "from npx skills";
 
 /** Which of your harnesses load a skill, and through how many paths (2+ may mean it's listed twice). */
 export type Visibility = { id: HarnessId; paths: number }[];
@@ -53,9 +53,11 @@ export type ProjectSkill = {
   location: string;
   path: string;
   visibility: Visibility;
+  /** Where `npx skills add` got it (from the project's skills-lock.json), e.g. "genmedia-labs/skills". */
+  source?: string;
 };
 
-function realpathOrNull(path: string): string | null {
+export function realpathOrNull(path: string): string | null {
   try {
     return realpathSync(path);
   } catch {
@@ -63,7 +65,7 @@ function realpathOrNull(path: string): string | null {
   }
 }
 
-function isLink(path: string): boolean {
+export function isLink(path: string): boolean {
   try {
     return lstatSync(path).isSymbolicLink();
   } catch {
@@ -81,7 +83,7 @@ export function linkDir(target: string, link: string) {
   else symlinkSync(relative(dirname(link), target), link);
 }
 
-function entryExists(path: string): boolean {
+export function entryExists(path: string): boolean {
   return isLink(path) || existsSync(path);
 }
 
@@ -95,14 +97,15 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
 
 /**
  * [real-copy folder, ...link folders] for a skill. An existing install keeps
- * its folder (switching harnesses never moves it); links are recorded ones
- * plus any your current harnesses need, since adding a link moves nothing.
+ * its folder (switching harnesses never moves it), and so does an untracked
+ * real copy being adopted, so tracking never leaves two copies. Links are
+ * recorded ones plus any your current harnesses need; adding one moves nothing.
  */
-function dependencyDirs(dep: Dependency | undefined): string[] {
+function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
   const wanted = installDirs(enabledHarnesses());
-  if (!dep) return wanted;
-  const primary = dep.dir ?? PROJECT_SKILLS_DIR;
-  return [primary, ...new Set([...(dep.links ?? []), ...wanted.filter((d) => d !== primary)])];
+  const untracked = ALL_PROJECT_DIRS.find((d) => existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
+  const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? wanted[0]!);
+  return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
 }
 
 /** True when git tracks files under `dir` in `root` (so writing there shows up in git status). */
@@ -159,6 +162,7 @@ export function projectStatus(root: string): ProjectSkill[] {
 
   // Unmanaged skills: group entries by name, keep the real folder (links point at it).
   const seen = new Set(Object.keys(skills));
+  const lock = projectSkillsLock(root);
   const unmanaged: ProjectSkill[] = [];
   const byName = new Map<string, string[]>();
   for (const dir of ALL_PROJECT_DIRS) {
@@ -175,17 +179,20 @@ export function projectStatus(root: string): ProjectSkill[] {
     const local = treeHash(real);
     const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
     const committed = location === AGENTS_SKILLS_DIR;
-    const state: SkillState = committed
-      ? latest === null
-        ? "repo skill"
-        : sameAsLibrary
-          ? "repo skill, in library"
-          : "repo skill, differs from library"
-      : latest === null
-        ? "local only"
-        : sameAsLibrary
-          ? "untracked copy of library skill"
-          : "untracked, differs from library";
+    const source = lock[name]?.source;
+    const state: SkillState = source
+      ? "from npx skills"
+      : committed
+        ? latest === null
+          ? "repo skill"
+          : sameAsLibrary
+            ? "repo skill, in library"
+            : "repo skill, differs from library"
+        : latest === null
+          ? "local only"
+          : sameAsLibrary
+            ? "untracked copy of library skill"
+            : "untracked, differs from library";
     unmanaged.push({
       name,
       managed: false,
@@ -195,6 +202,7 @@ export function projectStatus(root: string): ProjectSkill[] {
       location,
       path: real,
       visibility: visibilityOf(root, name, enabled),
+      ...(source ? { source } : {}),
     });
   }
 
@@ -291,7 +299,7 @@ export function addSkill(
 
   const manifest = readManifest(root);
   const recorded = manifest.skills[name];
-  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(recorded);
+  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(root, name, recorded);
   const to = join(root, primary, name);
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
@@ -419,10 +427,6 @@ export function importSkill(dir: string, { force = false } = {}): { name: string
   return { name, status: existing === null ? "added" : "updated" };
 }
 
-export function libraryExists(): boolean {
-  return existsSync(libraryDir());
-}
-
 function backupIndexFile(bucket: string): string {
   return join(skilllibHome(), bucket, "index.json");
 }
@@ -439,7 +443,7 @@ function readBackupIndex(bucket: string): Record<string, string> {
  * Moves `dir` into ~/.skilllib/<bucket>/ instead of deleting it, remembering
  * where it came from so it can be restored there. Returns the new path.
  */
-function stash(dir: string, bucket: string): string {
+export function stash(dir: string, bucket: string): string {
   // Unique even when several entries move in the same millisecond (a skill and its links).
   let at = Date.now();
   const entryAt = (ms: number) => `${basename(dir)}-${new Date(ms).toISOString().replace(/[:.]/g, "-")}`;
@@ -450,6 +454,15 @@ function stash(dir: string, bucket: string): string {
   renameSync(dir, target);
   writeFileSync(backupIndexFile(bucket), JSON.stringify({ ...readBackupIndex(bucket), [entry]: dir }, null, 2) + "\n");
   return target;
+}
+
+/**
+ * Removes a skill folder skilllib doesn't track (an untracked copy) and its links.
+ * The folder goes to the trash, restorable from Settings like everything skilllib removes.
+ */
+export function removeUntracked(root: string, name: string, path: string): string {
+  unlinkEverywhere(root, name);
+  return stash(path, "trash");
 }
 
 export function projectsUsing(name: string): string[] {
@@ -479,6 +492,7 @@ export function deleteGlobal(path: string, links: string[] = []) {
  * Stops a global skill loading everywhere by moving it (and any global links
  * pointing at it, so none break) into ~/.skilllib/global-backup. A skill must
  * be in the library first, unless it's a broken link that loads nothing.
+ * Once no global copy of it is left, it's no longer marked as kept global.
  */
 export function unloadGlobal(
   path: string,
@@ -490,7 +504,9 @@ export function unloadGlobal(
   const broken = !existsSync(join(path, "SKILL.md"));
   if (requireLibrary && !broken && latestVersion(name) === null) return { ok: false, reason: "import it into the library first" };
   for (const link of links) if (isLink(link)) stash(link, "global-backup");
-  return { ok: true, movedTo: stash(path, "global-backup") };
+  const movedTo = stash(path, "global-backup");
+  if (!globalSkillDirs().some((d) => entryExists(join(d, name)))) setKeepGlobal([name], false);
+  return { ok: true, movedTo };
 }
 
 /** Creates a new library skill with a starter SKILL.md. */
@@ -507,11 +523,16 @@ export function createSkill(name: string, description: string): { ok: true; dir:
   return { ok: true, dir };
 }
 
-export type Backup = { name: string; kind: "trash" | "global-backup"; path: string; movedAt: string; from: string };
+/**
+ * trash: deleted from the library · global-backup: unloaded from global ·
+ * tidy-backup: a duplicate copy replaced by a link · plugin: a Claude Code
+ * plugin skilllib removed (path holds its scope; see plugins.ts)
+ */
+export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "plugin"; path: string; movedAt: string; from: string };
 
 /** Everything skilllib moved out of the way, newest first. */
 export function listBackups(): Backup[] {
-  return (["trash", "global-backup"] as const)
+  return (["trash", "global-backup", "tidy-backup"] as const)
     .flatMap((kind) => {
       const dir = join(skilllibHome(), kind);
       if (!existsSync(dir)) return [];
@@ -527,9 +548,14 @@ export function listBackups(): Backup[] {
     .sort((a, b) => b.movedAt.localeCompare(a.movedAt));
 }
 
-/** Puts a backup back where it came from: trash → library, global-backup → ~/.claude/skills. */
+/**
+ * Puts a backup back where it came from: trash → library, global-backup →
+ * ~/.claude/skills, tidy-backup → the folder it was in. A link tidy left in
+ * its place is replaced by the original.
+ */
 export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: false; reason: string } {
   const to = backup.from;
+  if (backup.kind === "tidy-backup" && isLink(to)) unlinkSync(to);
   let taken = existsSync(to);
   try {
     taken = taken || lstatSync(to) !== null;

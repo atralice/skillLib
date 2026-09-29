@@ -97,7 +97,8 @@ describe("--json", () => {
       { source: "repo", dir: ".agents/skills", git: "new", agents: [], skills: ["team"] },
     ]);
     expect(status.global).toEqual([{ source: "global", from: "~/.claude/skills", agents: ["claude-code"], skills: ["everywhere"] }]);
-    expect(status.issues.map((i: { fix?: string }) => i.fix)).toContain("Install the skilllib skill for your agents");
+    // Installing a global skill is the user's decision, so it's a choice, not something doctor --fix does.
+    expect(status.issues.flatMap((i: { choices?: string[] }) => i.choices ?? [])).toContain("Install the skilllib skill for your agents");
 
     // Inside a project, the library splits into what it has and what it could add (with a short description).
     expect(JSON.parse(cli("list", "--json"))).toEqual({ inThisProject: ["stripe"], skills: [{ name: "terraform", description: "Terraform infra" }] });

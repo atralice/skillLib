@@ -42,6 +42,11 @@ function skillsShLock(): Record<string, { source?: string }> {
   return readJson<{ skills?: Record<string, { source?: string }> }>(join(resolve(claudeDir(), ".."), ".agents", ".skill-lock.json"))?.skills ?? {};
 }
 
+/** Skills `npx skills add` installed into a project (not globally), by name. */
+export function projectSkillsLock(root: string): Record<string, { source?: string }> {
+  return readJson<{ skills?: Record<string, { source?: string }> }>(join(root, "skills-lock.json"))?.skills ?? {};
+}
+
 function realpathOrNull(path: string): string | null {
   try {
     return realpathSync(path);
@@ -165,6 +170,17 @@ function claudeAiSkills(): SourcedSkill[] {
 
 type InstalledPlugins = { plugins?: Record<string, { installPath?: string }[]> };
 
+/** Turns a Claude Code plugin on or off for every repo (enabledPlugins in ~/.claude/settings.json). */
+export function setPluginEnabled(id: string, on: boolean) {
+  const file = join(claudeDir(), "settings.json");
+  // A file we can't parse holds settings we'd wipe by rewriting it: leave it alone.
+  const settings = existsSync(file) ? readJson<{ enabledPlugins?: Record<string, boolean> }>(file) : {};
+  if (!settings) throw new Error(`${file} isn't valid JSON, so skilllib won't rewrite it`);
+  settings.enabledPlugins = { ...settings.enabledPlugins, [id]: on };
+  mkdirSync(claudeDir(), { recursive: true });
+  writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+}
+
 function pluginSkills(): SourcedSkill[] {
   const plugins = join(claudeDir(), "plugins");
   const enabled = readJson<{ enabledPlugins?: Record<string, boolean> }>(join(claudeDir(), "settings.json"))?.enabledPlugins ?? {};
@@ -184,7 +200,8 @@ function pluginSkills(): SourcedSkill[] {
       return root ? skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: id })) : [];
     });
 
-  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/.
+  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/. Claude Code calls them
+  // "<name>@synced" and skips the ones set to false in enabledPlugins (`claude plugin disable`).
   const syncedDir = join(plugins, "synced");
   const fromSynced = existsSync(syncedDir)
     ? readdirSync(syncedDir)
@@ -195,7 +212,8 @@ function pluginSkills(): SourcedSkill[] {
             .flatMap((d) => {
               const root = join(syncedDir, bucket, d.name);
               const name = readJson<{ name?: string }>(join(root, ".claude-plugin", "plugin.json"))?.name ?? d.name;
-              return skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: `${name} (claude.ai)` }));
+              if (enabled[`${name}@synced`] === false) return [];
+              return skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: `${name}@synced` }));
             }),
         )
     : [];
@@ -252,5 +270,7 @@ export function originFor(dir: string): string {
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
   const project = dir.split(/[\\/]\.(?:claude|agents)[\\/]skills[\\/]/)[0];
-  return project && project !== dir ? `project: ${basename(project)}` : dir;
+  if (!project || project === dir) return dir;
+  const locked = projectSkillsLock(project)[basename(dir)]?.source;
+  return locked ? `skills.sh: ${locked}` : `project: ${basename(project)}`;
 }

@@ -48,8 +48,11 @@ export type GlobalGroup = {
   skills: string[];
 };
 
-/** Problems skilllib found here or in your global skills that share a cause and fix (`skilllib doctor --fix`). */
-export type HereIssue = { problems: string[]; detail: string; fix?: string };
+/**
+ * Problems skilllib found here or in your global skills that share a cause and remedy: a `fix` is a
+ * safe repair (`skilllib doctor --fix` runs it); `choices` need the user to decide (skilllib → Health).
+ */
+export type HereIssue = { problems: string[]; detail: string; fix?: string; choices?: string[] };
 
 export type Here = {
   project: string;
@@ -129,8 +132,9 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   );
   const issues = new Map<string, HereIssue>();
   for (const i of findIssues([root], machine, new Set(librarySkills().map((l) => l.name)))) {
-    const key = `${i.detail}\0${i.fix?.label ?? ""}`;
-    const issue = issues.get(key) ?? { problems: [], detail: i.detail, ...(i.fix && { fix: i.fix.label }) };
+    const choices = i.choices?.map((c) => c.label);
+    const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
+    const issue = issues.get(key) ?? { problems: [], detail: i.detail, ...(i.fix && { fix: i.fix.label }), ...(choices && { choices }) };
     issue.problems.push(i.title);
     issues.set(key, issue);
   }

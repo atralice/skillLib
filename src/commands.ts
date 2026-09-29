@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join, resolve, sep } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import {
   addSkill,
   createSkill,
@@ -16,7 +16,7 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir } from "./paths.js";
-import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects, writeManifest } from "./project.js";
+import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
@@ -24,19 +24,35 @@ import { libraryFor, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
-import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, readConfig, removeRoot, setHarnesses, setHidden, visibleProjects } from "./config.js";
+import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
-import { findIssues } from "./health.js";
+import { findIssues, runFix } from "./health.js";
+import { pluginBackups, restorePlugin } from "./plugins.js";
+import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
 
-export type Args = { positional: string[]; force: boolean; all: boolean; global: boolean; fix: boolean; allowTracked: boolean; json: boolean; days: number };
+export type Args = {
+  positional: string[];
+  force: boolean;
+  all: boolean;
+  global: boolean;
+  fix: boolean;
+  allowTracked: boolean;
+  json: boolean;
+  days: number;
+  dryRun: boolean;
+  allowGit: boolean;
+  /** tidy: the folder whose copy wins a conflict, e.g. ".agents/skills". */
+  keep?: string;
+};
 
 export function parseArgs(argv: string[]): Args {
   const daysIdx = argv.indexOf("--days");
   const days = daysIdx >= 0 ? Number(argv[daysIdx + 1]) : USAGE_DAYS;
+  const keepIdx = argv.indexOf("--keep");
   return {
-    positional: argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--days"),
+    positional: argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--days" && argv[i - 1] !== "--keep"),
     force: argv.includes("--force"),
     all: argv.includes("--all"),
     global: argv.includes("--global"),
@@ -44,13 +60,16 @@ export function parseArgs(argv: string[]): Args {
     allowTracked: argv.includes("--allow-tracked"),
     json: argv.includes("--json"),
     days: Number.isFinite(days) && days > 0 ? days : USAGE_DAYS,
+    dryRun: argv.includes("--dry-run"),
+    allowGit: argv.includes("--allow-git"),
+    ...(keepIdx >= 0 && argv[keepIdx + 1] ? { keep: argv[keepIdx + 1] } : {}),
   };
 }
 
 function colorState(state: SkillState): string {
   if (state === "ok") return green(state);
   if (state === "folder missing" || state === "not in library") return red(state);
-  if (state === "local only") return dim(state);
+  if (state === "local only" || state === "from npx skills") return dim(state);
   return yellow(state);
 }
 
@@ -133,7 +152,7 @@ export async function status(args: Args) {
   table(
     skills.map((s) => ({
       Skill: s.name,
-      Status: colorState(s.state),
+      Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
       [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
       "Last used": lastUsed(usage.get(s.name)),
     })),
@@ -397,11 +416,11 @@ export function newSkill(args: Args) {
 }
 
 export function restore(args: Args) {
-  const backups = listBackups();
+  const backups = [...listBackups(), ...pluginBackups()];
   const name = args.positional[0];
   if (!name) {
     if (backups.length === 0) return info("Nothing to restore.");
-    table(backups.map((b) => ({ Skill: b.name, From: b.kind === "trash" ? "library (deleted)" : "~/.claude/skills", Moved: b.movedAt })));
+    table(backups.map((b) => ({ Skill: b.name, From: b.kind === "trash" ? "library (deleted)" : b.kind === "plugin" ? "Claude Code plugin" : tildify(dirname(b.from)), Moved: b.movedAt })));
     info(dim("\n→ skilllib restore <name>"));
     return;
   }
@@ -410,7 +429,7 @@ export function restore(args: Args) {
     error(`No backup named ${name}`);
     process.exit(1);
   }
-  const r = restoreBackup(backup);
+  const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
   if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
   else error(`Can't restore ${name}: ${r.reason}`);
 }
@@ -421,16 +440,25 @@ export function doctor(args: Args) {
   const issues = findIssues(projects, machineSkills(), new Set(librarySkills().map((s) => s.name)));
   if (args.json) {
     return json(
-      issues.map(({ fix, ...issue }) => ({ ...issue, fix: fix?.label ?? null, ...(args.fix && fix ? { fixed: fix.run() } : {}) })),
+      issues.map(({ fix, choices, ...issue }) => ({
+        ...issue,
+        ...(fix && { fix: fix.label }),
+        ...(choices && { choices: choices.map((c) => c.label) }),
+        ...(args.fix && fix && { fixed: runFix(fix) }),
+      })),
     );
   }
   if (issues.length === 0) return success("Everything looks good");
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
-    if (args.fix && issue.fix) info(`  ${green("✓")} ${issue.fix.run()}`);
+    if (issue.choices) info(dim(`  choose in skilllib → Health: ${issue.choices.map((c) => c.label).join(" / ")}`));
+    if (args.fix && issue.fix) {
+      const r = runFix(issue.fix);
+      info(`  ${r.ok ? green("✓") : red("✗")} ${r.message}`);
+    }
   }
-  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → 5 Health."));
+  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → Health."));
 }
 
 /** Skill usage across all Claude Code sessions, from transcripts. */
@@ -523,6 +551,71 @@ export function link(args: Args) {
     else if (!args.all) success("Every skill here is already usable by all your agents");
     if (res.blocked.length) warn(`${label}git tracks ${res.blocked.join(", ")}; re-run with --allow-tracked to link there too`);
   }
+}
+
+/** Your global skills, and which you keep global on purpose: skilllib global [keep|unkeep <name>...] */
+export function globalCommand(args: Args) {
+  const [action, ...names] = args.positional;
+  const yours = machineSkills().filter((m) => m.movable && !m.broken);
+  if (action === "keep" || action === "unkeep") {
+    const unknown = names.filter((n) => !yours.some((m) => m.name === n));
+    if (!names.length || unknown.length) {
+      error(names.length ? `Not one of your global skills: ${unknown.join(", ")}` : `Usage: skilllib global ${action} <name>...`);
+      process.exit(1);
+    }
+    setKeepGlobal(names, action === "keep");
+    success(action === "keep" ? `Keeping ${names.join(", ")} global on purpose` : `${names.join(", ")} will show up in cleanup again`);
+  } else if (action) {
+    error("Usage: skilllib global [keep|unkeep <name>...]");
+    process.exit(1);
+  }
+  const kept = keptGlobal();
+  if (!yours.length) return info("None of your skills load globally.");
+  for (const m of yours) info(`${kept.has(m.name) ? green("✓") : yellow("⚠")} ${m.name.padEnd(32)} ${dim(tildify(m.path))}`);
+  const unreviewed = yours.filter((m) => !kept.has(m.name)).length;
+  if (unreviewed) info(dim(`\n${unreviewed} not reviewed. Keep one global on purpose: skilllib global keep <name>`));
+}
+
+/**
+ * One real copy per skill, plus only the links your agents need:
+ * skilllib tidy [--all | --global] [--dry-run] [--allow-git] [<name> --keep <folder>]
+ */
+export function tidy(args: Args) {
+  const names = args.positional;
+  const keepFor = (base: string | null) =>
+    args.keep ? Object.fromEntries(names.map((n) => [n, base ? resolve(base, args.keep!) : expandHome(args.keep!)])) : {};
+  const reports: { label: string; report: TidyReport }[] = args.global
+    ? [{ label: "global folders", report: planGlobalTidy({ keep: keepFor(null) }) }]
+    : (args.all ? visibleProjects() : [findProjectRoot()]).map((root) => ({ label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) }));
+
+  let held = 0;
+  let changed = 0;
+  for (const { label, report } of reports) {
+    const plans = report.plans.filter((p) => !names.length || names.includes(p.name));
+    const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
+    if (!plans.length && !conflicts.length && !args.all) success(`${label}: every skill has one copy and the links your agents need`);
+    for (const plan of plans) {
+      const result = args.dryRun ? { applied: [], held: gitVisibleSteps(plan) } : applyTidy(plan, { git: args.allowGit ? "go" : "keep" });
+      const show = args.dryRun ? plan.steps : result.applied;
+      if (show.length) info(`${args.dryRun ? dim("would") : green("✓")} ${label} · ${plan.name}: ${show.map((s) => describeStep(s, plan.root)).join(", ")}`);
+      if (!args.dryRun) for (const step of result.held) info(`${yellow("!")} ${label} · ${plan.name}: held back, git would see it: ${describeStep(step, plan.root)}`);
+      held += args.dryRun ? 0 : result.held.length;
+      changed += result.applied.length;
+    }
+    for (const c of conflicts) {
+      warn(`${label} · ${c.name}: the copies differ`);
+      for (const copy of c.copies) {
+        const runs = copy.runs.map((id) => HARNESSES.find((h) => h.id === id)!.name);
+        info(`    ${copyLabel(c, copy.dir)}${runs.length ? dim(`  run by ${runs.join(", ")}`) : ""}${c.managed === copy.dir ? dim("  (skilllib's copy)") : ""}`);
+      }
+      const pick = copyLabel(c, c.managed ?? c.copies[0]!.dir);
+      info(dim(`    keep one: skilllib tidy ${c.name}${args.global ? " --global" : ""} --keep ${pick}`));
+    }
+    for (const s of report.skipped.filter((x) => !names.length || names.includes(x.name))) info(dim(`- ${label} · ${s.name}: skipped, ${s.reason}`));
+  }
+  if (args.dryRun) info(dim("\nNothing changed (--dry-run)."));
+  else if (changed) info(dim("\nReplaced copies are in ~/.skilllib/tidy-backup; `skilllib restore` puts them back."));
+  if (held) info(dim(`${held} change${held === 1 ? "" : "s"} held back because git would see them. Re-run with --allow-git to make them.`));
 }
 
 /** Show, install or remove the skill that lets your agents use skilllib. */
