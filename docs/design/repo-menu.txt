@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── web-app ─────────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││ ▌ Open its folder                                                                      │
+│   ◈ Global          13   ││   Hide it from the list                                                                │
+│   ✓ Health          17   ││   Review prompt for its 9 skills                                                       │
+│   Projects ───────────── ││                                                                                        │
+│ ▌ ◆ web-app          ✕   ││                                                                                        │
+│     api-server       ✕   ││                                                                                        │
+│     docs-site        ·   ││                                                                                        │
+│     mobile-app       ⚠   ││                                                                                        │
+│     billing              ││                                                                                        │
+│     blog                 ││                                                                                        │
+│     cli-tools            ││                                                                                        │
+│     dotfiles             ││                                                                                        │
+│     design-system        ││                                                                                        │
+│     e2e-tests            ││                                                                                        │
+│     infra                ││                                                                                        │
+│     landing              ││                                                                                        │
+│     marketing-site       ││                                                                                        │
+│     playground           ││                                                                                        │
+│     scripts              ││                                                                                        │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                 ↑↓ choose · enter do it · esc cancel
