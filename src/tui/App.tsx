@@ -1,2301 +1,1488 @@
-import { spawn, spawnSync } from "node:child_process";
-import { homedir } from "node:os";
-import { basename, dirname, join, sep } from "node:path";
-import { useEffect, useRef, useState } from "react";
+/**
+ * The TUI: Places (your skills, Global, Health, every repo) → a list → details, with each
+ * skill's issues and fixes. It renders a World (world.ts); `reload` reads it again after a change.
+ */
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
-import { addRoot, allowTrackedLinks, discoverProjects, removeRoot, setHarnesses, setHidden, setKeepGlobal } from "../config.js";
-import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "../harnesses.js";
-import { lstatSync } from "node:fs";
-import {
-  addSkill,
-  createSkill,
-  deleteLibrarySkill,
-  importSkill,
-  librarySkillDir,
-  linkAll,
-  linkEverywhere,
-  relinkDependency,
-  removeSkill,
-  unlinkEverywhere,
-  restoreBackup,
-  syncProject,
-  deleteGlobal,
-  unloadGlobal,
-  updateProject,
-  visibilityOf,
-  type Backup,
-  type Change,
-  type Visibility,
-} from "../library.js";
-import { restorePlugin } from "../plugins.js";
-import { runFix, type Choice } from "../health.js";
-import { KeyBar, ListPanel, Panel, wrap, type Cell, type Hint, type Row } from "./components.js";
-import {
-  loadSnapshot,
-  loadUsage,
-  readPreview,
-  USAGE_DAYS,
-  versionHistory,
-  type ProjectRow,
-  type Snapshot,
-  type Usage,
-} from "./state.js";
-import { color, kindColor, stateBadge } from "./theme.js";
-import { CleanupWizard, type KeyHandler } from "./CleanupWizard.js";
-import { HELP_TOPICS } from "../help.js";
-import { gitInfo, relativeTo, type GitInfo, type GitState } from "../git.js";
-import { buildReviewPrompt, copyText, type ReviewSkill } from "../review.js";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { HARNESSES, type HarnessId } from "../harnesses.js";
+import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
+import { color } from "./theme.js";
+import { userHome } from "../paths.js";
+import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
+import * as W from "./world.js";
 
-// ─── Types ────────────────────────────────────────────
+/** Home-relative path for labels. */
+function tildify(p: string): string {
+  return p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
+}
 
-type Place =
-  | { kind: "library" }
-  | { kind: "global" }
-  | { kind: "health" }
-  | { kind: "project"; root: string }
-  | { kind: "settings" }
-  | { kind: "help" };
+type Place = "projects" | "library" | "global" | "health" | "settings";
+const PLACES: [Place, string][] = [
+  ["projects", "Projects"],
+  ["library", "Your skills"],
+  ["global", "Global"],
+  ["health", "Health"],
+  ["settings", "Settings"],
+];
+/** The tabs above a list; "issues" keeps only rows with an issue, the others filter by source. */
+type Chip = W.Filter | "issues";
+const CHIPS: [Chip, string][] = [
+  ["all", "All"],
+  ["issues", "Issues"],
+  ["local", "Local"],
+  ["global", "Global"],
+  ["plugins", "Plugins"],
+  ["vendor", "Vendor"],
+];
+const SEV: Record<W.Severity, { icon: string; color: string }> = {
+  problem: { icon: "✕", color: color.red },
+  warning: { icon: "⚠", color: color.yellow },
+  hint: { icon: "·", color: color.blue },
+};
+/** Terminals this wide get the Places sidebar instead of the tab bar. */
+const SIDEBAR_AT = 80;
+const SIDEBAR_W = 28;
 
-type Result = { text: string; ok: boolean };
-type Action = { label: string; hint?: string; run: () => void; keepOpen?: boolean };
-type PreviewSpec = { title: string; dir?: string; meta: string[]; description?: string } | null;
-
+type Seg = [text: string, color?: string];
+type Option = { label: string; fix?: W.Fix; action?: () => void; issue?: W.Issue; recommended?: boolean };
+/** A detail line: text, one option on its own line (fixes), or a `row` of options side by side (actions). */
+type Line = { segs: Seg[]; option?: number; row?: number[] };
+type Detail = { title: string; body: Line[]; options: Option[] };
 type Item = {
   key: string;
-  row: Row;
-  search: string;
-  tags: string[];
-  primary?: { label: string; run: () => void };
-  actions: Action[];
-  preview: PreviewSpec;
-  /** Items sharing a group (same plugin, same source repo, same name prefix) collapse together. */
-  group?: { key: string; label: string; about?: string };
-  /** Skill name and folder, for bulk actions on a group. */
-  skill?: { name: string; path: string };
+  header?: boolean;
+  /** An action row ("+ Add a skill…"): pinned on top, hidden while filtering. */
+  action?: boolean;
+  /** Source group, for the tabs. */
+  group?: W.Filter;
+  cells: Cell[];
+  issues: W.Issue[];
+  uses: number;
+  name: string;
+  detail?: (width: number) => Detail;
+  onEnter?: () => void;
+  /** Groups it could be in (see W.groupCandidates), and what it is, for a group's actions. */
+  cands?: W.GroupKey[];
+  skill?: W.Usable;
+  lib?: W.LibrarySkill;
+  /** A group's row; `inFold`: a member shown under its open group. */
+  fold?: { key: string; open: boolean };
+  inFold?: string;
 };
-type Section = { title: string; items: Item[]; groupActions?: (members: Item[]) => Action[] };
+type Modal =
+  | { kind: "confirm"; fix: W.Fix }
+  | { kind: "repos"; fix: W.Fix; picked: Set<string>; cursor: number; only?: string[]; query: string }
+  /** `target`: the repo to add to, or null for your library. */
+  | { kind: "add"; cursor: number; query: string; target: string | null }
+  | { kind: "fixall"; items: { label: string; fix: W.Fix; on: boolean }[]; cursor: number }
+  | { kind: "help" }
+  | { kind: "menu"; title: string; options: Option[]; cursor: number }
+  | { kind: "input"; title: string; value: string; submit: (value: string) => void }
+  /** Pick your agents; `then` runs after (the first run asks for your projects folder next). */
+  | { kind: "agents"; selected: HarnessId[]; cursor: number; then?: () => void };
 
-/** Vendor skills group by plugin or account; skills.sh ones by source repo; the rest by name prefix. */
-function sourceGroup(m: { kind: string; origin: string; name: string }): Item["group"] {
-  if (m.kind === "plugin") {
-    const synced = m.origin.includes("(claude.ai)");
-    const name = m.origin.split("@")[0]!.replace(" (claude.ai)", "");
-    return {
-      key: `plugin:${m.origin}`,
-      label: `${name} plugin`,
-      about: synced
-        ? `A Claude Code plugin your claude.ai account syncs to this machine. Only Claude Code loads it, in every repo. Manage it in claude.ai or with /plugin.`
-        : `A Claude Code plugin you installed (${m.origin}), enabled in ~/.claude/settings.json. Only Claude Code loads it, in every repo. Turn it off with /plugin.`,
-    };
+const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.SEVERITY_RANK[b.severity];
+
+function tag(u: W.Usable, w: W.World): Seg {
+  const s = u.local;
+  if (s?.source === "lib") {
+    return [`lib v${s.version}`, color.accent];
   }
-  if (m.kind === "claude.ai")
-    return {
-      key: "claude.ai",
-      label: "claude.ai skills",
-      about: "Skills from your claude.ai account (Settings → Capabilities), synced to ~/.claude/skills/synced. Only Claude Code loads them, in every repo. Manage them on claude.ai.",
-    };
-  if (m.kind === "built-in")
-    return {
-      key: `builtin:${m.origin}`,
-      label: `${m.origin} built-in`,
-      about: "Skills that ship with Cursor (~/.cursor/skills-cursor). Only Cursor loads them, in every repo. They update with Cursor and can't be removed.",
-    };
-  if (m.kind === "skills.sh" && m.origin.includes("/"))
-    return {
-      key: `repo:${m.origin}`,
-      label: m.origin,
-      about: `Installed with \`npx skills add ${m.origin}\` into ~/.agents/skills, so they load in every repo.`,
-    };
-  return prefixGroup(m.name);
+  if (s) return [s.source, color.blue];
+  if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
+  if (u.source === "plugin") return [`⧉ ${u.where.split("@")[0]}`, color.magenta];
+  return [u.source, color.muted];
 }
 
-/** Groups skills by their name's first segment: design-qa, design-qa-copy → "design-*". */
-function prefixGroup(name: string): Item["group"] {
-  const first = name.split("-")[0];
-  return first ? { key: `prefix:${first}`, label: `${first}*` } : undefined;
+/** Keys that can be part of a name: they filter instead of acting. */
+function isNameChar(input: string, key: Key): boolean {
+  return !key.ctrl && !key.meta && /^[a-zA-Z0-9._-]$/.test(input);
 }
 
-/** Longest shared dash-separated prefix: code-qa-review, code-qa-plan → "code-qa-*". */
-function commonPrefixLabel(names: string[], fallback: string): string {
-  const parts = names.map((n) => n.split("-"));
-  const shared: string[] = [];
-  for (let i = 0; parts.every((p) => p.length > i + 1 && p[i] === parts[0]![i]); i++) shared.push(parts[0]![i]!);
-  return shared.length ? `${shared.join("-")}-*` : fallback;
+/** Truncates to leave a one-space gap before the next column. */
+function clip(text: string, width: number): string {
+  return text.length > width - 1 ? text.slice(0, width - 2) + "…" : text;
 }
 
-/**
- * Collapses items that share a group (2+ members) under one header row.
- * Headers toggle open and closed; bulk actions come from the section.
- */
-function groupSection(
-  section: Section,
-  expanded: Set<string>,
-  toggle: (key: string) => void,
-  usesOf: (names: string[]) => string,
-): Section {
-  const counts = new Map<string, number>();
-  for (const i of section.items) if (i.group) counts.set(i.group.key, (counts.get(i.group.key) ?? 0) + 1);
-  const emitted = new Set<string>();
-  const items: Item[] = [];
-  for (const item of section.items) {
-    const g = item.group;
-    if (!g || (counts.get(g.key) ?? 0) < 2) {
-      items.push(item);
-      continue;
-    }
-    if (emitted.has(g.key)) continue;
-    emitted.add(g.key);
-    const members = section.items.filter((i) => i.group?.key === g.key);
-    const key = `grp:${section.title}:${g.key}`;
-    const label = g.key.startsWith("prefix:") ? commonPrefixLabel(members.map((m) => m.skill?.name ?? ""), g.label) : g.label;
-    const open = expanded.has(key);
-    const run = () => toggle(key);
-    items.push({
-      key,
-      search: [label, ...members.map((m) => m.search)].join(" "),
-      tags: [],
-      row: {
-        key,
-        cells: [
-          { text: open ? "▾ " : "▸ ", color: color.accent },
-          { text: label, grow: true, bold: true },
-          { text: plural(members.length, "skill").padStart(10), width: 10, color: color.muted },
-          { text: usesOf(members.map((m) => m.skill?.name ?? "")).padStart(6), width: 6, color: color.muted },
-        ],
-      },
-      primary: { label: open ? "collapse" : "expand", run },
-      actions: [{ label: open ? "Collapse" : `Show the ${members.length} skills`, run }, ...(section.groupActions?.(members) ?? [])],
-      preview: {
-        title: label,
-        meta: [plural(members.length, "skill"), open ? "space collapses" : "space expands · enter for actions on all of them"],
-        description: g.about ? `${g.about}  Skills: ${members.map((m) => m.skill?.name ?? m.key).join(", ")}` : members.map((m) => m.skill?.name ?? m.key).join(", "),
-      },
-    });
-    if (open) {
-      for (const m of members) items.push({ ...m, row: { ...m.row, cells: [{ text: "  " }, ...m.row.cells] } });
-    }
-  }
-  return { ...section, items };
+function usesText(n: number): string {
+  return (n ? String(n) : "–").padStart(5) + " ";
 }
 
-
-type Overlay =
-  | { type: "confirm"; message: string; onYes: () => Result }
-  | { type: "prompt"; label: string; value: string; onSubmit: (value: string) => void }
-  | { type: "menu"; title: string; build: () => Action[]; index: number }
-  | { type: "help"; topic: number; scroll: number }
-  | null;
-
-/** A project's skills, split by where they live. */
-type ProjectTab = "usable" | "add";
-const PROJECT_TABS: { id: ProjectTab; label: string }[] = [
-  { id: "usable", label: "Usable here" },
-  { id: "add", label: "Add skills" },
-];
-
-// ─── Helpers ──────────────────────────────────────────
-
-const tildify = (p: string) => (p === homedir() || p.startsWith(homedir() + sep) ? "~" + p.slice(homedir().length) : p);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const ok = (text: string): Result => ({ text, ok: true });
-const warn = (text: string): Result => ({ text, ok: false });
-
-function describe(change: Change, where?: string): Result {
-  if (change.action === "skipped") return warn(`${change.name}: ${change.reason}`);
-  const versions = change.from && change.from !== change.to ? ` v${change.from} → v${change.to}` : change.to ? ` v${change.to}` : "";
-  const verb = { installed: "added to", updated: "updated in", removed: "removed from" }[change.action];
-  return ok(where ? `${change.name}${change.action === "removed" ? "" : versions} ${verb} ${where}` : `${change.name} ${change.action}`);
+/** Builds a detail pane: static lines plus selectable options. */
+function builder(title: string) {
+  const d: Detail = { title, body: [], options: [] };
+  return {
+    d,
+    line: (...segs: Seg[]) => d.body.push({ segs }),
+    issues(issues: W.Issue[]) {
+      if (!issues.length) return d.body.push({ segs: [["✓ No issues", color.green]] });
+      for (const issue of [...issues].sort(bySeverity)) {
+        d.body.push({ segs: [[`${SEV[issue.severity].icon} `, SEV[issue.severity].color], [issue.title, color.text], [issue.decision ? "  · your call" : "", color.faint]] });
+        issue.fixes.forEach((fix, i) => d.body.push({ segs: [], option: d.options.push({ label: fix.label, fix, issue, recommended: !issue.decision && i === 0 }) - 1 }));
+      }
+      return 0;
+    },
+    /** Everything else you can do, side by side, wrapping at `width`. Skips what an issue above already offers. */
+    actions(options: Option[], width: number) {
+      const offered = new Set(d.options.map((o) => o.label));
+      let line: Line = { segs: [["Actions  ", color.accent]], row: [] };
+      let used = 9;
+      d.body.push({ segs: [] }, line);
+      for (const o of options.filter((o) => !offered.has(o.label))) {
+        if (line.row!.length && used + 3 + o.label.length > width - 6) {
+          d.body.push((line = { segs: [["         "]], row: [] }));
+          used = 9;
+        }
+        used += (line.row!.length ? 3 : 0) + o.label.length;
+        line.row!.push(d.options.push(o) - 1);
+      }
+    },
+  };
 }
 
-function openFolder(dir: string) {
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-  spawn(cmd, [dir], { detached: true, stdio: "ignore" }).unref();
+/** Column titles, aligned with a list's cells. */
+function titles(cols: [title: string, width: number][]): Cell[] {
+  return cols.map(([t, width], i) => (i === cols.length - 1 ? { text: t, grow: true, color: color.faint } : { text: t.slice(0, width).padEnd(width), width, color: color.faint }));
 }
 
-/**
- * Search match: prefix first, then substring, then word initials
- * ("cfw" → "cloudflare-workers"). Null when it doesn't match.
- */
-function matchScore(text: string, query: string): number | null {
-  if (!query) return 0;
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  if (t.startsWith(q)) return 0;
-  if (t.includes(q)) return 1;
-  const initials = t
-    .split(/[-_\s./]+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("");
-  return q.length >= 2 && initials.startsWith(q) ? 2 : null;
-}
-
-function placeKey(place: Place): string {
-  return place.kind === "project" ? `project:${place.root}` : place.kind;
-}
-
-function versionText(r: ProjectRow): string {
-  if (r.state === "available") return r.latest ? `v${r.latest}` : "";
-  if (!r.managed) return r.latest ? `lib v${r.latest}` : "";
-  if (r.version && r.latest && r.latest > r.version) return `v${r.version} → v${r.latest}`;
-  return r.version ? `v${r.version}` : "";
-}
-
-const harnessName = (id: HarnessId) => HARNESSES.find((h) => h.id === id)?.name ?? id;
-
-/**
- * One icon per enabled harness, in its brand color when that harness loads the
- * skill and faint when it doesn't. (Cursor lists a skill it reaches through
- * several folders once, so that isn't flagged.)
- */
-function harnessChips(visibility: Visibility, installed: boolean): Cell[] {
-  return visibility.map((v): Cell => {
-    const h = HARNESSES.find((x) => x.id === v.id);
-    const on = installed && v.paths > 0;
-    return { text: ` ${h?.icon ?? "?"} `, color: on ? h?.color : color.faint, dim: !on };
-  });
-}
-
-const BACKUP_LABEL: Record<Backup["kind"], string> = {
-  trash: "deleted from library",
-  "global-backup": "unloaded from global",
-  "tidy-backup": "duplicate replaced by a link",
-  plugin: "plugin removed",
-};
-
-const GIT_LABEL: Record<GitState, { text: string; color: string }> = {
-  committed: { text: "✓ committed", color: color.green },
-  changed: { text: "± changed", color: color.yellow },
-  new: { text: "+ not added", color: color.blue },
-  ignored: { text: "∅ ignored", color: color.faint },
-};
-
-const GIT_ABOUT: Record<GitState, string> = {
-  committed: "committed to git — teammates get it",
-  changed: "committed, with uncommitted changes",
-  new: "not committed yet (shows in git status)",
-  ignored: "gitignored — only on this machine",
-};
-
-/** Fixed-width git column; blank for rows that aren't in the repo, absent when it's not a git repo. */
-function gitCell(state: GitState | null, isRepo: boolean): Cell[] {
-  if (!isRepo) return [];
-  if (!state) return [{ text: "", width: 12 }];
-  const l = GIT_LABEL[state];
-  return [{ text: ` ${l.text}`, width: 12, color: l.color }];
-}
-
-/** Legend for the harness icons, e.g. "✻ Claude Code  ⬡ Cursor". */
-function HarnessLegend({ ids }: { ids: HarnessId[] }) {
+function TitleRow({ cells, width }: { cells: Cell[]; width: number }) {
+  const fixed = cells.filter((c) => !c.grow).reduce((n, c) => n + (c.width ?? 0), 0);
   return (
-    <Text>
-      {ids.map((id) => {
-        const h = HARNESSES.find((x) => x.id === id)!;
-        return (
-          <Text key={id}>
-            <Text color={h.color}>{`${h.icon} `}</Text>
-            <Text color={color.muted}>{`${h.name}  `}</Text>
-          </Text>
-        );
-      })}
-    </Text>
+    <Box height={1} overflow="hidden">
+      <Text color={color.faint} wrap="truncate-end">
+        {"  " + cells.map((c) => (c.grow ? c.text.padEnd(Math.max(0, width - 6 - fixed)) : c.text)).join("")}
+      </Text>
+    </Box>
   );
 }
 
-/**
- * Wraps a help line, keeping its spacing. For "label    text" lines, wrapped
- * text lines up under the text column instead of the start of the line.
- */
-function wrapAligned(line: string, width: number): string[] {
-  if (line.length <= width) return [line];
-  const gap = line.match(/^(\S.*?\s{2,})\S/);
-  const indent = gap && gap[1]!.length < width / 2 ? gap[1]!.length : 0;
-  const out: string[] = [];
-  let rest = line;
-  while (rest.length > width) {
-    const cut = rest.lastIndexOf(" ", width);
-    const at = cut > indent ? cut : width;
-    out.push(rest.slice(0, at));
-    rest = " ".repeat(indent) + rest.slice(at).trimStart();
-  }
-  out.push(rest);
-  return out;
+const fixOption = (fix: W.Fix): Option => ({ label: fix.label, fix });
+
+const GIT_LABEL: Record<NonNullable<W.LocalSkill["git"]>, string> = { committed: "✓ committed", changed: "± uncommitted changes", new: "+ not committed", ignored: "∅ gitignored" };
+
+// ─── Screens' data ──────────────────────────────────────
+
+/** Which copy a skill's row shows when it loads from several places: the repo's, then yours, then vendors'. */
+const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, plugin: 2, "claude.ai": 3, cursor: 3 };
+
+/** Copies grouped by name, the copy to show first. */
+function byName(copies: W.Usable[]): W.Usable[][] {
+  const groups = new Map<string, W.Usable[]>();
+  for (const c of copies) groups.set(c.name, [...(groups.get(c.name) ?? []), c]);
+  return [...groups.values()].map((g) => g.sort((a, b) => COPY_RANK[a.source] - COPY_RANK[b.source]));
 }
 
-function hasLinks(root: string, name: string): boolean {
-  return ALL_PROJECT_DIRS.some((d) => {
-    try {
-      return lstatSync(join(root, d, name)).isSymbolicLink();
-    } catch {
-      return false;
-    }
+/** Every copy's issues on one row, each once. */
+function mergeIssues(lists: W.Issue[][]): W.Issue[] {
+  const seen = new Set<string>();
+  return lists.flat().filter((i) => !seen.has(i.id) && seen.add(i.id));
+}
+
+const BLOCKS = " ▁▂▃▄▅▆▇█";
+
+/** Daily values as bars `height` rows tall; a gap between days when there's room. */
+function barChart(values: number[], width: number, height = 3): string[] {
+  const max = Math.max(1, ...values);
+  const gap = width >= values.length * 2;
+  return Array.from({ length: height }, (_, r) =>
+    values
+      .map((v) => {
+        const level = v ? Math.max(1, Math.round((v / max) * height * 8)) : 0;
+        return BLOCKS[Math.max(0, Math.min(8, level - (height - 1 - r) * 8))]! + (gap ? " " : "");
+      })
+      .join(""),
+  );
+}
+
+/** How much a skill gets used: in `repo` only, or everywhere (a 30-day chart, then one bar per repo). */
+function usageLines(w: W.World, name: string, width: number, repo: string | null): Seg[][] {
+  const days = W.dailyUses(w, name, repo ?? undefined);
+  const total = days.reduce((a, b) => a + b, 0);
+  let last = -1;
+  days.forEach((v, i) => v && (last = i));
+  const ago = last < 0 ? "" : last === 29 ? "today" : last === 28 ? "yesterday" : `${29 - last} days ago`;
+  const head: Seg[] = [[repo ? "Usage here" : "Usage", color.accent], [total ? `   last used ${ago}` : "   not used in 30 days", color.muted]];
+  if (!total) return [head];
+  const chart = barChart(days, width - 8);
+  const repos = Object.entries(w.usage)
+    .filter(() => !repo)
+    .map(([r, u]) => [r, u[name] ?? 0] as const)
+    .filter(([, n]) => n)
+    .sort((a, b) => b[1] - a[1]);
+  const barW = Math.max(6, Math.min(30, width - 30));
+  return [
+    head,
+    ...chart.map((line): Seg[] => [["  " + line, color.accent]]),
+    [["  30 days ago".padEnd(Math.max(14, chart[0]!.trimEnd().length - 3)) + "today", color.faint]],
+    ...(repos.length ? [[] as Seg[]] : []),
+    ...repos.map(([r, n]): Seg[] => [
+      ["  " + clip(r, 16).padEnd(16), color.muted],
+      ["█".repeat(Math.max(1, Math.round((n / repos[0]![1]) * barW))), color.accentDim],
+      [` ${n}`, color.muted],
+    ]),
+  ];
+}
+
+/** One row per skill, whatever number of places it loads from. */
+/** `repo`: the repo you're looking from, or null in Global, where everything is machine-wide. */
+function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: number, actions: Option[], repo: string | null): Item {
+  const u = copies[0]!;
+  const top = W.worst(issues);
+  const [t, tc] = tag(u, w);
+  return {
+    key: u.name,
+    name: u.name,
+    group: W.filterOf(u.source),
+    cands: W.groupCandidates(w, u),
+    skill: u,
+    issues,
+    uses: u.uses,
+    cells: [
+      { text: top ? SEV[top.severity].icon : " ", width: 2, color: top ? SEV[top.severity].color : undefined },
+      { text: clip(u.name, nameW), width: nameW },
+      { text: clip(t, 14), width: 14, color: tc },
+      { text: usesText(u.uses), width: 6, color: color.muted },
+      { text: " " + (top?.short ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+    ],
+    detail: (width) => {
+      const b = builder(u.name);
+      for (const l of wrap(w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
+      b.line();
+      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
+      else b.issues(issues);
+      b.actions(actions, width);
+      b.line();
+      for (const segs of usageLines(w, u.name, width, repo)) b.line(...segs);
+      b.line();
+      b.line(["Loaded from", color.accent]);
+      for (const c of copies) {
+        const s = c.local;
+        const path = s ? `${s.dir}/${c.name}` : c.source === "global" ? `${c.where}/${c.name}` : c.where;
+        const extra = s ? (s.missing ? "missing" : s.git ? GIT_LABEL[s.git] : "") : "";
+        const [ct, cc] = c === u ? ["", undefined] : tag(c, w);
+        b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
+      }
+      return b.d;
+    },
+  };
+}
+
+/** A repo's skills, seen from the repo: only its own issues; what loads everywhere is Global's business. */
+function projectSkillItems(w: W.World, p: string, nameW: number, ui: Ui): Item[] {
+  return byName(W.usable(w, p)).map((copies) =>
+    skillItem(w, copies, mergeIssues(copies.filter((c) => c.local).map((c) => W.issuesOf(w, p, c))), nameW, skillActions(w, p, copies[0]!, ui), p),
+  );
+}
+
+/** What the lists need from the screen: messages, jumping, the editor, copying, menus. */
+type Ui = {
+  notify(message: string): void;
+  openInGlobal(name: string): void;
+  edit(file: string): void;
+  copy(text: string, what: string): void;
+  menu(title: string, options: Option[]): void;
+};
+
+const reviewOption = (w: W.World, name: string, ui: Ui): Option => ({ label: "Review prompt", action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}.`), `a review prompt for ${name}`) });
+
+/** Pick a library version to install in a repo (older ones too). */
+function versionsOption(w: W.World, repo: string, name: string, installed: number | undefined, ui: Ui): Option {
+  return {
+    label: "Other versions…",
+    action: () =>
+      ui.menu(
+        `${name}: versions`,
+        w.ops
+          .versions(name)
+          .reverse()
+          .map((v) => fixOption({ label: `v${v.version}  ${v.date}${v.version === installed ? "  (installed)" : ""}`, preview: `Install ${name} v${v.version} in ${repo}.`, run: (w) => w.ops.installVersion(repo, name, v.version) })),
+      ),
+  };
+}
+
+/** What you can do with a skill as a repo sees it; never empty. */
+function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
+  const s = u.local;
+  const inLibrary = w.library.find((l) => l.name === u.name);
+  const remove: W.Fix = { label: "Remove from repo", preview: s?.source === "lib" ? `Delete ${s.dir}/${u.name} in ${p}. Your library keeps it.` : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`, run: (w) => w.ops.remove(p, u.name) };
+  if (s?.source === "lib")
+    return [
+      ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
+      { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
+      versionsOption(w, p, u.name, s.version, ui),
+      fixOption(remove),
+      reviewOption(w, u.name, ui),
+    ];
+  if (s?.source === "repo")
+    return [
+      ...(inLibrary ? [] : [fixOption({ label: "Copy into library", preview: `Copy ${u.name} into your library, so other repos can add it. The repo's copy stays as it is.`, run: (w) => w.ops.copyToLibrary(p, u.name) })]),
+      { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
+      reviewOption(w, u.name, ui),
+    ];
+  if (s)
+    return [
+      inLibrary
+        ? fixOption({ label: "Track it", preview: `Record ${u.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(p, u.name) })
+        : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library and track it here.`, run: (w) => w.ops.importLocal(p, u.name) }),
+      { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
+      fixOption(remove),
+      reviewOption(w, u.name, ui),
+    ];
+  // Loads everywhere: what's left to do from a repo is turning a plugin off here, or going to Global.
+  return [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)];
+}
+
+/** A project at a glance: where it lives and its git state. Health is on the Issues tab. */
+function overview(w: W.World, p: string): [label: string, value: Seg[]][] {
+  const project = W.project(w, p);
+  const info = w.ops.repoInfo(p);
+  const manifest: Seg =
+    project.manifest === "none"
+      ? ["no skilllib.json", color.faint]
+      : project.manifest === "no git"
+        ? ["skilllib.json (not a git repo)", color.muted]
+        : [`skilllib.json ${GIT_LABEL[project.manifest]}`, project.manifest === "committed" ? color.text : color.yellow];
+  return [
+    ["Folder", [[tildify(project.path), color.text]]],
+    ["Remote", [[info.remote ?? "none", info.remote ? color.blue : color.faint]]],
+    ["Branch", [[info.branch ?? "–", color.text], [info.dirty ? `  ${info.dirty} uncommitted` : "", color.yellow]]],
+    ["Manifest", [manifest]],
+  ];
+}
+
+/** Label/value pairs in `columns` columns. */
+function InfoGrid({ rows, columns, width }: { rows: [string, Seg[]][]; columns: 1 | 2; width: number }) {
+  const cell = Math.floor((width - 4) / columns);
+  const lines: [string, Seg[]][][] = [];
+  for (let i = 0; i < rows.length; i += columns) lines.push(rows.slice(i, i + columns));
+  return (
+    <>
+      {lines.map((line, i) => (
+        <SegLine
+          key={i}
+          segs={line.flatMap(([label, value], j): Seg[] => {
+            const used = value.reduce((n, [t]) => n + t.length, 0) + 10;
+            return [[label.padEnd(10), color.muted], ...value, [j < line.length - 1 ? " ".repeat(Math.max(1, cell - used)) : "", undefined]];
+          })}
+        />
+      ))}
+    </>
+  );
+}
+
+function projectItems(w: W.World): Item[] {
+  return w.projects.map((p) => {
+    const issues = W.projectIssues(w, p.name).map((x) => x.issue);
+    const t = W.tally(issues);
+    return {
+      key: p.name,
+      name: p.name,
+      issues,
+      uses: 0,
+      cells: [
+        { text: p.name === w.cwd ? "◆ " : "  ", width: 2, color: color.accent },
+        { text: p.name, width: 18 },
+        { text: p.skills.length ? `${p.skills.length} skill${p.skills.length === 1 ? "" : "s"}` : "–", width: 10, color: color.muted },
+        { text: t.problem ? `✕ ${t.problem}` : "", width: 5, color: color.red },
+        { text: t.warning ? `⚠ ${t.warning}` : "", width: 5, color: color.yellow },
+        { text: t.hint ? `· ${t.hint}` : "", grow: true, color: color.blue },
+      ] as Cell[],
+    };
   });
 }
 
-// ─── App ──────────────────────────────────────────────
+function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
+  const copies = w.machine.map((m): W.Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: W.totalUses(w, m.name), machine: m }));
+  return byName(copies).map((g) => skillItem(w, g, mergeIssues(g.map((c) => W.machineIssues(w, c.machine!))), nameW, globalActions(w, g[0]!, ui), null));
+}
 
-export function App() {
+/** Global's actions: all on the machine-wide copy (see W.machineActions), plus vendor settings you change at the source. */
+function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
+  const m = u.machine!;
+  const atSource = m.source === "plugin" ? "Turn it off with /plugin in Claude Code" : m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : "Cursor manages it";
+  return [
+    ...W.machineActions(m).map(fixOption),
+    ...(m.source === "plugin" ? [fixOption(W.replacePluginFix(w, m.where))] : []),
+    ...(m.source === "global" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
+    ...(m.source === "global" && !m.broken ? [{ label: "Edit SKILL.md", action: () => ui.edit(`${m.path}/SKILL.md`) }] : []),
+    reviewOption(w, m.name, ui),
+  ];
+}
+
+function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
+  return w.library.map((l): Item => {
+    const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
+    const uses = W.totalUses(w, l.name);
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => rs.map((r) => said(w.ops.add(r, l.name))).join(" · ") };
+    const delFix = W.deleteLibraryFix(w, [l.name]);
+    const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
+    const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
+    return {
+      key: l.name,
+      name: l.name,
+      issues,
+      uses,
+      cands: W.groupCandidates(w, l),
+      lib: l,
+      cells: [
+        { text: issues[0] ? SEV.hint.icon : " ", width: 2, color: color.blue },
+        { text: clip(l.name, nameW), width: nameW },
+        { text: `v${l.latest}`, width: 5, color: color.accent },
+        { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
+        { text: usesText(uses), width: 6, color: color.muted },
+        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
+      ],
+      detail: (width) => {
+        const b = builder(l.name);
+        for (const line of wrap(w.descriptions[l.name] ?? "", width - 4, 3)) b.line([line, color.muted]);
+        b.line();
+        b.line(["Versions  ", color.muted], [Array.from({ length: l.latest }, (_, i) => `v${i + 1}`).join(" · ") + "  (newest)", color.text]);
+        b.line(["In repos  ", color.muted], [repos.map((p) => { const s = p.skills.find((x) => x.name === l.name)!; return `${p.name} ${s.source === "lib" ? `v${s.version}` : s.source}`; }).join(" · ") || "none", color.text]);
+        b.line();
+        b.issues(issues);
+        b.actions([
+          fixOption(addFix),
+          ...(repos.length
+            ? [
+                fixOption({
+                  label: "Remove from repos…",
+                  preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
+                  run: () => "",
+                  candidates: () => repos.map((p) => p.name),
+                  pickRepos: (w, rs) => rs.map((r) => said(w.ops.remove(r, l.name))).join(" · "),
+                }),
+              ]
+            : []),
+          fixOption(delFix),
+          { label: "Edit SKILL.md", action: () => ui.edit(w.ops.libraryFile(l.name)) },
+          reviewOption(w, l.name, ui),
+        ], width);
+        b.line();
+        for (const segs of usageLines(w, l.name, width, null)) b.line(...segs);
+        return b.d;
+      },
+    };
+  });
+}
+
+/** Health: every skill with something to fix, in every repo and in Global, with the same details and fixes. */
+function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
+  const flagged = (where: string, items: Item[]) =>
+    items
+      .filter((i) => i.issues.length)
+      .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
+  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui))];
+}
+
+/** The picker's cursor, kept off group titles. */
+function addCursor(rows: W.AddRow[], cursor: number): number {
+  const i = Math.min(cursor, rows.length - 1);
+  return rows[i] && !rows[i]!.header ? i : Math.max(0, rows.findIndex((r) => !r.header));
+}
+
+// ─── App ────────────────────────────────────────────────
+
+/** The message of a result; its follow-up (if any) is asked separately. */
+function said(r: W.Result): string {
+  return typeof r === "string" ? r : r.message;
+}
+
+export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days">> }) {
   const { exit, suspendTerminal } = useApp();
-  const { columns, rows: termRows } = useWindowSize();
-  const [snapshot, setSnapshot] = useState<Snapshot>(() => loadSnapshot());
-  const [usage, setUsage] = useState<Usage | null>(null);
-  // First run: choose harnesses, then where projects live. Skips steps already done.
-  const [setup, setSetup] = useState<{ step: "harnesses" | "folder"; selected: HarnessId[]; index: number; value: string } | null>(() =>
-    !snapshot.harnessesChosen || snapshot.roots.length === 0
-      ? { step: snapshot.harnessesChosen ? "folder" : "harnesses", selected: snapshot.harnesses, index: 0, value: "~/Projects" }
-      : null,
-  );
-  const [focus, setFocus] = useState<"left" | "right">("left");
-  const [selected, setSelected] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    if (snapshot.cwdProject) initial.left = `project:${snapshot.cwdProject}`;
-    return initial;
-  });
-  const [search, setSearch] = useState({ left: "", right: "" });
-  const [projectTab, setProjectTab] = useState<ProjectTab>("usable");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [wizard, setWizard] = useState<{ initialSkill?: string } | null>(null);
-  const wizardInput = useRef<KeyHandler | null>(null);
-  // Git state per project, recomputed once per reload rather than on every key press.
-  const gitCache = useRef(new Map<string, { snapshot: Snapshot; info: GitInfo | null }>());
-  const gitFor = (root: string): GitInfo | null => {
-    const hit = gitCache.current.get(root);
-    if (hit && hit.snapshot === snapshot) return hit.info;
-    const info = gitInfo(root);
-    gitCache.current.set(root, { snapshot, info });
-    return info;
-  };
-  const toggleGroup = (key: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const [overlay, setOverlay] = useState<Overlay>(null);
-  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
-  const [scanning, setScanning] = useState(false);
-
-  const reload = () => setSnapshot(loadSnapshot());
-  const say = (text: string, good = true) => setToast({ text, ok: good });
-  const act = (fn: () => Result) => {
-    const result = fn();
-    reload();
-    setToast(result);
-  };
-  const confirm = (message: string, onYes: () => Result) => setOverlay({ type: "confirm", message, onYes });
-
-  const rescan = (then?: () => void) => {
-    setScanning(true);
-    setTimeout(() => {
-      discoverProjects();
-      reload();
-      setScanning(false);
-      then?.();
-    }, 30);
-  };
-
-  useEffect(() => {
-    if (snapshot.roots.length > 0) rescan();
-  }, []);
-
+  const { columns: termCols, rows: termRows } = useWindowSize();
+  const sidebar = termCols >= SIDEBAR_AT;
+  /** Width left for the content, beside the sidebar when it shows. */
+  const columns = sidebar ? termCols - SIDEBAR_W : termCols;
+  const [base, setBase] = useState(initial);
+  // Usage arrives after the first paint: reading transcripts is slow.
+  const [used, setUsed] = useState<Pick<W.World, "usage" | "days">>();
+  const world: W.World = used ? { ...base, ...used } : base;
   useEffect(() => {
     let live = true;
-    void loadUsage(snapshot.projects).then((u) => live && setUsage(u));
+    void loadUsage?.(base).then((u) => live && setUsed(u));
     return () => {
       live = false;
     };
-  }, [snapshot.projects.join("\n")]);
+  }, [base.projects.map((p) => p.path).join("\n")]);
+  const [place, setPlace] = useState<Place>("projects");
+  const [openName, setOpen] = useState<string | null>(initial.cwd ?? initial.projects[0]?.name ?? null);
+  // A repo can go away on reload (hidden, or no longer in your folders): fall back to the repo list.
+  const open = openName && world.projects.some((p) => p.name === openName) ? openName : null;
+  const [chip, setChip] = useState<Chip>("all");
+  /** Groups you opened. */
+  const [folds, setFolds] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [cursors, setCursors] = useState<Record<string, number>>({});
+  // Panes go Places → list → details: enter or → goes one deeper, esc or ← one back.
+  const [focus, setFocus] = useState<"sidebar" | "list" | "detail">(sidebar ? "sidebar" : "list");
+  const [sideQuery, setSideQuery] = useState("");
+  /** The sidebar cursor is on Help, which opens on enter rather than as you pass it. */
+  const [onHelp, setOnHelp] = useState(false);
+  const [detailCursor, setDetailCursor] = useState(0);
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [toast, setToast] = useState<string>("");
+  const order = useRef<{ key: string; keys: string[] }>({ key: "", keys: [] });
 
-  const edit = async (file: string) => {
+  /** Tall enough to show details under the list; shorter terminals open them on enter. */
+  const split = termRows >= 30;
+  const nameW = Math.min(22, Math.max(17, Math.floor(columns * 0.22)));
+  const dashboard = place === "projects" && open !== null;
+  const chips: [Chip, string][] =
+    dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : place === "health" ? CHIPS.slice(0, 1) : CHIPS.slice(0, 2);
+
+  // ── Current list ──
+  const ui: Ui = {
+    notify: setToast,
+    openInGlobal,
+    edit,
+    copy: (text, what) => setToast(said(world.ops.copy(text, what))),
+    menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
+  };
+  // Health's count (skills with something to fix, per repo and in Global), without building its rows.
+  const flagged = [
+    ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
+    ...world.machine.flatMap((m) => W.machineIssues(world, m).map((issue) => ({ key: `Global:${m.name}`, issue }))),
+  ];
+  const healthCount = new Set(flagged.map((f) => f.key)).size;
+  const healthWorst = W.worst(flagged.map((f) => f.issue));
+  const all: Item[] =
+    place === "projects"
+      ? open
+        ? projectSkillItems(world, open, nameW, ui)
+        : projectItems(world)
+      : place === "global"
+        ? globalItems(world, nameW, ui)
+        : place === "library"
+          ? libraryItems(world, nameW, ui)
+          : place === "health"
+            ? healthItems(world, nameW, ui)
+            : settingsItems();
+  const inChip = (i: Item, c: Chip) => c === "all" || (c === "issues" ? i.issues.length > 0 : i.group === c);
+  let items = all.filter((i) => i.header || ((!query || W.matches(i.name, query)) && inChip(i, chip)));
+  // Sort by health when the view opens; don't re-sort after a fix, so rows stay under the cursor.
+  // Usage arriving adds "unused" hints: sort once more then.
+  const viewKey = [place, open, chip, query, used ? "usage" : ""].join("|");
+  const sortable = place !== "settings" && !(place === "projects" && !open);
+  if (sortable) {
+    if (order.current.key !== viewKey) {
+      const rank = (i: Item) => (i.issues.length ? W.SEVERITY_RANK[[...i.issues].sort(bySeverity)[0]!.severity] : 3);
+      order.current = { key: viewKey, keys: [...items].sort((a, b) => rank(a) - rank(b) || b.uses - a.uses || a.name.localeCompare(b.name)).map((i) => i.key) };
+    }
+    const pos = new Map(order.current.keys.map((k, i) => [k, i]));
+    items = [...items].sort((a, b) => (pos.get(a.key) ?? 1e9) - (pos.get(b.key) ?? 1e9));
+  } else if (place === "projects") {
+    const rank = (i: Item) => (i.key === world.cwd ? -1 : i.issues.some((x) => x.severity === "problem") ? 0 : i.issues.length ? 1 : 2);
+    const skills = (i: Item) => W.project(world, i.name).skills.length;
+    items = [...items].sort((a, b) => rank(a) - rank(b) || skills(b) - skills(a) || a.name.localeCompare(b.name));
+  }
+  // Related skills fold into one row; filtering shows them all.
+  if (!query && (dashboard || place === "global" || place === "library")) items = folded(items);
+  if (!query) items = [...actionRows(), ...items];
+
+  const cursorKey = `${place}|${open}`;
+  const firstSelectable = Math.max(0, items.findIndex((i) => !i.header && !i.action));
+  let cursor = Math.min(cursors[cursorKey] ?? firstSelectable, items.length - 1);
+  if (items[cursor]?.header) cursor = firstSelectable;
+  const current = items[cursor];
+  const detail = current?.detail?.(columns);
+
+  // ── Actions ──
+  /** Runs a change, reads the world again, and asks about any follow-up (e.g. git-tracked folders). */
+  function apply(run: (w: W.World) => W.Result) {
+    let result: W.Result;
+    try {
+      result = run(world);
+    } catch (e) {
+      result = `Couldn't do it: ${(e as Error).message}`;
+    }
+    setBase(reload());
+    setToast(`✓ ${said(result)}`);
+    if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then });
+  }
+  function choose(o: Option) {
+    if (o.action) return o.action();
+    if (!o.fix) return setToast("Not in the prototype");
+    if (o.fix.pickRepos) {
+      const name = current?.name ?? "";
+      const only = o.fix.candidates?.(world);
+      const picked = new Set(
+        (o.fix.preticked?.(world) ?? world.projects.filter((p) => (world.usage[p.name]?.[name] ?? 0) > 0 && !p.skills.some((s) => s.name === name)).map((p) => p.name)).filter(
+          (p) => !only || only.includes(p),
+        ),
+      );
+      return setModal({ kind: "repos", fix: o.fix, picked, cursor: 0, only, query: "" });
+    }
+    setModal({ kind: "confirm", fix: o.fix });
+  }
+  function fixSelected() {
+    const issue = current && W.worst(current.issues);
+    if (!issue) return setToast("Nothing to fix · enter shows what you can do");
+    if (issue.decision) {
+      setFocus("detail");
+      setDetailCursor(Math.max(0, detail?.options.findIndex((o) => o.issue === issue) ?? 0));
+      return setToast("Your call: pick one");
+    }
+    choose({ label: issue.fixes[0]!.label, fix: issue.fixes[0]! });
+  }
+  function fixAllList(from: Item[]) {
+    const seen = new Set<string>();
+    return from.flatMap((i) =>
+      i.issues
+        .filter((x) => !x.decision && !seen.has(`${i.key}|${x.id}`) && seen.add(`${i.key}|${x.id}`))
+        .map((x) => ({ label: `${i.name}: ${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
+    );
+  }
+  function toggleFold(key: string) {
+    const next = new Set(folds);
+    if (!next.delete(key)) next.add(key);
+    setFolds(next);
+  }
+
+  /** Related skills (see W.assignGroups) as one row each, their members under it when open. */
+  function folded(list: Item[]): Item[] {
+    const groups = W.assignGroups(list.map((i) => i.cands ?? []));
+    const out: Item[] = [];
+    const seen = new Set<string>();
+    list.forEach((it, i) => {
+      const g = groups[i];
+      if (!g) return void out.push(it);
+      if (seen.has(g.key)) return;
+      seen.add(g.key);
+      const members = list.filter((_, j) => groups[j]?.key === g.key);
+      const isOpen = folds.has(g.key);
+      out.push(groupItem(g, members, isOpen));
+      if (isOpen) out.push(...members.map((m): Item => ({ ...m, inFold: g.key, cells: m.cells.map((c, k) => (k === 1 ? { ...c, text: clip("  " + m.name, c.width ?? nameW) } : c)) })));
+    });
+    return out;
+  }
+
+  function groupItem(g: W.GroupKey, members: Item[], isOpen: boolean): Item {
+    const label = W.groupLabel(g, members.map((m) => m.name));
+    const issues = members.flatMap((m) => m.issues);
+    const top = W.worst(issues);
+    const flagged = members.filter((m) => m.issues.length).length;
+    return {
+      key: `fold:${g.key}`,
+      name: label,
+      group: members[0]!.group,
+      fold: { key: g.key, open: isOpen },
+      issues,
+      uses: members.reduce((n, m) => n + m.uses, 0),
+      cells: [
+        { text: top ? SEV[top.severity].icon : " ", width: 2, color: top ? SEV[top.severity].color : undefined },
+        { text: `${isOpen ? "▾" : "▸"} ${label} (${members.length})`, grow: true, color: color.accent },
+        { text: flagged ? `${flagged} to fix` : "", width: 10, color: top ? SEV[top.severity].color : color.faint },
+      ],
+      detail: (width) => {
+        const b = builder(label);
+        for (const l of wrap(members.map((m) => m.name).join(", "), width - 4, 4)) b.line([l, color.muted]);
+        b.line();
+        if (flagged) b.line([`${flagged} of them ${flagged === 1 ? "has" : "have"} issues`, top ? SEV[top.severity].color : color.text], ["   open the group to fix them one by one", color.faint]);
+        b.actions(groupActions(label, members), width);
+        return b.d;
+      },
+    };
+  }
+
+  /** Decisions for a whole group at once: what the cleanup wizard used to do. */
+  function groupActions(label: string, members: Item[]): Option[] {
+    const names = members.map((m) => m.name);
+    const machines = members.flatMap((m) => (m.skill?.machine ? [m.skill.machine] : []));
+    const mine = machines.filter((m) => m.source === "global" && !m.broken);
+    const locals = dashboard ? members.flatMap((m) => (m.skill?.local && m.skill.local.source !== "repo" ? [m.skill.local] : [])) : [];
+    const libs = members.flatMap((m) => (m.lib ? [m.lib] : []));
+    const usedIn = (w: W.World) => w.projects.filter((p) => names.some((n) => (w.usage[p.name]?.[n] ?? 0) > 0)).map((p) => p.name);
+    const n = (k: number) => `${k} skill${k === 1 ? "" : "s"}`;
+    return [
+      ...(mine.length
+        ? [
+            fixOption({
+              label: `Move all ${mine.length} to repos…`,
+              preview: `Pick repos. These ${n(mine.length)} go into your library and those repos, and stop loading globally (originals backed up).`,
+              run: () => "",
+              preticked: usedIn,
+              pickRepos: (w, repos) => (mine.forEach((m) => w.ops.moveGlobal(m, repos, label)), `${n(mine.length)} now load only in ${repos.join(", ")}`),
+            }),
+            ...(mine.some((m) => !m.kept)
+              ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `skilllib stops warning about these ${n(mine.length)}.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
+              : []),
+            fixOption({ label: `Delete all ${mine.length}`, preview: `Move these ${n(mine.length)} to Settings › Backups.`, run: (w) => (mine.forEach((m) => w.ops.deleteGlobal(m)), `Deleted ${n(mine.length)} (in Settings › Backups)`) }),
+          ]
+        : []),
+      ...(libs.length
+        ? [
+            fixOption({
+              label: `Add all ${libs.length} to repos…`,
+              preview: `Install these ${n(libs.length)} into the repos you pick.`,
+              run: () => "",
+              preticked: () => [],
+              pickRepos: (w, repos) => (repos.forEach((r) => libs.forEach((l) => w.ops.add(r, l.name))), `Added ${n(libs.length)} to ${repos.join(", ")}`),
+            }),
+          ]
+        : []),
+      ...(libs.length ? [fixOption(W.deleteLibraryFix(world, libs.map((l) => l.name)))] : []),
+      ...(locals.length
+        ? [fixOption({ label: `Remove all ${locals.length} from this repo`, preview: `Remove these ${n(locals.length)} from ${open}; your library keeps the tracked ones.`, run: (w) => (locals.forEach((s) => w.ops.remove(open!, s.name)), `Removed ${n(locals.length)} from ${open}`) })]
+        : []),
+      ...[...new Set(machines.filter((m) => m.source === "plugin").map((m) => m.where))].map((id) => fixOption(W.replacePluginFix(world, id))),
+      ...(machines.some((m) => m.source === "plugin") ? [{ label: "Turn the plugin off with /plugin in Claude Code", action: () => setToast("Turn it off with /plugin in Claude Code; skilllib picks it up next time") }] : []),
+      { label: "Review prompt", action: () => ui.copy(reviewPrompt(world, names, `Review these related skills (${label}).`), `a review prompt for ${label}`) },
+    ];
+  }
+
+  /** Rows that start something, pinned above the list. */
+  function actionRows(): Item[] {
+    const row = (key: string, text: string, lines: string[], onEnter: () => void): Item => ({
+      key,
+      name: "",
+      action: true,
+      issues: [],
+      uses: 0,
+      cells: [{ text, grow: true, color: color.accent }],
+      onEnter,
+      detail: (width) => {
+        const b = builder(text.replace(/^[^ ]+ /, ""));
+        for (const l of lines.flatMap((l) => (l ? wrap(l, width - 4, 4) : [""]))) b.line([l, color.muted]);
+        b.line();
+        b.line(["enter to start", color.faint]);
+        return b.d;
+      },
+    });
+    const autoFixes = fixAllList(all);
+    const fix = autoFixes.length
+      ? [row("#fixall", `✦ Fix ${autoFixes.length} issue${autoFixes.length === 1 ? "" : "s"} automatically…`, ["You'll see the list first and can untick any of them.", "", "Decisions (marked \"your call\") are never applied automatically: open the skill to choose."], () => setModal({ kind: "fixall", items: autoFixes, cursor: 0 }))]
+      : [];
+    if (dashboard) {
+      const repo = open!;
+      const skills = W.project(world, repo).skills.map((s) => s.name);
+      return [
+        row("#add", "+ Add a skill…", ["Search your library, or create a new skill."], () => setModal({ kind: "add", cursor: 0, query: "", target: repo })),
+        ...fix,
+        row("#repo", `⋯ ${repo}…`, ["Open its folder, hide it from the list, or copy a review prompt for its skills."], () =>
+          ui.menu(repo, [
+            { label: "Open its folder", action: () => setToast(said(world.ops.openFolder(W.project(world, repo).path))) },
+            { label: "Hide it from the list", action: () => (apply((w) => w.ops.hide(repo)), setOpen(null), setFocus(sidebar ? "sidebar" : "list")) },
+            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`), `a review prompt for ${repo}`) }] : []),
+          ]),
+        ),
+      ];
+    }
+    if (place === "global") {
+      const globals = [...new Set(world.machine.filter((m) => m.source === "global" && !m.broken).map((m) => m.name))];
+      return [
+        ...fix,
+        ...(globals.length
+          ? [row("#review", `⧉ Review prompt for your ${globals.length} global skills…`, ["An agent recommends, for each: keep global, move to repos, or delete."], () => ui.copy(reviewPrompt(world, globals, "Review my global skills: they load in every repo."), "a review prompt for your global skills"))]
+          : []),
+      ];
+    }
+    if (place === "health") return fix;
+    if (place === "library")
+      return [row("#add", "+ New skill…", ["Create a skill in your library, or have an agent write it. Skills in your repos can be copied in from their own actions."], () => setModal({ kind: "add", cursor: 0, query: "", target: null }))];
+    return [];
+  }
+
+  function move(delta: number) {
+    let i = cursor;
+    do i = Math.max(0, Math.min(items.length - 1, i + delta));
+    while (items[i]?.header && i > 0 && i < items.length - 1);
+    if (items[i]?.header) return;
+    setCursors({ ...cursors, [cursorKey]: i });
+    setDetailCursor(0);
+  }
+  function goPlace(p: Place) {
+    setPlace(p);
+    setFocus("list");
+    setQuery("");
+    setChip("all");
+  }
+  /** Jumps to Global, filtered to one skill. */
+  /** Opens a file in $EDITOR, handing it the terminal, then reads everything again. */
+  function edit(file: string) {
+    if (!existsSync(file)) return setToast(`${tildify(file)} doesn't exist`);
     const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
-    await suspendTerminal(() => {
+    void suspendTerminal(() => {
       // $EDITOR may carry args ("code -w"), so it goes through the shell — but the path is
       // passed as $1, never interpolated: skill folder names come from third-party repos.
       // Windows paths can't contain `"`, so quoting is safe there (and cmd resolves .cmd shims).
       if (process.platform === "win32") spawnSync(`${editor} "${file}"`, { shell: true, stdio: "inherit" });
       else spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
+    }).then(() => {
+      setBase(reload());
+      setToast(`Saved ${tildify(file)}`);
     });
-    reload();
-    say(`Saved ${tildify(file)}`);
-  };
-
-  const usesOf = (skill: string, root?: string) => (usage ? ((root ? usage.byProject.get(root)?.get(skill) : usage.total.get(skill)) ?? 0) : null);
-  const usesText = (skill: string, root?: string) => {
-    const n = usesOf(skill, root);
-    return n === null ? "…" : n === 0 ? "–" : String(n);
-  };
-  const libraryNames = new Set(snapshot.library.map((l) => l.name));
-  const enabledIds = snapshot.harnesses;
-
-  // ─── Left pane: places and projects ───────────────
-
-  const issueCount = snapshot.issues.length;
-  const problems = snapshot.issues.filter((i) => i.severity === "problem").length;
-  const placeRow = (key: string, icon: string, label: string, hint: string, hintColor = color.muted): Row => ({
-    key,
-    cells: [
-      { text: `${icon} `, color: color.accent },
-      { text: label, grow: true, bold: true },
-      { text: hint, color: hintColor },
-    ],
-  });
-  const leftEntries: { key: string; place: Place; row: Row; search: string }[] = [
-    { key: "library", place: { kind: "library" }, row: placeRow("library", "▤", "Your skills", `${snapshot.library.length}`), search: "your skills library" },
-    {
-      key: "global",
-      place: { kind: "global" },
-      row: placeRow("global", "◈", "Global", `${snapshot.machine.filter((m) => !m.broken).length}`),
-      search: "global",
-    },
-    {
-      key: "health",
-      place: { kind: "health" },
-      row: placeRow("health", problems ? "●" : "✓", "Health", issueCount ? `${issueCount}` : "ok", problems ? color.red : color.green),
-      search: "health",
-    },
-    ...snapshot.projects.map((root) => {
-      const rows = snapshot.rows.get(root) ?? [];
-      const installed = rows.filter((r) => r.installed).length;
-      const behind = rows.some((r) => r.state.includes("update") || r.state === "folder missing");
-      return {
-        key: `project:${root}`,
-        place: { kind: "project", root } as Place,
-        search: basename(root),
-        row: {
-          key: `project:${root}`,
-          cells: [
-            { text: root === snapshot.cwdProject ? "◆ " : "  ", color: color.accent },
-            { text: basename(root), grow: true },
-            { text: installed ? String(installed).padStart(3) : "  –", color: installed ? color.muted : color.faint },
-            { text: behind ? " ↑" : "  ", color: color.yellow },
-          ] as Cell[],
-        },
-      };
-    }),
-    {
-      key: "settings",
-      place: { kind: "settings" },
-      row: {
-        key: "settings",
-        cells: [
-          { text: "⚙ ", color: color.accent },
-          { text: "Settings", grow: true, bold: true },
-          ...snapshot.harnesses.map((id) => {
-            const h = HARNESSES.find((x) => x.id === id)!;
-            return { text: ` ${h.icon}`, color: h.color };
-          }),
-        ],
-      },
-      search: "settings harnesses folders",
-    },
-    {
-      key: "help",
-      place: { kind: "help" },
-      row: placeRow("help", "?", "Help", "where skills come from", color.faint),
-      search: "help docs where skills come from",
-    },
-  ];
-  const leftVisible = leftEntries.filter((e) => matchScore(e.search, search.left) !== null);
-  const leftRows: Row[] = [];
-  let lastGroup = "";
-  for (const e of leftVisible) {
-    const group = e.place.kind === "project" ? "Projects" : e.place.kind === "settings" || e.place.kind === "help" ? " " : "";
-    if (group && group !== lastGroup) leftRows.push({ key: `h:${group}`, header: true, cells: [{ text: group.trim() }] });
-    lastGroup = group;
-    leftRows.push(e.row);
   }
-  const leftKey = leftVisible.some((e) => e.key === selected.left) ? selected.left! : (leftVisible[0]?.key ?? "");
-  const place: Place = leftVisible.find((e) => e.key === leftKey)?.place ?? { kind: "library" };
-  const pKey = placeKey(place);
+  /** Asks where your projects live, and starts scanning there. */
+  function askForFolder(title: string) {
+    setModal({ kind: "input", title, value: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
+  }
+  // First run: pick your agents, then say where your projects live.
+  useEffect(() => {
+    const folder = () => !initial.roots.length && askForFolder("Where are your projects? skilllib finds the git repos in there");
+    if (!initial.agentsChosen) setModal({ kind: "agents", selected: initial.agents, cursor: 0, then: folder });
+    else folder();
+  }, []);
+  function openInGlobal(name: string) {
+    goPlace("global");
+    setQuery(name);
+  }
 
-  // ─── Right pane: the place's skills ───────────────
-
-  function projectSections(root: string): Record<ProjectTab, Section[]> {
-    const where = basename(root);
-    const git = gitFor(root);
-    const gitOf = (path: string): GitState | null => (git ? git.of(relativeTo(root, path)) : null);
-    const rows = snapshot.rows.get(root) ?? [];
-    const projectActions: Action[] = [
-      {
-        label: `Update every skill in ${where}`,
-        run: () => act(() => ok(updateProject(root).map((c) => describe(c).text).join(" · ") || `${where} is up to date`)),
-      },
-      {
-        label: "Restore missing skills (sync)",
-        run: () => act(() => ok(syncProject(root).map((c) => describe(c).text).join(" · ") || "Nothing missing")),
-      },
-      { label: `Open ${where} folder`, run: () => openFolder(root) },
-      {
-        label: `Hide ${where} from the list`,
-        run: () =>
-          confirm(`Hide ${where}? Bring it back with: skilllib unhide ${tildify(root)}`, () => {
-            setHidden(root, true);
-            return ok(`${where} hidden`);
-          }),
-      },
-    ];
-    /** addSkill, then ask once before linking into folders git tracks (e.g. a team's .agents/skills for Codex). */
-    const install = (name: string, opts: { force?: boolean; version?: number } = {}) => {
-      const change = addSkill(root, name, opts);
-      reload();
-      const result = describe(change, where);
-      if (change.blocked?.length) {
-        const who = visibilityOf(root, name)
-          .filter((v) => v.paths === 0)
-          .map((v) => harnessName(v.id));
-        return confirm(
-          `${result.text}. ${where} tracks ${change.blocked.join(", ")} in git — add a link there too so ${who.join(", ") || "other agents"} can use it? (remembered for ${where})`,
-          () => {
-            allowTrackedLinks(root);
-            return describe(addSkill(root, name, { ...opts, allowTracked: true }), where);
-          },
-        );
-      }
-      setToast(result);
-    };
-    const versionsMenu = (name: string, current: number | null): Action => ({
-      label: "Install a specific version…",
-      run: () =>
-        setOverlay({
-          type: "menu",
-          title: `${name} versions`,
-          index: 0,
-          build: () =>
-            [...versionHistory(name)].reverse().map((v) => ({
-              label: `v${v.version}${v.version === current ? "  (installed)" : ""}`,
-              hint: v.date.slice(0, 16).replace("T", " "),
-              run: () => install(name, { version: v.version, force: true }),
-            })),
+  function settingsItems(): Item[] {
+    const header = (key: string, text: string): Item => ({ key, name: "", header: true, issues: [], uses: 0, cells: [{ text }] });
+    const row = (key: string, text: string, sub: string, onEnter?: () => void, c?: string): Item => ({
+      key,
+      name: text,
+      issues: [],
+      uses: 0,
+      cells: [{ text: text, width: 34, color: c }, { text: sub, grow: true, color: color.faint }],
+      onEnter,
+    });
+    return [
+      header("#agents", "Agents"),
+      ...HARNESSES.map((h) =>
+        row(`agent:${h.id}`, `${world.agents.includes(h.id) ? "[x]" : "[ ]"} ${h.icon} ${h.name}`, h.projectDirs.join(", "), () => {
+          const wasOn = world.agents.includes(h.id);
+          apply((w) => (w.ops.setAgents(wasOn ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${wasOn ? "off" : "on"}`));
         }),
-    });
-
-    const item = (r: ProjectRow): Item => {
-      const dir = r.path;
-      const badge = stateBadge(r.state);
-      const edited = r.state.startsWith("edited");
-      // Installed by `npx skills add` (listed in skills-lock.json): npx skills owns it, so copy it, never take it over.
-      const npx = r.state === "from npx skills";
-      const inRepo = r.location === ".agents/skills" && !r.managed && !npx;
-      const missing = r.visibility.filter((v) => v.paths === 0);
-      const seenBy = r.visibility.filter((v) => v.paths > 0);
-      const notInLibrary = r.state === "local only" || r.state === "untracked, differs from library" || r.state === "repo skill" || r.state === "repo skill, differs from library";
-      const behind = r.state.includes("update");
-      const key = `${r.location}:${r.name}`;
-      const globalCopy = snapshot.machine.find((m) => m.name === r.name && !m.broken && m.harnesses.length > 0);
-
-      // .claude/skills skills become dependencies once they're in the library.
-      const saveToLibrary = () =>
-        act(() => {
-          const imported = importSkill(dir, { force: true });
-          const change = addSkill(root, r.name);
-          return ok(`${r.name} ${imported.status === "added" ? "added to" : "saved to"} the library as v${change.to}; ${where} now tracks it`);
-        });
-      // .agents/skills skills are committed and owned by the repo: copy them, never take them over.
-      const copyRepoSkillToLibrary = () =>
-        act(() => {
-          const imported = importSkill(dir, { force: true });
-          return ok(
-            imported.status === "unchanged"
-              ? `${r.name} is already in the library`
-              : `${r.name} ${imported.status === "added" ? "copied into" : "updated in"} the library; this repo keeps its copy`,
-          );
-        });
-      // Links make one real copy load in every harness you use; tracked folders need your OK once.
-      const makeVisible = (allowTracked = false) => {
-        const res = r.managed ? relinkDependency(root, r.name, { allowTracked }) : linkEverywhere(root, r.name, r.location, { allowTracked });
-        if (res.blocked.length && !allowTracked) {
-          return confirm(`${where} tracks ${res.blocked.join(", ")} in git. Add links there anyway? (remembered for ${where})`, () => {
-            allowTrackedLinks(root);
-            const again = r.managed ? relinkDependency(root, r.name, { allowTracked: true }) : linkEverywhere(root, r.name, r.location, { allowTracked: true });
-            return ok(`${r.name}: linked into ${again.created.join(", ") || "nothing new"}`);
-          });
-        }
-        reload();
-        say(res.created.length ? `${r.name}: linked into ${res.created.join(", ")}` : `${r.name} is already visible to all your harnesses`);
-      };
-      const removeLinks = () =>
-        act(() => {
-          const removed = unlinkEverywhere(root, r.name);
-          return ok(removed.length ? `${r.name}: removed links in ${removed.join(", ")}` : `${r.name} has no links`);
-        });
-      const remove = () =>
-        edited
-          ? confirm(`${r.name} has local edits in ${where}. Remove it and lose them?`, () => describe(removeSkill(root, r.name, { force: true }), where))
-          : act(() => describe(removeSkill(root, r.name), where));
-
-      let primary: Item["primary"];
-      const actions: Action[] = [];
-      const visibilityActions: Action[] = [
-        ...(r.installed && missing.length
-          ? [{ label: `Make visible to ${missing.map((v) => harnessName(v.id)).join(", ")}`, hint: "adds links; one real copy", run: () => makeVisible() }]
-          : []),
-        ...(r.installed && !r.managed && r.visibility.some((v) => v.paths > 0) && hasLinks(root, r.name)
-          ? [{ label: "Remove links", hint: "keeps the real folder", run: removeLinks }]
-          : []),
-      ];
-      if (npx) {
-        primary = { label: "copy to your skills", run: copyRepoSkillToLibrary };
-        actions.push({ label: "Copy to Your skills", hint: "so other repos can use it; npx skills keeps this copy", run: copyRepoSkillToLibrary });
-      } else if (inRepo) {
-        const libraryAction: Action =
-          r.state === "repo skill"
-            ? { label: "Copy to Your skills", hint: "so other repos can use it; this repo keeps its copy", run: copyRepoSkillToLibrary }
-            : r.state === "repo skill, differs from library"
-              ? { label: "Update Your skills from this repo's copy", hint: "becomes a new version", run: copyRepoSkillToLibrary }
-              : { label: "Already in Your skills", hint: `v${r.latest}`, run: () => say(`${r.name} matches library v${r.latest}`) };
-        primary =
-          r.state === "repo skill, in library"
-            ? missing.length
-              ? { label: "make visible to all", run: () => makeVisible() }
-              : undefined
-            : { label: "copy to your skills", run: copyRepoSkillToLibrary };
-        actions.push(libraryAction, ...visibilityActions);
-      } else if (notInLibrary) {
-        primary = { label: "copy to your skills", run: saveToLibrary };
-        actions.push({ label: "Copy to Your skills", hint: "so other repos can use it; this repo then tracks it", run: saveToLibrary });
-        if (r.state === "untracked, differs from library") {
-          actions.push({
-            label: "Replace with the library version",
-            run: () =>
-              confirm(`Replace ${r.name} with library v${r.latest}? This project's copy is lost.`, () => describe(addSkill(root, r.name, { force: true }), where)),
-          });
-        }
-      } else if (!r.installed && globalCopy) {
-        // Already loads everywhere: a project copy would load twice. Scoping it here is usually what you want.
-        const scope = () =>
-          confirm(
-            `Use ${r.name} only where you add it? It's added to ${where} and stops loading globally (other projects lose it until you add it there). Restorable from Health.`,
-            () => {
-              const added = addSkill(root, r.name);
-              if (added.action === "skipped") return warn(`${r.name}: ${added.reason}`);
-              const res = unloadGlobal(globalCopy.path, globalCopy.links);
-              return res.ok ? ok(`${r.name} now lives in ${where} (v${added.to}) and no longer loads everywhere`) : warn(`${r.name}: ${res.reason}`);
-            },
-          );
-        const addAnyway = () =>
-          confirm(`${r.name} already loads in every project. Add a project copy too? Agents will see it twice.`, () => {
-            const added = addSkill(root, r.name);
-            return describe(added, where);
-          });
-        primary = { label: "add (already global)", run: addAnyway };
-        actions.push(
-          ...(globalCopy.movable ? [{ label: `Use only in ${where}`, hint: "add here, stop loading everywhere", run: scope }] : []),
-          { label: `Add to ${where} anyway`, hint: "it'll load twice", run: addAnyway },
-        );
-      } else if (!r.installed) {
-        primary = { label: "add", run: () => install(r.name) };
-        actions.push({ label: `Add to ${where}`, hint: r.latest ? `v${r.latest}` : "", run: primary.run }, versionsMenu(r.name, null));
-      } else if (!r.managed) {
-        primary = { label: "track", run: () => install(r.name) };
-        actions.push({ label: "Track it as a dependency", hint: "same as the library copy", run: primary.run });
-      } else {
-        primary = { label: "remove", run: remove };
-        if (behind) {
-          actions.push({ label: `Update to v${r.latest}`, run: () => install(r.name, { force: edited }) });
-        }
-        if (r.state === "folder missing") {
-          actions.push({
-            label: "Restore it",
-            run: () => install(r.name, { version: r.version ?? undefined, force: true }),
-          });
-        }
-        if (edited) {
-          actions.push({ label: "Save local edits to Your skills", hint: "becomes a new version", run: saveToLibrary });
-          actions.push({
-            label: `Revert to v${r.version}`,
-            run: () =>
-              confirm(`Discard local edits to ${r.name}?`, () => describe(addSkill(root, r.name, { version: r.version ?? undefined, force: true }), where)),
-          });
-        }
-        actions.push(versionsMenu(r.name, r.version), { label: `Remove from ${where}`, run: remove });
-      }
-      if (!inRepo) actions.push(...visibilityActions);
-      actions.push(
-        { label: "Edit SKILL.md", run: () => void edit(join(dir, "SKILL.md")) },
-        { label: "Open folder", run: () => openFolder(dir) },
-        ...projectActions,
-      );
-
-      const origin = snapshot.library.find((l) => l.name === r.name)?.origin;
-      const whereLabel = r.installed ? r.location.replace("/skills", "") : "";
-      return {
-        key,
-        search: r.name,
-        group: npx ? { key: `repo:${r.source}`, label: r.source!, about: `Installed with \`npx skills add ${r.source}\` into this repo (recorded in skills-lock.json).` } : prefixGroup(r.name),
-        skill: { name: r.name, path: dir },
-        tags: [
-          r.installed ? "in this project" : "installable",
-          ...(r.installed && r.state !== "ok" && r.state !== "repo skill, in library" && !npx ? ["needs attention"] : []),
-        ],
-        row: {
-          key,
-          cells: [
-            {
-              text: !r.installed ? "○ " : missing.length === 0 ? "◉ " : "◌ ",
-              color: !r.installed ? color.faint : missing.length === 0 ? color.green : color.blue,
-            },
-            { text: r.name, grow: true, color: r.installed ? undefined : color.muted },
-            { text: whereLabel.padStart(8), width: 8, color: color.faint },
-            ...gitCell(r.installed ? gitOf(r.path) : null, !!git),
-            ...harnessChips(r.visibility.length ? r.visibility : enabledIds.map((id) => ({ id, paths: 0 })), r.installed),
-            { text: versionText(r).padStart(8), width: 8, color: behind ? color.yellow : color.muted },
-            {
-              text:
-                r.installed && dupes(r.name) > 1
-                  ? `  ⧉ ${dupes(r.name)} copies`
-                  : !r.installed && globalCopy
-                    ? "  ↗ already global"
-                    : `  ${badge.icon} ${npx ? r.source : badge.label}`,
-              width: 19,
-              color: r.installed && dupes(r.name) > 1 ? color.red : !r.installed && globalCopy ? color.yellow : badge.color,
-            },
-            { text: usesText(r.name, root).padStart(4), color: color.muted },
-          ],
-        },
-        primary,
-        actions,
-        preview: {
-          title: r.name,
-          dir,
-          meta: [
-            r.installed
-              ? `${seenBy.length ? `loaded by ${seenBy.map((v) => `${harnessName(v.id)}${v.paths > 1 ? ` (via ${v.paths} folders)` : ""}`).join(", ")}` : "not loaded by your harnesses"}${missing.length ? ` · not ${missing.map((v) => harnessName(v.id)).join(", ")}` : ""}`
-              : "not installed",
-            npx
-              ? `installed by npx skills from ${r.source} into ${r.location}`
-              : inRepo
-                ? `committed in ${r.location}`
-                : r.installed
-                  ? r.managed
-                    ? `v${r.version} installed in ${r.location}`
-                    : notInLibrary
-                      ? "only in this project"
-                      : "untracked copy"
-                  : "not installed",
-            ...(r.installed && git ? [GIT_ABOUT[gitOf(r.path)!]] : []),
-            r.inLibrary ? `in Your skills (v${r.latest}${origin ? `, from ${origin}` : ""})` : "not in Your skills",
-            `${usesText(r.name, root)} Claude Code uses here (${USAGE_DAYS}d)`,
-          ],
-          ...(r.installed && dupes(r.name) > 1
-            ? { description: `Reaches your agents from ${dupes(r.name)} places: ${copiesOf(r.name).join(" · ")}. Health has the fix (your skill wins over plugins).` }
-            : {}),
-        },
-      };
-    };
-    // The same skill name reaching agents from several places (e.g. a skill and a plugin both named ponytail).
-    const usableGlobals = snapshot.machine.filter((m) => !m.broken && m.harnesses.length > 0);
-    const copiesOf = (name: string): string[] => [
-      ...rows.filter((r) => r.installed && r.name === name).map((r) => `this repo (${r.location})`),
-      ...usableGlobals.filter((m) => m.name === name).map((m) => (m.kind === "plugin" ? `plugin ${m.origin}` : m.kind === "claude.ai" ? "claude.ai" : `global ${tildify(m.path)}`)),
-    ];
-    const dupes = (name: string) => copiesOf(name).length;
-    // Global skills load here too; show them so the view matches what agents actually have.
-    const globalItem = (m: (typeof snapshot.machine)[number]): Item => {
-      const inLib = libraryNames.has(m.name);
-      const kept = m.movable && snapshot.keptGlobal.has(m.name);
-      const alsoLocal = rows.some((r) => r.installed && r.name === m.name);
-      const moveHere = () =>
-        confirm(
-          `Use ${m.name} only where you add it? It's ${inLib ? "" : "imported into the library, "}added to ${where}, and stops loading globally — other projects lose it until you add it there. Restorable from Health.`,
-          () => {
-            if (!inLib) importSkill(m.path);
-            const added = addSkill(root, m.name);
-            if (added.action === "skipped") return warn(`${m.name}: ${added.reason}`);
-            const r = unloadGlobal(m.path, m.links);
-            return r.ok ? ok(`${m.name} now lives in ${where} (v${added.to}) and no longer loads everywhere`) : warn(`${m.name}: ${r.reason}`);
-          },
-        );
-      const actions: Action[] = m.movable
-        ? [
-            { label: "Choose which repos keep it…", hint: "cleanup wizard", run: () => setWizard({ initialSkill: m.name }) },
-            keepAction(m),
-            { label: `Use only in ${where}`, hint: "add here, stop loading everywhere", run: moveHere },
-            { label: "Delete", hint: "not kept in Your skills · restorable from Health", run: () => confirmDeleteGlobal([m]) },
-            ...(inLib
-              ? []
-              : [
-                  {
-                    label: "Import into the library",
-                    hint: "keeps it global too",
-                    run: () => act(() => ok(`${m.name} ${importSkill(m.path).status === "added" ? "imported into the library" : "already in the library"}`)),
-                  },
-                ]),
-            { label: "Open folder", run: () => openFolder(m.path) },
-          ]
-        : [{ label: `Comes from ${m.origin} — manage it there`, run: () => say(`${m.name} is managed by ${m.origin}`, false) }];
-      actions.push({ label: "Copy review prompt", hint: "an agent decides keep / move / delete", run: () => copyReviewPrompt([reviewOfGlobal(m)], "This is one global skill.") });
-      return {
-        key: `global:${m.path}`,
-        search: m.name,
-        group: sourceGroup(m),
-        skill: { name: m.name, path: m.path },
-        tags: ["global", ...(alsoLocal ? ["needs attention"] : [])],
-        row: {
-          key: `global:${m.path}`,
-          cells: [
-            { text: "◈ ", color: color.accentDim },
-            { text: m.name, grow: true },
-            { text: (m.kind === "global" || m.kind === "skills.sh" ? "global" : m.kind).padStart(8), width: 8, color: color.faint },
-            ...gitCell(null, !!git),
-            ...harnessChips(enabledIds.map((id) => ({ id, paths: m.harnesses.includes(id) ? 1 : 0 })), true),
-            { text: "", width: 8 },
-            {
-              text: `  ${dupes(m.name) > 1 ? `⧉ ${dupes(m.name)} copies` : kept ? "✓ global" : m.movable ? "⚠ loaded globally" : "vendor"}`,
-              width: 19,
-              color: dupes(m.name) > 1 ? color.red : kept ? color.green : m.movable ? color.yellow : color.faint,
-            },
-            { text: usesText(m.name, root).padStart(4), color: color.muted },
-          ],
-        },
-        primary: m.movable ? { label: "choose repos…", run: () => setWizard({ initialSkill: m.name }) } : undefined,
-        actions,
-        preview: {
-          title: m.name,
-          dir: m.path,
-          meta: [
-            `loaded in every project by ${m.harnesses.map(harnessName).join(", ")}`,
-            `${m.kind}: ${m.origin}`,
-            kept ? "yours: kept global on purpose" : m.movable ? "yours: the cleanup wizard can scope it to projects" : "managed by the vendor",
-          ],
-          description: dupes(m.name) > 1 ? `Reaches your agents from ${dupes(m.name)} places: ${copiesOf(m.name).join(" · ")}. Health has the fix (your skill wins over plugins).` : sourceGroup(m)?.about,
-        },
-      };
-    };
-    const local = rows.filter((r) => r.installed);
-    const installable = rows.filter((r) => !r.installed);
-    const globals = snapshot.machine.filter((m) => !m.broken && m.harnesses.length > 0);
-    // One action to make every local skill (the repo's own included) usable by all your agents.
-    const partial = local.filter((r) => r.state !== "folder missing" && r.visibility.some((v) => v.paths === 0));
-    const missingAgents = [...new Set(partial.flatMap((r) => r.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
-    const runLinkAll = (allowTracked = false) => {
-      const res = linkAll(root, { allowTracked });
-      if (res.blocked.length && !allowTracked) {
-        return confirm(
-          `${where} tracks ${res.blocked.join(", ")} in git. Add links there too? (remembered for ${where})${res.linked.length ? ` Already linked ${plural(res.linked.length, "skill")}.` : ""}`,
-          () => {
-            allowTrackedLinks(root);
-            const again = linkAll(root, { allowTracked: true });
-            return ok(`Linked ${plural(res.linked.length + again.linked.length, "skill")}; every skill here is usable by all your agents`);
-          },
-        );
-      }
-      reload();
-      say(res.linked.length ? `Linked ${plural(res.linked.length, "skill")} for ${missingAgents.map(harnessName).join(", ")}` : "Every skill here is already usable by all your agents");
-    };
-    const linkAllItem: Item[] = partial.length
-      ? [
-          {
-            key: "__link-all",
-            search: "make all usable link",
-            tags: ["in this project", "needs attention"],
-            row: {
-              key: "__link-all",
-              cells: [
-                { text: "⇄ ", color: color.accent },
-                {
-                  text: `Make all ${partial.length} skills here usable by ${missingAgents.map(harnessName).join(", ")}`,
-                  grow: true,
-                  color: color.accent,
-                },
-              ],
-            },
-            primary: { label: "link them all", run: () => runLinkAll() },
-            actions: [{ label: "Link every skill for every agent you use", hint: "adds links only; copies and moves nothing", run: () => runLinkAll() }],
-            preview: {
-              title: "Make every skill usable by all your agents",
-              meta: [`${plural(partial.length, "skill")} missing for ${missingAgents.map(harnessName).join(", ")}`],
-              description: `Adds relative symlinks so each agent's folder reaches the one real copy (e.g. .claude/skills/<name> → .agents/skills/<name>). The repo's files aren't changed; folders git tracks need your OK first. Cursor lists a skill it reaches through several folders once.`,
-            },
-          },
-        ]
-      : [];
-    const fromLibrary = local.filter((r) => r.managed || r.state === "untracked copy of library skill");
-    const fromNpx = local.filter((r) => r.state === "from npx skills");
-    const repoOwn = local.filter((r) => !fromLibrary.includes(r) && !fromNpx.includes(r));
-    const copyAllToLibrary = (members: Item[]): Action[] => [
-      {
-        label: `Copy all ${members.length} into your library`,
-        hint: "the repo keeps its copies",
-        run: () =>
-          act(() => {
-            const added = members.map((m) => importSkill(m.skill!.path, { force: true })).filter((r) => r.status !== "unchanged").length;
-            return ok(`${plural(added, "skill")} copied into your library`);
-          }),
-      },
-    ];
-    const yours = globals.filter((m) => m.movable);
-    const keptYours = yours.filter((m) => snapshot.keptGlobal.has(m.name));
-    const unreviewed = yours.filter((m) => !snapshot.keptGlobal.has(m.name));
-    const vendor = globals.filter((m) => !m.movable);
-    const cleanupItem: Item[] = unreviewed.length
-      ? [
-          {
-            key: "__cleanup",
-            search: "clean up global",
-            tags: [],
-            row: {
-              key: "__cleanup",
-              cells: [
-                { text: "⚠ ", color: color.yellow },
-                { text: `${plural(unreviewed.length, "skill")} of yours load in every repo — choose where each should live…`, grow: true, color: color.yellow },
-              ],
-            },
-            primary: { label: "clean up", run: () => setWizard({}) },
-            actions: [{ label: "Open the cleanup wizard", run: () => setWizard({}) }],
-            preview: {
-              title: "Clean up global skills",
-              meta: ["every agent reads global skills in every repo"],
-              description: "Pick which projects keep each of your global skills. The wizard installs them there and stops loading them everywhere else (originals kept in backup).",
-            },
-          },
-        ]
-      : [];
-    return {
-      usable: [
-        { title: "", items: linkAllItem },
-        {
-          title: `From your skills (${fromLibrary.length})`,
-          items: fromLibrary.map(item),
-          groupActions: (members) => [
-            {
-              label: `Remove all ${members.length} from ${where}`,
-              hint: "edited ones are kept",
-              run: () =>
-                confirm(`Remove ${plural(members.length, "skill")} from ${where}? Your library keeps them.`, () => {
-                  const done = members.map((m) => removeSkill(root, m.skill!.name)).filter((c) => c.action === "removed").length;
-                  return ok(`Removed ${plural(done, "skill")} from ${where}`);
-                }),
-            },
-          ],
-        },
-        { title: `From npx skills (${fromNpx.length})`, items: fromNpx.map(item), groupActions: copyAllToLibrary },
-        { title: `The repo's own (${repoOwn.length})`, items: repoOwn.map(item), groupActions: copyAllToLibrary },
-        {
-          title: `⚠ Global · yours, not reviewed, loaded in every repo (${unreviewed.length})`,
-          items: [...cleanupItem, ...unreviewed.map(globalItem)],
-          groupActions: (members) => [...keepGroupActions(members), ...yourGlobalActions(members)],
-        },
-        {
-          title: `✓ Global · yours, on purpose (${keptYours.length})`,
-          items: keptYours.map(globalItem),
-          groupActions: (members) => [...keepGroupActions(members), ...yourGlobalActions(members)],
-        },
-        {
-          title: `Global · from vendors: plugins, claude.ai, built-in (${vendor.length})`,
-          items: vendor.map(globalItem),
-          groupActions: (members) => [{
-              label: `Copy review prompt for all ${members.length}`,
-              hint: "for an agent to decide keep / move / delete",
-              run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
-            }],
-        },
-      ],
-      add: [
-        {
-          title: "",
-          items: installable.map(item),
-          groupActions: (members) => [
-            {
-              label: `Add all ${members.length} to ${where}`,
-              hint: members.some((m) => snapshot.machine.some((g) => g.name === m.skill?.name && !g.broken)) ? "some already load globally" : "",
-              run: () =>
-                act(() => {
-                  const added = members.map((m) => addSkill(root, m.skill!.name)).filter((c) => c.action !== "skipped").length;
-                  return ok(`Added ${plural(added, "skill")} to ${where}`);
-                }),
-            },
-          ],
-        },
-      ],
-    };
-  }
-
-  function librarySections(): Section[] {
-    const newSkill: Item = {
-      key: "__new",
-      search: "new skill create",
-      tags: [],
-      row: { key: "__new", cells: [{ text: "+ ", color: color.accent }, { text: "New skill…", grow: true, color: color.accent }] },
-      primary: { label: "create", run: () => promptNewSkill() },
-      actions: [{ label: "Create a new skill", run: () => promptNewSkill() }],
-      preview: { title: "New skill", meta: ["creates ~/.skilllib/library/<name>/SKILL.md and opens it in your editor"] },
-    };
-    const items = snapshot.library.map((l): Item => {
-      const toggleProjects: Action = {
-        label: "Add to / remove from projects…",
-        run: () =>
-          setOverlay({
-            type: "menu",
-            title: `${l.name} · space toggles a project`,
-            index: 0,
-            build: () => {
-              const fresh = loadSnapshot();
-              const now = fresh.library.find((x) => x.name === l.name)?.projects ?? [];
-              return fresh.projects.map((root) => {
-                const on = now.includes(root);
-                return {
-                  label: `${on ? "◉" : "○"} ${basename(root)}`,
-                  hint: tildify(root),
-                  keepOpen: true,
-                  run: () => act(() => describe(on ? removeSkill(root, l.name) : addSkill(root, l.name), basename(root))),
-                };
-              });
-            },
-          }),
-      };
-      return {
-        key: l.name,
-        search: `${l.name} ${l.description}`,
-        group: prefixGroup(l.name),
-        skill: { name: l.name, path: librarySkillDir(l.name) },
-        tags: [l.projects.length ? "in use" : "unused"],
-        row: {
-          key: l.name,
-          cells: [
-            { text: l.name, grow: true },
-            { text: l.version ? `v${l.version}`.padStart(6) : "      ", color: color.muted },
-            {
-              text: (l.projects.length ? plural(l.projects.length, "project") : "unused").padStart(13),
-              color: l.projects.length ? color.green : color.faint,
-            },
-            { text: usesText(l.name).padStart(5), color: color.muted },
-          ],
-        },
-        primary: { label: "choose projects", run: toggleProjects.run },
-        actions: [
-          toggleProjects,
-          { label: "Edit SKILL.md", hint: "saving creates a new version", run: () => void edit(join(librarySkillDir(l.name), "SKILL.md")) },
-          { label: "Open folder", run: () => openFolder(librarySkillDir(l.name)) },
-          {
-            label: "Copy review prompt",
-            hint: "an agent decides keep or delete",
-            run: () => copyReviewPrompt([reviewOfLibrary(l)], "This skill is in my skilllib library (Your skills)."),
-          },
-          {
-            label: "Version history…",
-            run: () =>
-              setOverlay({
-                type: "menu",
-                title: `${l.name} versions`,
-                index: 0,
-                build: () =>
-                  [...versionHistory(l.name)].reverse().map((v) => ({ label: `v${v.version}`, hint: v.date.slice(0, 16).replace("T", " "), run: () => {} })),
-              }),
-          },
-          {
-            label: "Delete from library",
-            hint: "moves to trash",
-            run: () =>
-              confirm(`Delete ${l.name} from the library? Restore it from Health.`, () => {
-                const r = deleteLibrarySkill(l.name);
-                return r.ok ? ok(`${l.name} moved to the trash`) : warn(`Can't delete ${l.name}: ${r.reason}`);
-              }),
-          },
-        ],
-        preview: {
-          title: l.name,
-          dir: librarySkillDir(l.name),
-          meta: [
-            `v${l.version ?? "?"}`,
-            l.origin ? `from ${l.origin}` : "library",
-            l.projects.length ? `in ${l.projects.map((p) => basename(p)).join(", ")}` : "in no projects",
-            `${usesText(l.name)} Claude Code uses (${USAGE_DAYS}d)`,
-          ],
-        },
-      };
-    });
-    return [
-      {
-        title: "",
-        items: [newSkill, ...items],
-        groupActions: (members) => [
-          {
-            label: `Copy review prompt for all ${members.length}`,
-            hint: "an agent decides keep or delete",
-            run: () =>
-              copyReviewPrompt(
-                snapshot.library.filter((l) => members.some((m) => m.skill?.name === l.name)).map(reviewOfLibrary),
-                "These skills are in my skilllib library (Your skills).",
-              ),
-          },
-        ],
-      },
+      ),
+      header("#roots", "Project folders"),
+      ...world.roots.map((r) =>
+        row(`root:${r}`, tildify(r), "scanned for git repos", () =>
+          ui.menu(tildify(r), [
+            { label: "Look for repos again", action: () => apply((w) => w.ops.rescan()) },
+            fixOption({ label: "Stop scanning this folder", preview: `Repos already found in ${tildify(r)} stay listed until you hide them.`, run: (w) => w.ops.removeRoot(r) }),
+          ]),
+        ),
+      ),
+      row("root:add", "+ Add a folder…", "", () => askForFolder("Folder that contains your projects")),
+      ...(world.hidden.length ? [header("#hidden", "Hidden repos"), ...world.hidden.map((h) => row(`hidden:${h}`, tildify(h), "enter shows it again", () => apply((w) => w.ops.unhide(h))))] : []),
+      header("#backups", "Backups"),
+      ...(world.backups.length
+        ? world.backups.map((b, i) =>
+            row(`backup:${i}`, `↺ ${b.name}`, `${b.from} · ${b.at}`, () => apply((w) => w.ops.restoreBackup(i))),
+          )
+        : [row("none", "No backups yet", "anything skilllib removes lands here")]),
     ];
   }
 
-  function globalSections(): Section[] {
-    const yours = snapshot.machine.filter((m) => m.movable);
-    const unreviewed = yours.filter((m) => !m.broken && !snapshot.keptGlobal.has(m.name));
-    const keptCount = yours.filter((m) => !m.broken && snapshot.keptGlobal.has(m.name)).length;
-    const importAll: Action = {
-      label: "Copy all of yours to Your skills",
-      run: () => {
-        const pending = yours.filter((m) => !m.broken && !libraryNames.has(m.name));
-        act(() => {
-          for (const m of pending) importSkill(m.path);
-          return ok(pending.length ? `Imported ${plural(pending.length, "skill")}` : "All of yours are already in the library");
-        });
-      },
-    };
-    const unloadAll: Action = {
-      label: "Stop loading all of yours globally",
-      hint: "add them per project instead",
-      run: () => {
-        const ready = yours.filter((m) => !m.broken && libraryNames.has(m.name));
-        if (ready.length === 0) return say("Import them into the library first", false);
-        confirm(`Stop loading ${plural(ready.length, "skill")} in every project? Restorable from Health.`, () =>
-          ok(`${plural(ready.filter((m) => unloadGlobal(m.path, m.links).ok).length, "skill")} no longer load globally`),
-        );
-      },
-    };
-    const folder = (m: { path: string }) => dirname(m.path);
-    const yourFolders = [...new Set(snapshot.machine.filter((m) => m.movable).map(folder))].sort();
-    const groups: [string, (m: (typeof snapshot.machine)[number]) => boolean][] = [
-      ...yourFolders.map((f): [string, (m: (typeof snapshot.machine)[number]) => boolean] => [`Yours · ${tildify(f)}`, (m) => m.movable && folder(m) === f]),
-      ["claude.ai · synced to your account", (m) => m.kind === "claude.ai"],
-      ["Claude Code plugins", (m) => m.kind === "plugin"],
-      ["Cursor built-in", (m) => m.kind === "built-in"],
-    ];
-    const launcher: Item = {
-      key: "__cleanup",
-      search: "clean up",
-      tags: [],
-      row: {
-        key: "__cleanup",
-        cells: [
-          { text: "⚠ ", color: color.yellow },
-          { text: `Clean up: choose which repos keep each of your ${unreviewed.length} unreviewed global skills…`, grow: true, color: color.yellow },
-        ],
-      },
-      primary: { label: "clean up", run: () => setWizard({}) },
-      actions: [{ label: "Open the cleanup wizard", run: () => setWizard({}) }],
-      preview: {
-        title: "Clean up global skills",
-        meta: ["every agent reads global skills in every repo", ...(keptCount ? [`skips the ${keptCount} you keep global on purpose (k shows them)`] : [])],
-        description: "Install each skill only where it's needed, keep it global on purpose, or delete it. Originals are kept in backup.",
-      },
-    };
-    const grouped = groups.map(([title, test]) => ({
-      title,
-      groupActions: (members: Item[]) => [
-        {
-              label: `Copy review prompt for all ${members.length}`,
-              hint: "for an agent to decide keep / move / delete",
-              run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
-            },
-        ...(title.startsWith("Yours")
-          ? [
-              ...keepGroupActions(members),
-              {
-                label: `Delete all ${members.length}`,
-                hint: "not kept in Your skills · restorable from Health",
-                run: () => confirmDeleteGlobal(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path))),
-              },
-            ]
-          : []),
-      ],
-      items: snapshot.machine
-        .filter((m) => test(m))
-        .map((m): Item => {
-          const inLib = libraryNames.has(m.name);
-          const importIt = () =>
-            act(() => {
-              const r = importSkill(m.path, { force: true });
-              return ok(
-                `${m.name} ${r.status === "unchanged" ? "is already in the library" : r.status === "added" ? "imported into the library" : "updated in the library"}`,
-              );
-            });
-          const unload = () =>
-            confirm(
-              m.broken
-                ? `Remove the broken link ${m.name}? Restorable from Health.`
-                : `Stop loading ${m.name} in every project?${inLib ? "" : " It's imported into the library first."} Restorable from Health.`,
-              () => {
-                if (!m.broken && !inLib) importSkill(m.path);
-                const r = unloadGlobal(m.path, m.links);
-                return r.ok ? ok(`${m.name} no longer loads globally`) : warn(`${m.name}: ${r.reason}`);
-              },
-            );
-          const actions: Action[] = [];
-          let primary: Item["primary"];
-          if (m.broken) {
-            primary = { label: "remove link", run: unload };
-            actions.push({ label: "Remove the broken link", run: unload });
-          } else {
-            if (!inLib) actions.push({ label: "Copy to Your skills", hint: "keeps loading globally", run: importIt });
-            if (m.movable) actions.push(keepAction(m), { label: "Stop loading it globally", hint: "use it per project instead", run: unload });
-            primary = m.movable ? { label: "choose repos…", run: () => setWizard({ initialSkill: m.name }) } : !inLib ? { label: "copy to your skills", run: importIt } : undefined;
-            if (m.movable) {
-              actions.unshift({ label: "Choose which repos keep it…", hint: "cleanup wizard", run: () => setWizard({ initialSkill: m.name }) });
-              actions.push({ label: "Delete", hint: "not kept in Your skills · restorable from Health", run: () => confirmDeleteGlobal([m]) });
-            }
-            actions.push({ label: "Open folder", run: () => openFolder(m.path) });
-            actions.push({ label: "Copy review prompt", hint: "an agent decides keep / move / delete", run: () => copyReviewPrompt([reviewOfGlobal(m)], "This is one global skill.") });
-          }
-          if (m.movable) actions.push(importAll, unloadAll);
-          return {
-            key: `${m.kind}:${m.path}`,
-            search: `${m.name} ${m.origin}`,
-            group: sourceGroup(m),
-            skill: { name: m.name, path: m.path },
-            tags: [m.movable ? "yours" : "vendor"],
-            row: {
-              key: `${m.kind}:${m.path}`,
-              cells: [
-                { text: m.name.padEnd(30).slice(0, 30), color: m.broken ? color.red : undefined },
-                { text: m.broken ? "broken link" : m.origin, grow: true, color: m.broken ? color.red : kindColor[m.kind] },
-                ...harnessChips(enabledIds.map((id) => ({ id, paths: m.harnesses.includes(id) ? 1 : 0 })), !m.broken),
-                { text: m.movable && snapshot.keptGlobal.has(m.name) ? " ✓ kept" : "       ", color: color.green },
-                { text: inLib ? " ✓ library" : "          ", color: color.green },
-                { text: usesText(m.name).padStart(5), color: color.muted },
-              ],
-            },
-            primary,
-            actions,
-            preview: {
-              title: m.name,
-              dir: m.broken ? undefined : m.path,
-              meta: [
-                m.harnesses.length ? `loaded everywhere by ${m.harnesses.map(harnessName).join(", ")}` : "not loaded by your harnesses",
-                `${m.kind}: ${m.origin}`,
-                m.movable ? (snapshot.keptGlobal.has(m.name) ? "yours · kept global on purpose" : "yours to manage") : "managed by the vendor",
-                tildify(m.path) + (m.links.length ? ` (+ ${m.links.length} link${m.links.length > 1 ? "s" : ""})` : ""),
-              ],
-              description: m.broken ? "Broken link: it points at a folder that no longer exists, so it loads nothing." : undefined,
-            },
-          };
-        }),
-    }));
-    const reviewAll: Item = {
-      key: "__review-all",
-      search: "review agent prompt",
-      tags: [],
-      row: {
-        key: "__review-all",
-        cells: [
-          { text: "✦ ", color: color.accent },
-          { text: `Ask an agent to review all ${snapshot.machine.filter((m) => !m.broken).length} global skills (copies a prompt)`, grow: true, color: color.accent },
-        ],
-      },
-      primary: {
-        label: "copy prompt",
-        run: () => copyReviewPrompt(snapshot.machine.filter((m) => !m.broken).map(reviewOfGlobal), "These are ALL the skills that load globally on my machine."),
-      },
-      actions: [
-        {
-          label: "Copy review prompt — all global skills",
-          run: () => copyReviewPrompt(snapshot.machine.filter((m) => !m.broken).map(reviewOfGlobal), "These are ALL the skills that load globally on my machine."),
-        },
-        {
-          label: "Copy review prompt — only mine (not vendor)",
-          run: () => copyReviewPrompt(yours.filter((m) => !m.broken).map(reviewOfGlobal), "These are my own global skills (vendor skills excluded)."),
-        },
-      ],
-      preview: {
-        title: "Ask an agent to review your skills",
-        meta: ["copies a prompt to your clipboard", "also saved to ~/.skilllib/review-prompt.md"],
-        description:
-          "The prompt includes each skill's description, a SKILL.md excerpt, how it was installed (vendor, skills.sh, plugin…), which agents load it, usage per project, duplicates and your project list. Paste it into Claude Code, Cursor or Codex; it replies with keep / move / delete per skill.",
-      },
-    };
-    return [{ title: "", items: [...(unreviewed.length ? [launcher] : []), reviewAll] }, ...grouped];
-  }
-
-  /** Marks your global skills as global on purpose, or unmarks them. Only the decision is saved; no files change. */
-  function markKept(names: string[], keep: boolean) {
-    act(() => {
-      setKeepGlobal(names, keep);
-      const label = names.length === 1 ? names[0]! : plural(names.length, "skill");
-      return ok(keep ? `${label} kept global on purpose — cleanup skips ${names.length === 1 ? "it" : "them"}` : `${label} back in cleanup`);
-    });
-  }
-
-  function keepAction(m: { name: string }): Action {
-    return snapshot.keptGlobal.has(m.name)
-      ? { label: "Unmark: not global on purpose", hint: "cleanup asks about it again", run: () => markKept([m.name], false) }
-      : { label: "✓ Keep global on purpose", hint: "stops the ⚠ and skips it in cleanup", run: () => markKept([m.name], true) };
-  }
-
-  /** Keep / unmark actions for a group of your global skills. */
-  function keepGroupActions(members: Item[]): Action[] {
-    const names = [...new Set(members.flatMap((m) => (m.skill ? [m.skill.name] : [])))];
-    const unkept = names.filter((n) => !snapshot.keptGlobal.has(n));
-    const kept = names.filter((n) => snapshot.keptGlobal.has(n));
-    return [
-      ...(unkept.length ? [{ label: `✓ Keep all ${unkept.length} global on purpose`, hint: "cleanup skips them", run: () => markKept(unkept, true) }] : []),
-      ...(kept.length ? [{ label: `Unmark all ${kept.length}`, hint: "cleanup asks about them again", run: () => markKept(kept, false) }] : []),
-    ];
-  }
-
-  /** Group actions for your global skills in a repo. */
-  function yourGlobalActions(members: Item[]): Action[] {
-    return [
-      {
-        label: `Copy review prompt for all ${members.length}`,
-        hint: "for an agent to decide keep / move / delete",
-        run: () => copyReviewPrompt(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path)).map(reviewOfGlobal), `These are global skills (group ${members[0]?.group?.label ?? ""}).`),
-      },
-      {
-        label: `Copy all ${members.length} to Your skills`,
-        hint: "they keep loading globally",
-        run: () =>
-          act(() => {
-            const added = members.map((m) => importSkill(m.skill!.path)).filter((r) => r.status === "added").length;
-            return ok(`${plural(added, "skill")} imported into your library`);
-          }),
-      },
-      {
-        label: `Delete all ${members.length}`,
-        hint: "not kept in Your skills · restorable from Health",
-        run: () => confirmDeleteGlobal(snapshot.machine.filter((m) => members.some((x) => x.skill?.path === m.path))),
-      },
-    ];
-  }
-
-  /** Delete one or more of your global skills (moved to backup, restorable from Health). */
-  function confirmDeleteGlobal(skills: { name: string; path: string; links: string[] }[]) {
-    if (skills.length === 0) return;
-    const label = skills.length === 1 ? skills[0]!.name : plural(skills.length, "global skill");
-    confirm(`Delete ${label}? It stops loading everywhere and is NOT kept in Your skills. A backup stays restorable from Health.`, () => {
-      const done = skills.filter((m) => deleteGlobal(m.path, m.links).ok).length;
-      return ok(`Deleted ${plural(done, "global skill")} (restorable from Health)`);
-    });
-  }
-
-  // ─── Agent review prompts ───────────────────────────
-
-  function usageFor(name: string) {
-    const total = usage ? (usage.total.get(name) ?? 0) : null;
-    const byProject: [string, number][] = usage
-      ? snapshot.projects.flatMap((p): [string, number][] => {
-          const n = usage.byProject.get(p)?.get(name) ?? 0;
-          return n ? [[basename(p), n]] : [];
-        })
-      : [];
-    return { total, byProject };
-  }
-
-  function projectsWith(name: string): string[] {
-    return snapshot.projects.filter((p) => (snapshot.rows.get(p) ?? []).some((r) => r.installed && r.name === name)).map((p) => basename(p));
-  }
-
-  function reviewOfGlobal(m: (typeof snapshot.machine)[number]): ReviewSkill {
-    const u = usageFor(m.name);
-    const lib = snapshot.library.find((l) => l.name === m.name);
-    const how: Record<string, string> = {
-      global: `copied into ${tildify(dirname(m.path))} by hand or by a tool (no record of where from)`,
-      "skills.sh": m.origin.includes("/") ? `\`npx skills add ${m.origin}\` (skills.sh)` : "the `npx skills` CLI (not in its lock file)",
-      plugin: m.origin.includes("(claude.ai)") ? `a Claude Code plugin synced from my claude.ai account (${m.origin})` : `the Claude Code plugin ${m.origin} (/plugin install)`,
-      "claude.ai": "synced from my claude.ai account (Settings → Capabilities)",
-      "built-in": "ships with Cursor",
-    };
-    const vendor: Record<string, string> = {
-      plugin: `turn it off with /plugin in Claude Code (disable ${m.origin.replace(" (claude.ai)", "")}), or in claude.ai if it's synced`,
-      "claude.ai": "remove it from my claude.ai account's skills",
-      "built-in": "bundled with Cursor; it can't be removed",
-    };
-    return {
-      name: m.name,
-      description: m.description,
-      source: m.movable ? `my global skills (${m.kind === "skills.sh" ? "skills.sh package" : "global folder"})` : `vendor: ${m.kind} (${m.origin})`,
-      installedHow: how[m.kind] ?? m.origin,
-      path: m.path,
-      links: m.links,
-      loadedBy: `${m.harnesses.map(harnessName).join(", ") || "none of my agents"} — in every repo`,
-      vendor: m.movable ? null : (vendor[m.kind] ?? "managed by its vendor"),
-      usesTotal: u.total,
-      usesByProject: u.byProject,
-      installedIn: projectsWith(m.name),
-      otherCopies: snapshot.machine.filter((x) => x.name === m.name && x.path !== m.path).map((x) => `${x.kind} ${x.origin} (${tildify(x.path)})`),
-      inYourSkills: lib ? `yes, v${lib.version}` : null,
-      keptGlobal: m.movable && snapshot.keptGlobal.has(m.name),
-    };
-  }
-
-  function reviewOfLibrary(l: (typeof snapshot.library)[number]): ReviewSkill {
-    const u = usageFor(l.name);
-    return {
-      name: l.name,
-      description: l.description,
-      source: "Your skills (skilllib library) — loads nowhere by itself",
-      installedHow: l.origin ? `imported into skilllib from ${l.origin}` : "created or imported into skilllib",
-      path: librarySkillDir(l.name),
-      links: [],
-      loadedBy: l.projects.length ? `projects that added it: ${l.projects.map((p) => basename(p)).join(", ")}` : "nowhere (no project has added it)",
-      vendor: null,
-      usesTotal: u.total,
-      usesByProject: u.byProject,
-      installedIn: l.projects.map((p) => basename(p)),
-      otherCopies: snapshot.machine.filter((x) => x.name === l.name && !x.broken).map((x) => `global ${x.kind} (${tildify(x.path)})`),
-      inYourSkills: `yes, v${l.version}`,
-    };
-  }
-
-  /** Builds the prompt, copies it, and reports where it went. */
-  function copyReviewPrompt(skills: ReviewSkill[], scope: string) {
-    if (skills.length === 0) return say("Nothing to review", false);
-    const prompt = buildReviewPrompt(skills, {
-      scope,
-      usageDays: USAGE_DAYS,
-      harnesses: snapshot.harnesses.map(harnessName),
-      projects: snapshot.projects.map((p) => ({ name: basename(p), path: p })),
-    });
-    const r = copyText(prompt);
-    say(
-      r.copied
-        ? `Copied a review prompt for ${plural(skills.length, "skill")} (${Math.round(prompt.length / 1000)}k chars) — paste it into Claude Code, Cursor or Codex`
-        : `Couldn't reach the clipboard; the prompt is in ${tildify(r.savedTo)}`,
-      r.copied,
-    );
-  }
-
-  function settingsSections(): Section[] {
-    const harnessItems = HARNESSES.map((h): Item => {
-      const on = snapshot.harnesses.includes(h.id);
-      const toggle = () =>
-        act(() => {
-          const next = on ? snapshot.harnesses.filter((id) => id !== h.id) : [...snapshot.harnesses, h.id];
-          setHarnesses(next);
-          return ok(
-            `${h.name} ${on ? "off" : "on"}. New installs go to ${installDirs(next).join(" + ")}; use "Make visible" on existing skills to add links.`,
-          );
-        });
-      return {
-        key: `harness:${h.id}`,
-        search: h.name,
-        tags: [],
-        row: {
-          key: `harness:${h.id}`,
-          cells: [
-            { text: on ? "◉ " : "○ ", color: on ? color.green : color.faint },
-            { text: `${h.icon} `, color: on ? h.color : color.faint },
-            { text: h.name, grow: true, bold: on },
-            { text: `reads ${h.projectDirs.map((d) => d.replace("/skills", "")).join(" ")}`, color: color.faint },
-            { text: h.installed() ? "  detected" : "          ", color: color.muted },
-          ],
-        },
-        primary: { label: on ? "turn off" : "turn on", run: toggle },
-        actions: [{ label: on ? `Stop using ${h.name}` : `Use ${h.name}`, run: toggle }],
-        preview: {
-          title: h.name,
-          meta: [`project: ${h.projectDirs.join(", ")}`, `global: ${h.globalDirs().map(tildify).join(", ")}`],
-          description: `skilllib installs library skills where every harness you use can see them. With your current choice: ${installDirs(snapshot.harnesses).join(" (real copy) + ")}${installDirs(snapshot.harnesses).length > 1 ? " (link)" : ""}.`,
-        },
-      };
-    });
-    const folderItems = snapshot.roots.map((root): Item => {
-      const remove = () =>
-        confirm(`Stop scanning ${tildify(root)}? Projects already found stay listed until you hide them.`, () => {
-          removeRoot(root);
-          return ok(`${tildify(root)} removed from your project folders`);
-        });
-      return {
-        key: `root:${root}`,
-        search: root,
-        tags: [],
-        row: { key: `root:${root}`, cells: [{ text: "▸ ", color: color.accent }, { text: tildify(root), grow: true }] },
-        primary: { label: "remove folder", run: remove },
-        actions: [
-          { label: "Rescan now", run: () => rescan(() => say("Rescanned your project folders")) },
-          { label: "Remove this folder", run: remove },
-        ],
-        preview: { title: tildify(root), meta: ["scanned for git repos every time skilllib opens"] },
-      };
-    });
-    const addFolder: Item = {
-      key: "__add-folder",
-      search: "add folder",
-      tags: [],
-      row: { key: "__add-folder", cells: [{ text: "+ ", color: color.accent }, { text: "Add a folder…", grow: true, color: color.accent }] },
-      primary: { label: "add", run: () => promptAddFolder() },
-      actions: [{ label: "Add a folder", run: () => promptAddFolder() }],
-      preview: { title: "Add a folder", meta: ["skilllib scans it for git repos now and every time it opens"] },
-    };
-    const rescanItem: Item = {
-      key: "__rescan",
-      search: "rescan",
-      tags: [],
-      row: { key: "__rescan", cells: [{ text: "⟳ ", color: color.accent }, { text: scanning ? "Scanning…" : "Rescan now", grow: true, color: color.accent }] },
-      primary: { label: "rescan", run: () => rescan(() => say("Rescanned your project folders")) },
-      actions: [{ label: "Rescan now", run: () => rescan(() => say("Rescanned your project folders")) }],
-      preview: { title: "Rescan", meta: [`${plural(snapshot.projects.length, "project")} found`] },
-    };
-    return [
-      { title: "Harnesses you use · space toggles", items: harnessItems },
-      { title: "Project folders", items: [...folderItems, addFolder, rescanItem] },
-    ];
-  }
-
-  function healthSections(): Section[] {
-    return [
-      {
-        title: "Issues",
-        items: snapshot.issues.map((issue): Item => {
-          const fix = issue.fix;
-          const result = (c: Choice): Result => {
-            const r = runFix(c);
-            return r.ok ? ok(r.message) : warn(r.message);
-          };
-          const choices = (issue.choices ?? []).map((c): Action => ({ label: c.label, hint: c.hint, run: () => act(() => result(c)) }));
-          const run = fix
-            ? () => confirm(`${fix.label}?`, () => result(fix))
-            : choices.length
-              ? () => setOverlay({ type: "menu", title: issue.title, index: 0, build: () => choices })
-              : undefined;
-          return {
-            key: issue.id,
-            search: issue.title,
-            tags: [],
-            row: {
-              key: issue.id,
-              cells: [
-                { text: issue.severity === "problem" ? "● " : "◆ ", color: issue.severity === "problem" ? color.red : color.yellow },
-                { text: issue.title, grow: true },
-                { text: run ? "  space: fix" : "", color: color.accent },
-              ],
-            },
-            primary: run ? { label: "fix", run } : undefined,
-            actions: fix && run ? [{ label: fix.label, run }] : choices,
-            preview: {
-              title: issue.title,
-              meta: [issue.severity, fix ? `fix: ${fix.label.toLowerCase()}` : choices.length ? `${choices.length} ways to fix it: pick one` : "no automatic fix"],
-              description: issue.detail,
-            },
-          };
-        }),
-      },
-      {
-        title: "Moved out · restorable",
-        items: snapshot.backups.map((b): Item => {
-          const restore = () =>
-            act(() => {
-              const r = b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b);
-              return r.ok ? ok(`${b.name} restored to ${tildify(r.to)}`) : warn(`Can't restore ${b.name}: ${r.reason}`);
-            });
-          return {
-            key: b.path,
-            search: b.name,
-            tags: [],
-            row: {
-              key: b.path,
-              cells: [
-                { text: b.name, grow: true },
-                { text: ` ${BACKUP_LABEL[b.kind]}`, color: color.muted },
-                { text: `   ${b.movedAt}`, color: color.faint },
-              ],
-            },
-            primary: { label: "restore", run: restore },
-            actions: [{ label: "Restore", run: restore }],
-            preview: {
-              title: b.name,
-              dir: b.path,
-              meta: [b.kind === "plugin" ? "Claude Code plugin; restoring reinstalls it" : `from ${tildify(b.from)}`, `moved ${b.movedAt}`],
-            },
-          };
-        }),
-      },
-    ];
-  }
-
-  const projectTabs = place.kind === "project" ? projectSections(place.root) : null;
-  const sections: Section[] =
-    projectTabs
-      ? projectTabs[projectTab]
-      : place.kind === "library"
-        ? librarySections()
-        : place.kind === "global"
-          ? globalSections()
-          : place.kind === "health"
-            ? healthSections()
-            : place.kind === "help"
-              ? []
-              : settingsSections();
-
-  const filtered = sections;
-  // While searching, rank matches across sections (prefix, then substring, then fuzzy) in one list.
-  const visibleSections: Section[] = search.right
-    ? [
-        {
-          title: "",
-          items: filtered
-            .flatMap((s) => s.items)
-            .map((i, order) => ({ i, order, score: matchScore(i.search.split(" ")[0] ?? i.search, search.right) ?? matchScore(i.search, search.right) }))
-            .filter((x) => x.score !== null)
-            .sort((a, b) => (a.score ?? 0) - (b.score ?? 0) || a.order - b.order)
-            .map((x) => x.i),
-        },
-      ].filter((s) => s.items.length > 0)
-    : filtered
-        .map((sec) =>
-          groupSection(sec, expanded, toggleGroup, (names) => {
-            if (!usage) return "…";
-            const n = names.reduce((sum, name) => sum + (usesOf(name, projectTabs ? pKey.slice("project:".length) : undefined) ?? 0), 0);
-            return n ? String(n) : "–";
-          }),
-        )
-        .filter((s) => s.items.length > 0);
-  const rightItems = visibleSections.flatMap((s) => s.items);
-  const rightRows: Row[] = visibleSections.flatMap((s) => [
-    ...(s.title ? [{ key: `h:${s.title}`, header: true, cells: [{ text: s.title }] } as Row] : []),
-    ...s.items.map((i) => i.row),
-  ]);
-  const rightSelKey = `right:${pKey}${projectTabs ? `:${projectTab}` : ""}`;
-  const rightKey = rightItems.some((i) => i.key === selected[rightSelKey]) ? selected[rightSelKey]! : (rightItems[0]?.key ?? "");
-  const current = rightItems.find((i) => i.key === rightKey);
-
-  // ─── Actions on places ────────────────────────────
-
-  function promptAddFolder() {
-    setOverlay({
-      type: "prompt",
-      label: "Folder that contains your projects",
-      value: "~/Projects",
-      onSubmit: (value) => {
-        const root = addRoot(value);
-        rescan(() => say(`Added ${tildify(root)}. It's rescanned every time skilllib opens.`));
-      },
-    });
-  }
-
-  function promptNewSkill() {
-    setOverlay({
-      type: "prompt",
-      label: "New skill name (lowercase-with-dashes)",
-      value: "",
-      onSubmit: (value) => {
-        const r = createSkill(value.trim(), "");
-        if (!r.ok) return say(`Can't create ${value}: ${r.reason}`, false);
-        setSelected((s) => ({ ...s, "right:library": value.trim() }));
-        reload();
-        void edit(join(r.dir, "SKILL.md"));
-      },
-    });
-  }
-
-  function enterPlace() {
-    if (place.kind === "help") return setOverlay({ type: "help", topic: 1, scroll: 0 });
-    setSelected((s) => ({ ...s, left: leftKey }));
-    setFocus("right");
-  }
-
-  function openMenu(item: Item) {
-    if (item.actions.length === 0) return say("Nothing to do here", false);
-    setOverlay({ type: "menu", title: item.preview?.title ?? item.key, index: 0, build: () => item.actions });
-  }
-
-  // ─── Keys ─────────────────────────────────────────
-
-  function move(delta: number, absolute?: "start" | "end") {
-    const keys = focus === "left" ? leftVisible.map((e) => e.key) : rightItems.map((i) => i.key);
-    const currentKey = focus === "left" ? leftKey : rightKey;
-    const i = keys.indexOf(currentKey);
-    const next = absolute === "start" ? 0 : absolute === "end" ? keys.length - 1 : Math.max(0, Math.min(keys.length - 1, i + delta));
-    const nextKey = keys[next] ?? "";
-    if (focus === "left") {
-      setSelected((s) => ({ ...s, left: nextKey }));
-      setSearch((s) => ({ ...s, right: "" }));
-    } else {
-      setSelected((s) => ({ ...s, [rightSelKey]: nextKey }));
-    }
-  }
-
+  // ── Keys ──
+  // Names only use a-z 0-9 - _ . so those keys always filter; commands live on space, enter, arrows, symbols and ctrl.
   useInput((input: string, key: Key) => {
-    if (wizard) return wizardInput.current?.(input, key);
     if (key.ctrl && input === "c") return exit();
-
-    if (setup?.step === "harnesses") {
-      if (key.upArrow) return setSetup({ ...setup, index: Math.max(0, setup.index - 1) });
-      if (key.downArrow) return setSetup({ ...setup, index: Math.min(HARNESSES.length - 1, setup.index + 1) });
-      if (input === " ") {
-        const id = HARNESSES[setup.index]!.id;
-        const selected = setup.selected.includes(id) ? setup.selected.filter((x) => x !== id) : [...setup.selected, id];
-        return setSetup({ ...setup, selected });
-      }
-      if (key.return || key.escape) {
-        setHarnesses(setup.selected);
-        if (snapshot.roots.length === 0) return setSetup({ ...setup, step: "folder" });
-        setSetup(null);
-        reload();
-        return say(`Using ${setup.selected.map(harnessName).join(", ") || "no harnesses"}. Change it anytime in Settings.`);
-      }
+    setToast("");
+    if (modal) return modalKeys(input, key);
+    if (key.ctrl && input === "r") return setBase(reload()), setToast("Read everything again");
+    // Typing filters the pane you're in: repos in Places, the list otherwise.
+    if (focus === "sidebar" && (isNameChar(input, key) || key.backspace || key.delete)) {
+      const q = isNameChar(input, key) ? sideQuery + input.toLowerCase() : sideQuery.slice(0, -1);
+      setSideQuery(q);
+      // Jump to the first repo that matches, as moving onto it would.
+      const first = q && world.projects.find((p) => W.matches(p.name, q));
+      if (first) toRepo(first.name)();
       return;
     }
-    if (setup?.step === "folder") {
-      if (key.escape) {
-        setSetup(null);
-        return reload();
+    if (isNameChar(input, key)) return setFocus("list"), setQuery(query + input.toLowerCase());
+    if (key.backspace || key.delete) return setQuery(query.slice(0, -1));
+    if (input === "?") return setModal({ kind: "help" });
+    if (focus === "detail") {
+      // Options by line: a fix per line, or a row of actions. ↑↓ move by line, ←→ along a row;
+      // ← on a line's first option goes back a pane, like ← everywhere else.
+      const lines = (detail?.body ?? []).flatMap((l) => (l.row ? [l.row] : l.option !== undefined ? [[l.option]] : []));
+      const at = lines.findIndex((r) => r.includes(detailCursor));
+      const col = at < 0 ? 0 : lines[at]!.indexOf(detailCursor);
+      const goLine = (i: number) => lines[i] && setDetailCursor(lines[i]![Math.min(col, lines[i]!.length - 1)]!);
+      if (key.escape) return setFocus("list");
+      if (key.upArrow) return goLine(Math.max(0, at - 1));
+      if (key.downArrow) return goLine(at + 1);
+      if (key.leftArrow) return col > 0 ? setDetailCursor(lines[at]![col - 1]!) : setFocus("list");
+      if (key.rightArrow) return lines[at]?.[col + 1] !== undefined ? setDetailCursor(lines[at]![col + 1]!) : undefined;
+      if ((key.return || input === " ") && detail?.options[detailCursor]) return choose(detail.options[detailCursor]!);
+      return;
+    }
+    if (focus === "sidebar") {
+      if (key.upArrow || key.downArrow) {
+        const d = key.upArrow ? -1 : 1;
+        let i = sideAt + d;
+        while (sideRows[i]?.header) i += d;
+        const next = sideRows[i];
+        if (!next) return;
+        if (next.key === "help") return setOnHelp(true);
+        return next.go(), setOnHelp(false), setFocus("sidebar");
       }
-      if (key.return) {
-        const root = addRoot(setup.value);
-        setSetup(null);
-        return rescan(() => say(`Found your projects in ${tildify(root)}. Type a name to find one, enter to open it.`));
-      }
-      if (key.backspace || key.delete) return setSetup({ ...setup, value: setup.value.slice(0, -1) });
-      if (key.ctrl && input === "u") return setSetup({ ...setup, value: "" });
-      if (input && !key.ctrl && !key.meta) return setSetup({ ...setup, value: setup.value + input });
+      if (key.return && onHelp) return setModal({ kind: "help" });
+      if (key.rightArrow || key.return) return setOnHelp(false), setFocus("list");
+      if (key.escape) return setSideQuery("");
       return;
     }
-
-    if (overlay?.type === "confirm") {
-      if (input === "y" || key.return) {
-        const run = overlay.onYes;
-        setOverlay(null);
-        act(run);
-      } else if (input === "n" || key.escape) {
-        setOverlay(null);
-        say("Cancelled", false);
-      }
-      return;
+    // Groups open with → (or enter, or space) and close with ← (or space); enter on an open one shows its actions.
+    const fold = current?.fold;
+    if (fold && !fold.open && (key.rightArrow || key.return || input === " ")) return toggleFold(fold.key);
+    if (fold?.open && (key.leftArrow || input === " ")) return toggleFold(fold.key);
+    if (current?.inFold && key.leftArrow) {
+      toggleFold(current.inFold);
+      return setCursors({ ...cursors, [cursorKey]: items.findIndex((i) => i.fold?.key === current.inFold) });
     }
-    if (overlay?.type === "prompt") {
-      if (key.escape) {
-        setOverlay(null);
-      } else if (key.return) {
-        const { value, onSubmit } = overlay;
-        setOverlay(null);
-        onSubmit(value);
-      } else if (key.backspace || key.delete) setOverlay({ ...overlay, value: overlay.value.slice(0, -1) });
-      else if (key.ctrl && input === "u") setOverlay({ ...overlay, value: "" });
-      else if (input && !key.ctrl && !key.meta && !key.tab) setOverlay({ ...overlay, value: overlay.value + input });
-      return;
-    }
-    if (overlay?.type === "menu") {
-      const options = overlay.build();
-      if (key.escape || key.leftArrow) return setOverlay(null);
-      if (key.upArrow) return setOverlay({ ...overlay, index: Math.max(0, overlay.index - 1) });
-      if (key.downArrow) return setOverlay({ ...overlay, index: Math.min(options.length - 1, overlay.index + 1) });
-      if (key.return || input === " ") {
-        const option = options[overlay.index];
-        if (!option) return setOverlay(null);
-        if (!option.keepOpen) setOverlay(null);
-        option.run();
-      }
-      return;
-    }
-    if (overlay?.type === "help") {
-      const last = HELP_TOPICS.length - 1;
-      if (key.upArrow) return setOverlay({ ...overlay, topic: Math.max(0, overlay.topic - 1), scroll: 0 });
-      if (key.downArrow || key.tab) return setOverlay({ ...overlay, topic: Math.min(last, overlay.topic + 1), scroll: 0 });
-      if (key.pageDown || input === " ") return setOverlay({ ...overlay, scroll: overlay.scroll + 5 });
-      if (key.pageUp) return setOverlay({ ...overlay, scroll: Math.max(0, overlay.scroll - 5) });
-      if (key.escape || input === "?" || input === "q" || key.return) return setOverlay(null);
-      return;
-    }
-
+    if (sidebar && key.leftArrow) return setFocus("sidebar");
+    if (sidebar && key.rightArrow && detail) return setFocus("detail"), setDetailCursor(0);
     if (key.upArrow) return move(-1);
     if (key.downArrow) return move(1);
-    if (key.pageUp) return move(-(termRows - 14));
-    if (key.pageDown) return move(termRows - 14);
-    if (key.home) return move(0, "start");
-    if (key.end) return move(0, "end");
-    if (key.ctrl && input === "r") {
-      reload();
-      return say("Reloaded");
+    if (!sidebar && (key.leftArrow || key.rightArrow)) {
+      const i = PLACES.findIndex(([p]) => p === place) + (key.leftArrow ? -1 : 1);
+      if (PLACES[i]) goPlace(PLACES[i]![0]);
+      return;
     }
-
-    const pane = focus;
     if (key.escape) {
-      setToast(null);
-      if (search[pane]) return setSearch((s) => ({ ...s, [pane]: "" }));
-      if (pane === "right") return setFocus("left");
-      return say("Press ctrl+c to quit", false);
-    }
-    if (key.backspace || key.delete) return setSearch((s) => ({ ...s, [pane]: s[pane].slice(0, -1) }));
-    if (key.tab) {
-      if (pane === "left") return enterPlace();
-      if (!projectTabs) return;
-      const i = PROJECT_TABS.findIndex((t) => t.id === projectTab);
-      return setProjectTab(PROJECT_TABS[(i + (key.shift ? PROJECT_TABS.length - 1 : 1)) % PROJECT_TABS.length]!.id);
-    }
-    // Arrows open and close groups; ← on anything else goes back to the left pane.
-    const onGroup = pane === "right" && current?.key.startsWith("grp:");
-    if (key.rightArrow) {
-      if (pane === "left") return enterPlace();
-      if (onGroup && !expanded.has(current!.key)) toggleGroup(current!.key);
+      if (query) return setQuery("");
+      if (sidebar) return setFocus("sidebar");
+      if (chip !== "all") return setChip("all");
+      if (dashboard) return setOpen(null);
       return;
     }
-    if (key.leftArrow) {
-      if (onGroup && expanded.has(current!.key)) return toggleGroup(current!.key);
-      return setFocus("left");
+    if (key.tab && chips.length) {
+      const i = chips.findIndex(([c]) => c === chip);
+      return setChip(chips[(i + (key.shift ? chips.length - 1 : 1)) % chips.length]![0]);
     }
-
-    if (key.return) {
-      setToast(null);
-      if (pane === "left") return enterPlace();
-      if (current) setSelected((s) => ({ ...s, [rightSelKey]: current.key }));
-      if (current) openMenu(current);
-      return;
-    }
-    if (input === " ") {
-      setToast(null);
-      if (pane === "left") return enterPlace();
-      // Keep the cursor on this skill even if the action moves it to another section.
-      if (current) setSelected((s) => ({ ...s, [rightSelKey]: current.key }));
-      if (current?.primary) current.primary.run();
-      else if (current) openMenu(current);
-      return;
-    }
-    if (input === "?" && !search[pane]) return setOverlay({ type: "help", topic: 0, scroll: 0 });
-
-    // Anything else printable searches the pane you're in.
-    if (input && !key.ctrl && !key.meta && input.length === 1 && input >= "!") {
-      setToast(null);
-      setSearch((s) => (pane === "left" ? { left: s.left + input, right: "" } : { ...s, right: s.right + input }));
-    }
+    if (!current) return;
+    if (key.return && current.onEnter) return current.onEnter();
+    if (place === "settings") return input === " " && current.onEnter ? current.onEnter() : undefined;
+    if (place === "projects" && !open) return key.return ? (setOpen(current.name), setQuery(""), setChip("all")) : undefined;
+    if (key.return && detail) return setFocus("detail"), setDetailCursor(0);
+    if (input === " ") return fixSelected();
   });
 
-  // ─── Layout ───────────────────────────────────────
-
-  const previewHeight = termRows >= 30 ? 9 : termRows >= 22 ? 7 : 0;
-  const bodyHeight = Math.max(6, termRows - 4 - previewHeight);
-  const leftWidth = Math.max(28, Math.min(40, Math.floor(columns * 0.3)));
-  const rightWidth = columns - leftWidth;
-
-  const placeTitle =
-    place.kind === "project"
-      ? basename(place.root)
-      : place.kind === "library"
-        ? "Your skills · not loaded until you add them to a repo"
-        : place.kind === "global"
-          ? "Global · loaded in every project"
-          : place.kind === "health"
-            ? "Health"
-            : place.kind === "help"
-              ? "Help"
-              : "Settings";
-  const leftIndex = leftRows.findIndex((r) => r.key === leftKey);
-  const rightIndex = rightRows.findIndex((r) => r.key === rightKey);
-
-  const leftPreview: PreviewSpec = (() => {
-    if (place.kind === "project") {
-      const rows = snapshot.rows.get(place.root) ?? [];
-      const installed = rows.filter((r) => r.installed);
-      return {
-        title: basename(place.root),
-        meta: [
-          tildify(place.root),
-          `${plural(installed.length, "skill")} installed`,
-          `+ ${plural(snapshot.machine.filter((m) => !m.broken).length, "global skill")}`,
-        ],
-        description: installed.length
-          ? installed.map((r) => `${stateBadge(r.state).icon} ${r.name}`).join("   ")
-          : "No skills yet. Press enter, then space on a library skill to add it.",
-      };
+  function modalKeys(input: string, key: Key) {
+    const m = modal!;
+    if (m.kind === "help") return setModal(null);
+    if (m.kind === "agents") {
+      if (key.escape && !m.then) return setModal(null);
+      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+      if (key.downArrow) return setModal({ ...m, cursor: Math.min(HARNESSES.length - 1, m.cursor + 1) });
+      if (input === " ") {
+        const id = HARNESSES[m.cursor]!.id;
+        return setModal({ ...m, selected: m.selected.includes(id) ? m.selected.filter((x) => x !== id) : [...m.selected, id] });
+      }
+      if (key.return) {
+        setModal(null);
+        apply((w) => w.ops.setAgents(m.selected));
+        m.then?.();
+      }
+      return;
     }
-    const about: Record<string, [string, string]> = {
-      library: [
-        "Library",
-        "Your shelf of skills. Nothing here loads anywhere until you add it to a project. Every change becomes a new version projects can update to.",
-      ],
-      global: [
-        "Global",
-        "Skills your harnesses load in EVERY project (~/.claude/skills, ~/.agents/skills, plugins…). Move yours into the library and add them only where needed.",
-      ],
-      help: ["Help", "Where skills come from, and how Claude Code, Cursor, Codex and Zed find and use them. Press enter (or ? anywhere)."],
-      health: ["Health", "Broken links, duplicates, copies that differ, plugins that repeat your skills, skills some agents can't reach, out-of-date projects — and everything skilllib moved out, ready to restore."],
-      settings: ["Settings", `Harnesses: ${snapshot.harnesses.map(harnessName).join(", ") || "none"} · Folders: ${snapshot.roots.map(tildify).join(", ") || "none yet"}`],
-    };
-    const [title, description] = about[place.kind] ?? ["", ""];
-    return { title, meta: [], description };
-  })();
-  const preview = focus === "right" && current ? current.preview : leftPreview;
+    if (m.kind === "input") {
+      if (key.escape) return setModal(null);
+      if (key.return) return setModal(null), m.submit(m.value.trim());
+      if (key.backspace || key.delete) return setModal({ ...m, value: m.value.slice(0, -1) });
+      if (key.ctrl && input === "u") return setModal({ ...m, value: "" });
+      if (input && !key.ctrl && !key.meta) return setModal({ ...m, value: m.value + input });
+      return;
+    }
+    if (m.kind === "menu") {
+      if (key.escape) return setModal(null);
+      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+      if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.options.length - 1, m.cursor + 1) });
+      if (key.return && m.options[m.cursor]) return setModal(null), choose(m.options[m.cursor]!);
+      return;
+    }
+    if (key.escape) return setModal(null);
+    if (m.kind === "confirm") {
+      if (key.return || input === "y") {
+        setModal(null);
+        setFocus("list");
+        apply(m.fix.run);
+      }
+      return;
+    }
+    if (m.kind === "repos") {
+      const repos = (m.only ?? world.projects.map((p) => p.name)).filter((r) => !m.query || W.matches(r, m.query));
+      if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
+      if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
+      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+      if (key.downArrow) return setModal({ ...m, cursor: Math.min(repos.length - 1, m.cursor + 1) });
+      if (input === " ") {
+        const picked = new Set(m.picked);
+        const r = repos[m.cursor];
+        if (!r) return;
+        if (!picked.delete(r)) picked.add(r);
+        return setModal({ ...m, picked });
+      }
+      if (key.return) {
+        if (!m.picked.size && !m.fix.allowNone) return setToast("Tick at least one repo with space, or esc to cancel");
+        setModal(null);
+        setFocus("list");
+        apply((w) => m.fix.pickRepos!(w, [...m.picked]));
+      }
+      return;
+    }
+    if (m.kind === "fixall") {
+      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+      if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.items.length - 1, m.cursor + 1) });
+      if (input === " ") return setModal({ ...m, items: m.items.map((it, i) => (i === m.cursor ? { ...it, on: !it.on } : it)) });
+      if (key.return) {
+        setModal(null);
+        const chosen = m.items.filter((it) => it.on);
+        apply((w) => {
+          let ok = 0;
+          for (const it of chosen) {
+            try {
+              it.fix.run(w);
+              ok++;
+            } catch {
+              // An earlier fix in the batch already resolved it.
+            }
+          }
+          return `Applied ${ok} fix${ok === 1 ? "" : "es"} (anything removed is in Settings › Backups)`;
+        });
+      }
+      return;
+    }
+    if (m.kind === "add") {
+      const rows = W.addRows(world, m.target, m.query);
+      const cursor = addCursor(rows, m.cursor);
+      const step = (d: number) => {
+        let i = cursor + d;
+        while (rows[i]?.header) i += d;
+        return rows[i] ? setModal({ ...m, cursor: i }) : undefined;
+      };
+      if (key.upArrow) return step(-1);
+      if (key.downArrow) return step(1);
+      if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
+      if (key.return && rows[cursor]?.agent) {
+        setModal(null);
+        return ui.copy(writeSkillPrompt(world, m.query, m.target), "a prompt for an agent to write the skill");
+      }
+      if (key.return && rows[cursor]?.run) {
+        const row = rows[cursor]!;
+        if (row.create && !/^[a-z0-9]/.test(m.query)) return setToast("Type the new skill's name first");
+        setModal(null);
+        apply(row.run!);
+        // A new skill opens in your editor.
+        if (row.create) edit(world.ops.libraryFile(m.query));
+        return;
+      }
+      if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
+    }
+  }
 
-  const hints: Hint[] =
-    focus === "left"
-      ? [
-          ["type", "search"],
-          ["↑↓", "move"],
-          ["enter", "open"],
-          ["ctrl+c", "quit"],
-        ]
-      : [
-          ["type", "search"],
-          ...(current?.primary ? [["space", current.primary.label] as Hint] : []),
-          ["enter", "actions"],
-          ...(projectTabs ? [["tab", "next list"] as Hint] : []),
-          ["esc", "back"],
-        ];
+  // ── Layout ──
+  const bottomH = 1;
+  // Tall enough to say everything a change does (e.g. every repo a deletion reaches).
+  const confirmLines = modal?.kind === "confirm" ? wrap(modal.fix.preview, columns - 6, 6) : [];
+  const confirmH = modal?.kind === "confirm" ? confirmLines.length + 2 : 0;
+  const bodyH = Math.max(8, termRows - (sidebar ? 0 : 1) - bottomH - confirmH);
+  // Same count as Global's Issues tab: skills with something to fix.
+  const globalFlagged = world.machine.map((m) => [m.name, W.machineIssues(world, m)] as const).filter(([, issues]) => issues.length);
+  const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
+  const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
 
-  // ─── Render ───────────────────────────────────────
+  /** The sidebar: places, then every repo. Moving onto a row opens it. */
+  // Like Global's count: skills with something to fix, marked by the worst of them.
+  const badge = (p: string): Cell => {
+    const found = W.projectIssues(world, p);
+    const top = W.worst(found.map((x) => x.issue));
+    return { text: top ? SEV[top.severity].icon : "", width: 3, color: top ? SEV[top.severity].color : undefined };
+  };
+  const sideRow = (key: string, label: string, here: boolean, go: () => void, count: Cell[] = []) => ({
+    key,
+    header: false,
+    here: here && !onHelp,
+    go,
+    cells: [{ text: label, grow: true, bold: !key.startsWith("repo:") }, ...count] as Cell[],
+  });
+  const sideHeader = (key: string, text: string) => ({ key, header: true, here: false, go: () => {}, cells: [{ text }] as Cell[] });
+  const toRepo = (name: string | null) => () => (setPlace("projects"), setOpen(name), setQuery(""), setChip("all"));
+  const sideRows = [
+    sideRow("library", "▤ Your skills", place === "library", () => goPlace("library"), [{ text: String(world.library.length), width: 4, color: color.muted }]),
+    // The number turns red or yellow when any of them has an issue.
+    sideRow("global", "◈ Global", place === "global", () => goPlace("global"), [
+      { text: String(new Set(world.machine.map((m) => m.name)).size), width: 4, color: globalProblem ? color.red : globalIssues ? color.yellow : color.muted },
+    ]),
+    sideRow("health", "✓ Health", place === "health", () => goPlace("health"), [
+      { text: String(healthCount), width: 4, color: healthWorst ? SEV[healthWorst.severity].color : color.green },
+    ]),
+    sideHeader("#projects", "Projects"),
+    ...world.projects.filter((p) => !sideQuery || W.matches(p.name, sideQuery)).map((p) => sideRow(`repo:${p.name}`, `${p.name === world.cwd ? "◆" : " "} ${p.name}`, place === "projects" && open === p.name, toRepo(p.name), [badge(p.name)])),
+    sideHeader("#end", ""),
+    sideRow("settings", "⚙ Settings", place === "settings", () => goPlace("settings")),
+    { ...sideRow("help", "? Help", false, () => {}), here: onHelp },
+  ];
+  const sideAt = sideRows.findIndex((r) => r.here);
 
-  const header = (
-    <Box height={1} width={columns}>
-      <Text color={color.accent} bold>
-        {" ◆ skilllib "}
-      </Text>
-      <Text color={color.faint}>{"  "}</Text>
-      <Text color={color.muted}>{place.kind === "project" ? "Projects › " : ""}</Text>
-      <Text color={color.text} bold>
-        {placeTitle}
-      </Text>
-      <Box flexGrow={1} />
-      <Text color={color.faint}>{scanning ? "scanning…  " : usage ? "" : "reading usage…  "}</Text>
-      {columns >= 110 ? <HarnessLegend ids={enabledIds} /> : null}
-      {problems > 0 ? <Text color={color.red}>{`● ${plural(problems, "problem")} `}</Text> : <Text color={color.green}>{"✓ healthy "}</Text>}
+  const topBar = (
+    <Box height={1} width={columns} justifyContent="space-between">
+      <Box>
+        <Text color={color.accent} bold>
+          {" ◆ skilllib  "}
+        </Text>
+        {PLACES.map(([p, label]) => (
+          <Text key={p} backgroundColor={place === p ? color.accent : undefined} color={place === p ? "#0B1020" : color.muted} bold={place === p}>
+            {` ${label}`}
+            <Text color={place === p ? "#0B1020" : healthWorst ? SEV[healthWorst.severity].color : color.green}>{p === "health" && healthCount ? ` ${healthCount}` : ""}</Text>
+            {" "}
+          </Text>
+        ))}
+      </Box>
     </Box>
   );
 
-  const renderPreview = () => {
-    if (previewHeight === 0) return null;
-    if (overlay?.type === "menu") {
-      const options = overlay.build();
-      const lines = previewHeight - 2;
-      const offset = Math.max(0, Math.min(overlay.index - Math.floor(lines / 2), options.length - lines));
-      return (
-        <Panel title={overlay.title} hint="↑↓ · enter · esc" focused width={columns} height={previewHeight}>
-          {options.slice(offset, offset + lines).map((o, i) => {
-            const active = offset + i === overlay.index;
-            return (
-              <Box key={o.label + i} height={1}>
-                <Text backgroundColor={active ? color.selection : undefined} color={active ? color.accent : color.faint}>
-                  {active ? "▌ " : "  "}
-                </Text>
-                <Text backgroundColor={active ? color.selection : undefined} color={active ? color.text : color.muted} bold={active}>
-                  {o.label}
-                </Text>
-                {o.hint ? <Text color={color.faint}>{`   ${o.hint}`}</Text> : null}
-              </Box>
-            );
-          })}
-        </Panel>
-      );
-    }
-    const inner = columns - 6;
-    const lines = previewHeight - 3;
-    if (!preview) {
-      return (
-        <Panel title="Details" focused={false} width={columns} height={previewHeight}>
-          <Text color={color.faint}>Nothing selected</Text>
-        </Panel>
-      );
-    }
-    const info = preview.dir ? readPreview(preview.dir) : null;
-    const description = preview.description ?? info?.description ?? "";
-    const room = lines + (preview.meta.length ? 0 : 1);
-    const descLines = description ? wrap(description, inner, Math.min(2, room)) : [];
-    const bodyLines = (info?.body ?? []).filter((l) => !l.startsWith("# ")).slice(0, Math.max(0, room - descLines.length));
-    return (
-      <Panel title={preview.title} hint={info ? plural(info.files, "file") : undefined} focused={false} width={columns} height={previewHeight}>
-        {preview.meta.length > 0 ? (
-          <Text color={color.muted} wrap="truncate-end">
-            {preview.meta.join("  ·  ")}
-          </Text>
-        ) : null}
-        {descLines.map((l, i) => (
-          <Text key={`d${i}`} color={color.text} wrap="truncate-end">
-            {l}
-          </Text>
-        ))}
-        {bodyLines.map((l, i) => (
-          <Text key={`b${i}`} color={color.faint} wrap="truncate-end">
-            {l}
-          </Text>
-        ))}
+  const chipRow = (
+    <Box height={1} overflow="hidden">
+      <Text wrap="truncate-end">
+        {chips.map(([c, label], i) => {
+          const n = all.filter((x) => !x.header && !x.action && inChip(x, c)).length;
+          return (
+            <Text key={c}>
+              {i ? " " : ""}
+              <Text
+                backgroundColor={chip === c ? color.accent : undefined}
+                color={chip === c ? "#0B1020" : c === "issues" && n ? color.yellow : color.muted}
+                bold={chip === c}
+              >{` ${label} ${n} `}</Text>
+            </Text>
+          );
+        })}
+        <Text color={color.accent}>{query ? `    ⌕ ${query}▏` : ""}</Text>
+      </Text>
+    </Box>
+  );
+
+  const columnTitles: Cell[] | null =
+    dashboard || place === "global"
+      ? titles([["", 2], ["Skill", nameW], ["Source", 14], [" Uses", 6], [" Issue", 0]])
+      : place === "projects"
+        ? titles([["", 2], ["Project", 18], ["Skills", 10], ["Issues", 0]])
+        : place === "library"
+          ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 18], [" Uses", 6], [" Issue / description", 0]])
+          : place === "health"
+            ? titles([["", 2], ["Skill", nameW], ["Where", 16], [" Issue", 0]])
+            : null;
+  const showChips = chips.length > 0;
+  const listHeader = (
+    <Box flexDirection="column">
+      {showChips ? chipRow : null}
+      {columnTitles ? <TitleRow cells={columnTitles} width={columns} /> : null}
+    </Box>
+  );
+
+  const overviewH = dashboard && !sidebar ? 4 : 0;
+  const listH = split ? Math.floor((bodyH - overviewH) / 2) : bodyH - overviewH;
+  const detailH = split ? bodyH - overviewH - listH : bodyH;
+  const listRows: Row[] = items.map((i) => ({ key: i.key, cells: i.cells, header: i.header }));
+  const listTitle = dashboard ? "Skills" : place === "projects" ? "Projects" : place === "library" ? "Your skills" : place === "global" ? "Loads everywhere" : place === "health" ? "To fix" : "Settings";
+  const list = (
+    <ListPanel
+      title={listTitle}
+      focused={focus === "list"}
+      width={columns}
+      height={listH}
+      rows={listRows}
+      selected={Math.max(0, cursor)}
+      empty={query ? `Nothing matches "${query}" · esc clears` : chip === "issues" || place === "health" ? "✓ Nothing to fix" : "Nothing here"}
+      header={listHeader}
+      headerHeight={(showChips ? 1 : 0) + (columnTitles ? 1 : 0)}
+    />
+  );
+
+  const side =
+    sidebar && focus === "sidebar" && dashboard ? (
+      <Panel title={open!} focused={false} width={columns} height={detailH}>
+        <InfoGrid rows={overview(world, open!)} columns={2} width={columns} />
+      </Panel>
+    ) : place === "projects" && !open && current && !current.header ? (
+      <Panel title={current.name} focused={false} width={columns} height={detailH}>
+        <InfoGrid rows={overview(world, current.name)} columns={2} width={columns} />
+      </Panel>
+    ) : detail ? (
+      <DetailPanel detail={detail} width={columns} height={detailH} focused={focus === "detail"} cursor={detailCursor} />
+    ) : null;
+
+  let body: ReactNode;
+  if (modal?.kind === "help") body = <Help width={columns} height={bodyH} />;
+  else if (modal?.kind === "menu")
+    body = (
+      <ListPanel
+        title={modal.title}
+        focused
+        width={columns}
+        height={bodyH}
+        selected={modal.cursor}
+        empty="Nothing to do here"
+        rows={modal.options.map((o, i) => ({ key: String(i), cells: [{ text: o.label, grow: true }] }))}
+      />
+    );
+  else if (modal?.kind === "input")
+    body = (
+      <Panel title={modal.title} focused width={columns} height={5}>
+        <Text color={color.text}>{modal.value + "▏"}</Text>
+        <Text color={color.faint}>{"enter to confirm · ctrl+u clears · esc cancels"}</Text>
       </Panel>
     );
-  };
-
-  const statusLine = (() => {
-    if (overlay?.type === "confirm") {
-      return (
-        <Text wrap="truncate-end">
-          <Text color={color.yellow} bold>
-            {"? "}
-          </Text>
-          <Text color={color.text}>{overlay.message}</Text>
-          <Text color={color.muted}>{"   y / n"}</Text>
-        </Text>
-      );
-    }
-    if (overlay?.type === "prompt") {
-      return (
-        <Text wrap="truncate-end">
-          <Text color={color.accent} bold>
-            {"› "}
-          </Text>
-          <Text color={color.muted}>{`${overlay.label}: `}</Text>
-          <Text color={color.text}>{overlay.value}</Text>
-          <Text color={color.accent}>{"█"}</Text>
-          <Text color={color.faint}>{"   enter ok · esc cancel"}</Text>
-        </Text>
-      );
-    }
-    if (toast) {
-      return (
-        <Text wrap="truncate-end" color={toast.ok ? color.green : color.yellow}>
-          {`${toast.ok ? "✓" : "!"} ${toast.text}`}
-        </Text>
-      );
-    }
-    return <Text> </Text>;
-  })();
-
-  if (wizard) {
-    const yours = snapshot.machine.filter((m) => m.movable && !m.broken);
-    return (
-      <Box flexDirection="column" width={columns} height={termRows}>
-        {header}
-        <CleanupWizard
-          skills={yours}
-          kept={snapshot.keptGlobal}
-          projects={snapshot.projects}
-          usesIn={(skill, project) => (usage ? (usage.byProject.get(project)?.get(skill) ?? 0) : null)}
-          usesTotal={(skill) => (usage ? (usage.total.get(skill) ?? 0) : null)}
-          onReviewPrompt={(skills) => {
-            const prompt = buildReviewPrompt(skills.map(reviewOfGlobal), {
-              scope: "These are my global skills; I'm deciding which to move into specific projects, keep global, or delete.",
-              usageDays: USAGE_DAYS,
-              harnesses: snapshot.harnesses.map(harnessName),
-              projects: snapshot.projects.map((p) => ({ name: basename(p), path: p })),
-            });
-            const r = copyText(prompt);
-            return r.copied
-              ? `Copied a review prompt for ${plural(skills.length, "skill")} — paste it into your agent, then set each skill here`
-              : `Saved the prompt to ${tildify(r.savedTo)} (clipboard unavailable)`;
-          }}
-          usageDays={USAGE_DAYS}
-          installedIn={(skill) => snapshot.library.find((l) => l.name === skill)?.projects ?? []}
-          initialSkill={wizard.initialSkill}
-          inputRef={wizardInput}
-          width={columns}
-          height={termRows - 2}
-          onCancel={() => {
-            setWizard(null);
-            say("Cleanup cancelled — nothing changed", false);
-          }}
-          onDone={(r) => {
-            setWizard(null);
-            reload();
-            setToast({
-              ok: r.problems.length === 0,
-              text: [
-                r.unloaded || r.installs ? `${plural(r.unloaded, "skill")} moved into projects (${plural(r.installs, "install")})` : "",
-                r.deleted ? `${r.deleted} deleted` : "",
-                r.kept ? `${plural(r.kept, "skill")} kept global on purpose` : "",
-                r.problems.length ? `${r.problems.length} left global: ${r.problems[0]}` : "",
-              ]
-                .filter(Boolean)
-                .join(" · "),
-            });
-          }}
-        />
-      </Box>
+  else if (modal?.kind === "agents")
+    body = (
+      <ListPanel
+        title="Which agents do you use?"
+        focused
+        width={columns}
+        height={bodyH}
+        selected={modal.cursor}
+        empty=""
+        header={<Text color={color.muted}>{"skilllib makes your skills visible to each one. Detected ones are ticked."}</Text>}
+        headerHeight={1}
+        rows={HARNESSES.map((h) => ({
+          key: h.id,
+          cells: [
+            { text: modal.selected.includes(h.id) ? "[x] " : "[ ] ", width: 4, color: modal.selected.includes(h.id) ? color.green : color.faint },
+            { text: `${h.icon} ${h.name}`, width: 18, color: h.color },
+            { text: `reads ${h.projectDirs.join(", ")}`, grow: true, color: color.faint },
+          ],
+        }))}
+      />
     );
-  }
-
-  if (setup) {
-    const box = Math.min(84, columns - 4);
-    return (
-      <Box flexDirection="column" width={columns} height={termRows} alignItems="center" justifyContent="center">
-        <Box flexDirection="column" borderStyle="round" borderColor={color.accent} paddingX={3} paddingY={1} width={box}>
-          <Text color={color.accent} bold>
-            ◆ Welcome to skilllib
-          </Text>
-          <Text> </Text>
-          <Text color={color.text}>Manage agent skills like dependencies: one versioned library, and each project picks what it needs.</Text>
-          <Text> </Text>
-          {setup.step === "harnesses" ? (
-            <>
-              <Text color={color.text} bold>
-                1 · Which coding agents do you use?
+  else if (modal?.kind === "repos") {
+    const repos = (modal.only ?? world.projects.map((p) => p.name)).filter((r) => !modal.query || W.matches(r, modal.query));
+    const name = current?.name ?? "";
+    // What confirming does, above the repos to pick.
+    const pickerLines = wrap(modal.fix.preview, columns - 6, 4);
+    body = (
+      <ListPanel
+        title={`${modal.fix.label.replace("…", "")}: ${name}`}
+        focused
+        width={columns}
+        height={bodyH}
+        selected={modal.cursor}
+        empty="No repos"
+        header={
+          <Box flexDirection="column">
+            {pickerLines.map((l, i) => (
+              <Text key={i} color={color.text}>
+                {l}
               </Text>
-              <Text color={color.faint}>skilllib installs skills where each of them looks.</Text>
-              <Text> </Text>
-              {HARNESSES.map((h, i) => {
-                const on = setup.selected.includes(h.id);
-                const active = i === setup.index;
-                return (
-                  <Box key={h.id} height={1}>
-                    <Text color={active ? color.accent : color.faint}>{active ? "▌ " : "  "}</Text>
-                    <Text color={on ? color.green : color.faint}>{on ? "◉ " : "○ "}</Text>
-                    <Text color={h.color}>{`${h.icon} `}</Text>
-                    <Text color={active ? color.text : color.muted} bold={active}>
-                      {h.name.padEnd(13)}
-                    </Text>
-                    <Text color={color.faint} wrap="truncate-end">
-                      {`${h.installed() ? "detected · " : ""}reads ${h.projectDirs.map((d) => d.replace("/skills", "")).join(" ")}`}
-                    </Text>
-                  </Box>
-                );
-              })}
-              <Text> </Text>
-              <Text color={color.faint}>↑↓ move · space toggle · enter continue</Text>
-            </>
-          ) : (
-            <>
-              <Text color={color.text} bold>
-                2 · Where do your projects live?
-              </Text>
-              <Text color={color.faint}>skilllib finds every git repo inside and rescans it each time it opens.</Text>
-              <Box borderStyle="round" borderColor={color.accentDim} paddingX={1}>
-                <Text color={color.text}>{setup.value}</Text>
-                <Text color={color.accent}>█</Text>
-              </Box>
-              <Text color={color.faint}>enter to scan · esc to skip · change both later in Settings</Text>
-            </>
-          )}
-        </Box>
-      </Box>
+            ))}
+            <Text color={modal.query ? color.accent : color.muted}>{modal.query ? `⌕ ${modal.query}▏` : `ticked: repos where it was used${modal.fix.allowNone ? " (or none)" : ""} · type to filter`}</Text>
+          </Box>
+        }
+        headerHeight={pickerLines.length + 1}
+        rows={repos.map((r) => ({
+          key: r,
+          cells: [
+            { text: modal.picked.has(r) ? "[x] " : "[ ] ", width: 4, color: modal.picked.has(r) ? color.green : color.faint },
+            { text: r, width: 20 },
+            { text: world.usage[r]?.[name] ? `used ${world.usage[r]![name]}× here` : "", grow: true, color: color.faint },
+          ],
+        }))}
+      />
     );
-  }
-
-  if (overlay?.type === "help") {
-    const topicWidth = 30;
-    const contentWidth = columns - topicWidth - 4;
-    const topic = HELP_TOPICS[overlay.topic]!;
-    // Wrap every block into display lines, then scroll.
-    const lines: { text: string; kind: "heading" | "body" | "gap" }[] = [];
-    for (const block of topic.blocks) {
-      if (lines.length) lines.push({ text: "", kind: "gap" });
-      if (block.heading) lines.push({ text: block.heading, kind: "heading" });
-      for (const line of block.lines) {
-        for (const w of wrapAligned(line, contentWidth - 2)) lines.push({ text: w, kind: "body" });
-      }
-    }
-    const room = termRows - 5;
-    const scroll = Math.min(overlay.scroll, Math.max(0, lines.length - room));
-    const topicRows: Row[] = HELP_TOPICS.map((t) => {
-      const h = HARNESSES.find((x) => x.id === t.id);
-      return {
-        key: t.id,
-        cells: [
-          { text: `${t.icon ?? "·"} `, color: h?.color ?? color.accent },
-          { text: t.title, grow: true, bold: true },
-        ],
-      };
-    });
-    return (
-      <Box flexDirection="column" width={columns} height={termRows}>
-        {header}
-        <Box height={termRows - 2}>
-          <ListPanel title="Help" focused width={topicWidth} height={termRows - 2} rows={topicRows} selected={overlay.topic} empty="" />
-          <Panel
-            title={topic.title}
-            hint={lines.length > room ? `${scroll + 1}–${Math.min(lines.length, scroll + room)} of ${lines.length} · pgdn` : undefined}
-            focused={false}
-            width={columns - topicWidth}
-            height={termRows - 2}
-          >
-            {lines.slice(scroll, scroll + room).map((l, i) =>
-              l.kind === "heading" ? (
-                <Text key={i} color={color.accent} bold wrap="truncate-end">
-                  {l.text}
-                </Text>
-              ) : (
-                <Text key={i} color={l.kind === "gap" ? undefined : color.text} wrap="truncate-end">
-                  {l.text || " "}
-                </Text>
-              ),
-            )}
+  } else if (modal?.kind === "fixall") {
+    body = (
+      <ListPanel
+        title={`Fix automatically (${modal.items.filter((i) => i.on).length} of ${modal.items.length})`}
+        focused
+        width={columns}
+        height={bodyH}
+        selected={modal.cursor}
+        empty=""
+        header={<Text color={color.muted}>{"Decisions are never listed here: they stay with you."}</Text>}
+        headerHeight={1}
+        rows={modal.items.map((it, i) => ({
+          key: String(i),
+          cells: [
+            { text: it.on ? "[x] " : "[ ] ", width: 4, color: it.on ? color.green : color.faint },
+            { text: it.label, grow: true },
+          ],
+        }))}
+      />
+    );
+  } else if (modal?.kind === "add") {
+    const rows = W.addRows(world, modal.target, modal.query);
+    body = (
+      <ListPanel
+        title={modal.target ? `Add a skill to ${modal.target}` : "New skill"}
+        focused
+        width={columns}
+        height={bodyH}
+        selected={addCursor(rows, modal.cursor)}
+        empty=""
+        header={
+          <Text color={modal.query ? color.accent : color.muted}>
+            {modal.query ? `⌕ ${modal.query}▏` : modal.target ? "type to search your library, or to name a new skill" : "type the new skill's name"}
+          </Text>
+        }
+        headerHeight={1}
+        rows={rows.map((r) =>
+          r.header
+            ? { key: r.key, header: true, cells: [{ text: r.header }] }
+            : r.create || r.agent
+              ? { key: r.key, cells: [{ text: r.name, grow: true, color: color.accent }] }
+              : {
+                  key: r.key,
+                  cells: [
+                    { text: clip(r.name, 22), width: 22 },
+                    { text: r.note, width: 6, color: color.accent },
+                    { text: r.description, grow: true, color: color.faint },
+                  ],
+                },
+        )}
+      />
+    );
+  } else if (!split && focus === "detail" && side) body = side;
+  else
+    body = (
+      <Box flexDirection="column">
+        {overviewH ? (
+          <Panel title={open!} focused={false} width={columns} height={overviewH}>
+            <InfoGrid rows={overview(world, open!)} columns={2} width={columns} />
           </Panel>
-        </Box>
-        <Box height={1} paddingX={1}>
-          <KeyBar
-            hints={[
-              ["↑↓", "topic"],
-              ["pgdn", "scroll"],
-              ["esc", "close"],
-            ]}
-            width={columns - 2}
-          />
-        </Box>
+        ) : null}
+        {list}
+        {split ? side : null}
       </Box>
     );
-  }
 
-  // Project tabs: counts, what each list means, and search hits in the other tabs.
-  const TAB_ABOUT: Record<ProjectTab, string> = {
-    usable: "Everything agents see in this repo, grouped by where it comes from. ⚠ global ones load in every repo.",
-    add: "Your skills that this repo doesn't have yet. Space adds one.",
-  };
-  const tabCount = (tab: ProjectTab) =>
-    (projectTabs?.[tab] ?? []).flatMap((sec) => sec.items).filter((i) => !i.key.startsWith("__")).length;
-  const tabMatches = (tab: ProjectTab) =>
-    (projectTabs?.[tab] ?? []).flatMap((sec) => sec.items).filter((i) => !i.key.startsWith("__") && matchScore(i.search.split(" ")[0] ?? "", search.right) !== null).length;
-  const elsewhere =
-    projectTabs && search.right
-      ? PROJECT_TABS.filter((t) => t.id !== projectTab && tabMatches(t.id) > 0)
-          .map((t) => `${tabMatches(t.id)} in ${t.label} (tab)`)
-          .join(", ")
-      : "";
-  const tabBar = projectTabs ? (
-    <Box flexDirection="column" height={3}>
-      <Box height={1}>
-        {PROJECT_TABS.map((t) => {
-          const active = t.id === projectTab;
-          const count = search.right ? tabMatches(t.id) : tabCount(t.id);
+  // A few quiet hints for where you are; messages replace them until the next key.
+  const hints =
+    modal?.kind === "confirm"
+      ? "enter apply · esc cancel"
+      : modal?.kind === "repos" || modal?.kind === "fixall"
+        ? "space tick · enter apply · esc cancel"
+        : modal?.kind === "agents"
+          ? "space tick · enter save"
+          : modal?.kind === "menu"
+            ? "↑↓ choose · enter do it · esc cancel"
+            : modal?.kind === "add"
+          ? "enter add · esc cancel"
+          : modal
+            ? "any key closes"
+            : focus === "detail"
+              ? "↑↓ ←→ choose · enter apply · esc back"
+              : focus === "sidebar"
+                ? "↑↓ choose · enter open · type to filter repos"
+              : place === "projects" && !open
+                ? `type to filter · enter open · ${sidebar ? "← sidebar" : "←→ places"} · ? keys`
+                : place === "settings"
+                  ? `enter toggle · ${sidebar ? "← sidebar" : "←→ places"} · ? keys`
+                  : `type to filter · space ★ fix · enter actions · tab tabs${sidebar ? " · esc back" : `${dashboard ? " · esc all projects" : ""} · ? keys`}`;
+
+  return (
+    <Box flexDirection="column" width={termCols} height={termRows}>
+      {sidebar ? null : topBar}
+      <Box>
+        {sidebar ? (
+          <ListPanel
+            title={sideQuery ? `◆ skilllib ⌕ ${sideQuery}▏` : "◆ skilllib"}
+            focused={focus === "sidebar"}
+            width={SIDEBAR_W}
+            height={bodyH + confirmH}
+            rows={sideRows}
+            selected={sideAt}
+            empty=""
+          />
+        ) : null}
+        <Box flexDirection="column" width={columns}>
+          {body}
+          {modal?.kind === "confirm" ? (
+            <Panel title={modal.fix.label} focused width={columns} height={confirmH}>
+              {confirmLines.map((l, i) => (
+                <Text key={i} color={color.text}>
+                  {l}
+                </Text>
+              ))}
+            </Panel>
+          ) : null}
+        </Box>
+      </Box>
+      <Box height={1} width={termCols} justifyContent="space-between">
+        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : color.muted} wrap="truncate-end">
+          {" " + toast}
+        </Text>
+        {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}
+      </Box>
+    </Box>
+  );
+}
+
+function SegLine({ segs }: { segs: Seg[] }) {
+  return (
+    <Box height={1} overflow="hidden">
+      <Text wrap="truncate-end">
+        {segs.map(([t, c], i) => (
+          <Text key={i} color={c}>
+            {t}
+          </Text>
+        ))}
+      </Text>
+    </Box>
+  );
+}
+
+function DetailPanel({ detail, width, height, focused, cursor }: { detail: Detail; width: number; height: number; focused: boolean; cursor: number }) {
+  const visible = height - 2;
+  const at = detail.body.findIndex((l) => l.option === cursor || l.row?.includes(cursor));
+  const offset = focused && at >= visible ? at - visible + 2 : 0;
+  return (
+    <Panel title={detail.title} focused={focused} width={width} height={height}>
+      {detail.body.slice(offset, offset + visible).map((l, i) => {
+        if (l.row)
           return (
-            <Box key={t.id} marginRight={1}>
-              <Text backgroundColor={active ? color.accent : undefined} color={active ? "#0B1020" : color.muted} bold={active}>
-                {` ${t.label} ${count} `}
+            <Box key={i} height={1} overflow="hidden">
+              <Text wrap="truncate-end">
+                {l.segs.map(([t, c], j) => (
+                  <Text key={j} color={c}>{t}</Text>
+                ))}
+                {l.row.map((o, j) => (
+                  <Text key={o}>
+                    <Text color={color.faint}>{j ? " · " : ""}</Text>
+                    <Text color={focused && o === cursor ? color.text : color.muted} bold={focused && o === cursor} backgroundColor={focused && o === cursor ? color.selection : undefined}>
+                      {detail.options[o]!.label}
+                    </Text>
+                  </Text>
+                ))}
               </Text>
             </Box>
           );
-        })}
-        <Box flexGrow={1} />
-        <Text color={color.faint}>{focus === "right" ? "tab ⇥ next list" : ""}</Text>
-      </Box>
-      <Text color={color.muted} wrap="truncate-end">
-        {TAB_ABOUT[projectTab]}
-      </Text>
-      <Text color={color.faint} wrap="truncate-end">
-        {search.right && elsewhere ? `also matching: ${elsewhere}` : " "}
-      </Text>
-    </Box>
-  ) : null;
+        if (l.option === undefined) return <SegLine key={i} segs={l.segs.length ? l.segs : [[" "]]} />;
+        const o = detail.options[l.option]!;
+        const on = focused && l.option === cursor;
+        return (
+          <Box key={i} height={1} overflow="hidden">
+            <Text wrap="truncate-end">
+              <Text color={on ? color.accent : color.faint}>{on ? "  ▸ " : "    "}</Text>
+              <Text color={color.green}>{o.recommended ? "★ " : "  "}</Text>
+              <Text color={on ? color.text : color.muted} bold={on} backgroundColor={on ? color.selection : undefined}>
+                {o.label}
+              </Text>
+            </Text>
+          </Box>
+        );
+      })}
+    </Panel>
+  );
+}
 
-  const paneHint = (pane: "left" | "right") =>
-    search[pane] ? `⌕ ${search[pane]}` : "";
-
+function Help({ width, height }: { width: number; height: number }) {
+  const keys: [string, string][] = [
+    ["a-z 0-9 -", "filter the pane you're in (initials work: cfw finds cloudflare-workers)"],
+    ["↑ ↓", "move"],
+    ["enter  →", "one pane deeper: Places → list → details (and applies the chosen fix)"],
+    ["space", "apply the ★ recommended fix (or show the choices when it's your call)"],
+    ["tab  ⇧tab", "next / previous tab: All · Issues · Local · Global · Plugins · Vendor"],
+    ["", "under 80 columns there's no Places pane: ← → switch places instead"],
+    ["esc  ←", "one pane back (esc clears a filter first)"],
+    ["ctrl+r", "read everything again from disk"],
+    ["ctrl+c", "quit"],
+  ];
   return (
-    <Box flexDirection="column" width={columns} height={termRows}>
-      {header}
-      <Box height={bodyHeight}>
-        <ListPanel
-          title="Places"
-          focused={focus === "left"}
-          width={leftWidth}
-          height={bodyHeight}
-          rows={leftRows}
-          selected={Math.max(0, leftIndex)}
-          filter={paneHint("left")}
-          empty={`Nothing matches "${search.left}"`}
-        />
-        <ListPanel
-          title={placeTitle}
-          header={tabBar}
-          headerHeight={tabBar ? 3 : 0}
-          focused={focus === "right"}
-          width={rightWidth}
-          height={bodyHeight}
-          rows={rightRows}
-          selected={Math.max(0, rightIndex)}
-          filter={paneHint("right")}
-          empty={
-            search.right
-              ? `Nothing matches "${search.right}" here.${elsewhere ? ` ${elsewhere}` : ""}`
-              : place.kind === "project"
-                ? projectTab === "usable"
-                  ? "No skills here yet. Press tab to add some from Your skills."
-                  : snapshot.library.length
-                    ? "Every one of your skills is already in this repo."
-                    : "You have no saved skills yet. Copy one from a project (space on it) or clean up your globals."
-                : place.kind === "health"
-                  ? "✓ Everything looks good."
-                  : place.kind === "help"
-                    ? "Press enter to open help."
-                    : "Nothing here yet."
-          }
-        />
-      </Box>
-      {renderPreview()}
-      <Box height={1} paddingX={1}>
-        {statusLine}
-      </Box>
-      <Box height={1} paddingX={1}>
-        <KeyBar hints={[...hints, ["?", "help"]]} width={columns - 2} />
-      </Box>
-    </Box>
+    <Panel title="Keys" hint="any key closes" focused width={width} height={height}>
+      {keys.map(([k, d]) => (
+        <Text key={k}>
+          <Text color={color.accent}>{k.padEnd(12)}</Text>
+          <Text color={color.text}>{d}</Text>
+        </Text>
+      ))}
+      <Text> </Text>
+      <Text color={color.muted}>{"✕ problem · ⚠ warning · · hint · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
+      <Text color={color.muted}>{"Source: lib = from your library · repo = committed by the team · untracked = only on this machine"}</Text>
+      <Text color={color.muted}>{"Usage counts Claude Code sessions only: other agents don't record skill use."}</Text>
+    </Panel>
   );
 }

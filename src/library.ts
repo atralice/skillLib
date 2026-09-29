@@ -456,6 +456,15 @@ export function stash(dir: string, bucket: string): string {
   return target;
 }
 
+/**
+ * Removes a skill folder skilllib doesn't track (an untracked copy) and its links.
+ * The folder goes to the trash, restorable from Settings like everything skilllib removes.
+ */
+export function removeUntracked(root: string, name: string, path: string): string {
+  unlinkEverywhere(root, name);
+  return stash(path, "trash");
+}
+
 export function projectsUsing(name: string): string[] {
   return knownProjects().filter((p) => name in readManifest(p).skills);
 }

@@ -55,8 +55,8 @@ export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
   const byOrigin = new Map<string, string[]>();
   for (const m of machine) if (m.kind === "plugin") byOrigin.set(m.origin, [...(byOrigin.get(m.origin) ?? []), m.path]);
   return [...byOrigin].map(([origin, skills]) => {
-    const synced = origin.endsWith(" (claude.ai)");
-    const id = synced ? `${origin.replace(" (claude.ai)", "")}@synced` : origin;
+    const synced = origin.endsWith("@synced");
+    const id = origin;
     const entry = installed[origin]?.[0];
     return {
       id,
@@ -75,7 +75,7 @@ export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
  * Terminals like cmux put a `claude` wrapper first on PATH that can fail to
  * find the real one. Null if none runs.
  */
-function claudeBinary(): string | null {
+export function claudeBinary(): string | null {
   const candidates = ["claude", join(userHome(), ".local", "bin", "claude"), join(userHome(), ".claude", "local", "claude")];
   return (
     candidates.find((bin) => {
@@ -142,12 +142,15 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
     : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
-  if (how === "delete" && !plugin.synced) {
-    const list = readJson<Removed[]>(removedFile()) ?? [];
-    mkdirSync(skilllibHome(), { recursive: true });
-    writeFileSync(removedFile(), JSON.stringify([...list, { id: plugin.id, scope: plugin.scope ?? "user", at: new Date().toISOString() }], null, 2) + "\n");
-  }
+  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user");
   return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? "removed" : "turned off"}${saved}` };
+}
+
+/** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
+export function recordRemovedPlugin(id: string, scope: string) {
+  const list = readJson<Removed[]>(removedFile()) ?? [];
+  mkdirSync(skilllibHome(), { recursive: true });
+  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, at: new Date().toISOString() }], null, 2) + "\n");
 }
 
 /** Plugins skilllib removed, as Health backups. */
