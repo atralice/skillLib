@@ -15,7 +15,7 @@ and every agent you use can see them.
 npx skilllib
 ```
 
-<img src="docs/screenshot-project.svg" alt="skilllib showing a repo's skills: where each comes from, which agents load it, whether it's committed, and how often it's used" width="100%">
+<img src="docs/screenshot-project.svg" alt="skilllib: Places on the left, a repo's skills with their issues and uses, and the selected skill's fixes and actions below" width="100%">
 
 </div>
 
@@ -46,7 +46,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 - **📚 Your skills: one versioned library.** Every skill has a single master copy in `~/.skilllib/library`, and each change becomes a new version.
 - **📦 Per-repo installs, pinned like dependencies.** Each repo lists its skills and versions in `skilllib.json`. `sync` reproduces them exactly, and `update` moves to the newest.
 - **🤝 One copy, every agent.** skilllib puts one real copy in the repo and links it into whichever folders your other agents read.
-- **🧹 A cleanup wizard for global skills.** For each global skill, pick the repos that should keep it, keep it global, or delete it. Usage numbers and descriptions help you decide.
+- **🧹 Health: one list of what to fix.** Global skills you haven't decided about, skills loaded twice, updates, broken links, each with its fix. For a global skill: move it to the repos that need it, keep it global, or delete it. Usage numbers and descriptions help you decide.
 - **✓ Global on purpose.** Some skills belong everywhere. Mark them once and skilllib stops warning about them.
 - **🔎 See everything in a repo:**
   - where each skill comes from (the repo, your library, global, a plugin, claude.ai…)
@@ -76,9 +76,9 @@ On first run, skilllib asks two things:
 
 Then a good first session looks like this:
 
-1. **Open a repo** (type its name, then Enter) to see everything its agents can use.
-2. **Clean up global skills:** open **Global → ⚠ Clean up…** and decide, skill by skill, which repos keep it.
-3. **Add skills** to a repo from the *Add skills* tab.
+1. **You land in Places, on the repo you're in.** `enter` opens its skills; `enter` again opens a skill's issues and actions.
+2. **Open Health** to see everything worth fixing, in every repo and in your global skills. **✦ Fix N issues automatically…** does the safe ones; the rest are your call, one skill at a time.
+3. **Add skills** to a repo with **+ Add a skill…**, the top row of its list.
 
 ---
 
@@ -86,66 +86,63 @@ Then a good first session looks like this:
 
 ### The screen
 
-The left pane lists **places**, and the right pane shows the skills of the place you pick:
+Three panes: **Places** on the left, a **list** on the right, and the **details** of what you select under it. Terminals under 80 columns get a tab bar instead of Places; under 30 rows, details open on `enter`.
 
 | Place | What it shows |
 |---|---|
 | **Your skills** | Your library: master copies, versioned. Nothing here loads anywhere until you add it to a repo. |
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
-| **Health** | Problems with one-key fixes, and everything you can restore. |
-| **Projects** | Every repo found in your project folders. `◆` marks the one you're in. |
-| **Settings** | Your agents and your project folders. |
-| **Help** | Where skills come from, and how each agent finds and uses them. |
+| **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
+| **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
+| **Settings** | Your agents, your project folders, hidden repos, and backups. |
+| **Help** | The keys and symbols. |
 
 ### Keys
 
 | Key | Does |
 |---|---|
-| *type* | Search the pane you're in. Word initials work too: `cfw` finds `cloudflare-workers`. |
+| *type* | Filter the pane you're in. Word initials work too: `cfw` finds `cloudflare-workers`. |
 | `↑` `↓` | Move |
-| `space` | The main action: add, remove, copy, clean up, fix, restore |
-| `enter` | Every action for the selected row (or open a place) |
-| `tab` | In a repo: switch between **Usable here** and **Add skills** |
-| `→` `←` | Open or close a group |
-| `esc` | Clear the search, then go back to the left pane |
-| `?` | Help · `ctrl+r` reload · `ctrl+c` quit |
+| `enter` `→` | One pane deeper: Places → list → details. In the details, apply the selected fix or action. |
+| `esc` `←` | One pane back (`esc` clears a filter first). In the details, `←` `→` move along the actions. |
+| `space` | Apply the ★ recommended fix, or show the choices when it's your call; on a group, open or close it |
+| `tab` | Next tab: All · Issues · Local · Global · Plugins · Vendor |
+| `ctrl+r` | Read everything again from disk · `ctrl+c` quits |
 
 ### A repo
 
-A repo has two lists:
+The list shows everything agents can use in the repo, one row per skill, even when it loads from several places:
 
-**Usable here** shows everything agents can use in this repo, grouped by where it comes from:
-
-| Group | What it is | `space` |
-|---|---|---|
-| *From your skills* | Versioned skills you added from your library | Remove it from this repo |
-| *The repo's own* | Skills committed to the repo (e.g. your team's `.agents/skills`) | Copy it into your skills, so other repos can use it |
-| *⚠ Global · yours, not reviewed* | Your global skills you haven't decided about: they load in every repo | Open the cleanup wizard |
-| *✓ Global · yours, on purpose* | Your global skills you chose to keep global | Open the cleanup wizard |
-| *Global · from vendors* | Plugins, claude.ai skills, Cursor built-ins | – (manage them at the source) |
-
-**Add skills** shows your skills that this repo doesn't have yet. `space` adds one.
-
-Each row tells you:
-
-| | Meaning |
+| Column | Meaning |
 |---|---|
-| **✻ ⬡ ◎ ℤ** | Claude Code, Cursor, Codex, Zed. An icon in color means that agent loads the skill here; a faint one means it doesn't. |
-| `²` | Cursor reaches this skill through two folders, so it may list it twice |
-| `.claude` / `.agents` | The folder holding the real copy |
-| **✓ committed** · **± changed** · **+ not added** · **∅ ignored** | The skill's git state. `∅ ignored` means it only exists on your machine. |
-| `v2` · `v1 → v2` | The installed version, and whether a newer one exists |
-| **⧉ 3 copies** | The same skill reaches your agents from 3 places. The details panel lists them; keep one. |
-| last column | Claude Code uses in the last 30 days |
+| Source | `lib v2`: from your library · `repo`: committed by your team · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` |
+| Uses | Claude Code uses in this repo, last 30 days |
+| Issue | The worst of its issues; the details show them all |
 
-Related skills fold into one row: skills from the same plugin, the same source repo, or with the same name prefix (`design-*`). Press Enter on the group row for actions on all of them.
+**Related skills fold into one row**, here, in Global and in Your skills. skilllib groups them by the strongest signal it has: the same source (a plugin, an `npx skills` repo, claude.ai, Cursor), then folders you copied in the same minute (a whole set installed at once), then the same first word (`cloudflare-*`). `→` opens a group and `←` closes it; `enter` on an open group shows actions for all of it: move all to repos, keep all global, delete all, add all to repos, or a review prompt. A group you move together is recorded as its skills' origin, so it stays grouped in your library.
 
-If some skills aren't visible to every agent you use, the top row offers **⇄ Make all N skills usable by …**. It adds links only; nothing is copied or moved.
+The top rows start something: **+ Add a skill…**, **✦ Fix N issues automatically…**, and **⋯ repo…** (open its folder, hide it from the list, copy a review prompt for its skills).
+
+A skill's details show each issue with its fixes (★ is the recommended one; *your call* marks decisions, which are never applied automatically), then its other actions, how often it's used here, and where it loads from with its git state.
+
+What skilllib flags:
+
+| Issue | Fixes |
+|---|---|
+| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global |
+| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off with `/plugin` |
+| **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
+| **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
+| ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
+| **Differs from library** · **Not tracked** · **Only in this repo** | Update your library from it, or replace it · track it · import it |
+| **Unused 30 days** | Remove it from the repo |
+| **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it |
 
 ### Adding and removing skills
 
-- **Adding** (`space` in *Add skills*) copies the newest version into `.claude/skills/<name>`, which Claude Code and Cursor read. If you use Codex or Zed, it also links it into `.agents/skills`. The skill is recorded in `skilllib.json`. Agents pick it up in their next session.
-- **Removing** (`space` again) deletes that copy and its links. Your library and other repos aren't touched. If you edited it here, skilllib asks first; Enter → *Save local edits to Your skills* keeps them.
+- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`) or copy a prompt for an agent to write it.
+- **Adding** copies the newest version into `.claude/skills/<name>`, which Claude Code and Cursor read. If you use Codex or Zed, it also links it into `.agents/skills`. The skill is recorded in `skilllib.json`. Agents pick it up in their next session.
+- **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
 - **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
 
@@ -162,37 +159,25 @@ Every change to a library skill becomes a new version, kept in `~/.skilllib/stor
 | `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits. |
 | `skilllib outdated` | `npm outdated` | Lists skills with a newer version |
 | `skilllib update [name]` | `npm update` | Moves to the newest version |
-| Enter → *Install a specific version…* | `npm i x@1` | Pins any version, including older ones |
+| *Other versions…* in a skill's actions | `npm i x@1` | Pins any version, including older ones |
 
 Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo that uses it then shows `v1 → v2` and can update.
 
-### Cleaning up global skills
+### Global skills
 
-<img src="docs/screenshot-cleanup.svg" alt="The cleanup wizard: each global skill with its Claude Code usage, where it moves, and the projects that keep it" width="100%">
+**Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
-Open **Global → ⚠ Clean up…**, or press `space` on any of your global skills. For each skill, `space` cycles through:
+- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally.
+- **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
+- **Delete it**: it goes to Settings › Backups.
 
-- **◉ move:** installed into the repos you tick on the right. Repos that already have it, or where Claude Code used it, are pre-ticked.
-- **○ keep global**: skilllib remembers this choice, and the next cleanup skips the skill
-- **✕ delete** (`d`): removed without keeping a copy in your library
+Vendor skills (plugins, claude.ai, Cursor built-ins) are managed at their source: `/plugin` in Claude Code, or claude.ai's settings.
 
-Each skill shows how often Claude Code used it, and the panel below shows its description and where it was used. Review, apply, and your globals are gone: moved ones are in your library and in the right repos. Originals go to a backup you can restore from **Health**.
-
-You can also delete one skill (Enter → **Delete**) or a whole group (Enter → **Delete all N**) straight from Global.
-
-### Keeping a skill global on purpose
-
-Some skills are useful in every repo, for example a commit-message skill. Mark them so skilllib stops asking about them:
-
-- Enter on the skill (in Global or in a repo) → **✓ Keep global on purpose**. Enter on a group → **Keep all N global on purpose**.
-- In the cleanup wizard, every skill you leave on **○ keep global** is marked when you apply.
-- From the command line: `skilllib global keep <name>`.
-
-A marked skill shows **✓ global** instead of **⚠ loaded globally**, and has its own group in a repo. The cleanup wizard hides it (`k` shows it again), and review prompts tell the agent that you chose to keep it global. The mark only records your decision: no files move, and agents load the skill as before. Duplicate warnings (⧉) still show. To undo, use Enter → **Unmark** or `skilllib global unkeep <name>`.
+**Replacing a plugin with library skills:** on a plugin's skill or group, **Replace *plugin* with library skills…** copies all its skills into your library (grouped under the plugin), adds them to the repos you tick, and uninstalls the plugin (`claude plugin uninstall`, keeping its saved data). A plugin can't be half removed, so it's all its skills at once; the confirmation says what else it brings (commands, agents, hooks, MCP servers) that goes too. If the `claude` command isn't available, skilllib turns the plugin off instead and tells you to finish with `/plugin uninstall`. Plugins synced from claude.ai can't be removed from here: skilllib copies their skills and tells you to remove the plugin on claude.ai.
 
 ### Ask an agent to review your skills
 
-Not sure what to keep? **Copy review prompt** puts a ready-to-paste prompt on your clipboard (also saved to `~/.skilllib/review-prompt.md`). For each skill, it includes:
+Not sure what to keep? **Review prompt** puts a ready-to-paste prompt on your clipboard (also saved to `~/.skilllib/review-prompt.md`). For each skill, it includes:
 
 - its description and SKILL.md
 - how it was installed (plugin, `npx skills`, claude.ai, copied in…)
@@ -203,17 +188,12 @@ Not sure what to keep? **Copy review prompt** puts a ready-to-paste prompt on yo
 
 Paste it into Claude Code, Cursor or Codex. You get back **keep global / move to projects / delete / turn off at the vendor** for each skill, as a table plus JSON.
 
-It's available from:
-- **Global → ✦ Ask an agent to review all global skills**
-- Enter on any skill or group → **Copy review prompt**
-- `p` inside the cleanup wizard
+It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at the top of Global (all your global skills).
 
-### Health and backups
+### Backups
 
-**Health** lists broken links, skills loaded twice, out-of-date repos and repo-only skills, each with a one-key fix. Below them is everything skilllib ever moved out, and `space` puts it back where it came from.
-
-skilllib never really deletes anything:
-- removed library skills go to `~/.skilllib/trash`
+skilllib never really deletes anything you can't get back. What it removes goes to Settings › Backups, and `enter` puts it back where it came from:
+- removed library skills and untracked copies go to `~/.skilllib/trash`
 - removed global skills go to `~/.skilllib/global-backup`
 
 ---
@@ -308,7 +288,7 @@ Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-track
 | `~/.skilllib/library/` | Your skills (master copies). Worth putting under git. |
 | `~/.skilllib/store/` | Every version of every skill, immutable |
 | `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
-| `~/.skilllib/trash/`, `global-backup/` | Everything skilllib removed, restorable from Health |
+| `~/.skilllib/trash/`, `global-backup/` | Everything skilllib removed, restorable from Settings › Backups |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 
 Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` is honored.
@@ -341,7 +321,7 @@ npm link                                     # use your checkout as `skilllib`
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.1.0 && git push --tags
+   git tag v1.2.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

@@ -160,6 +160,17 @@ function claudeAiSkills(): SourcedSkill[] {
 
 type InstalledPlugins = { plugins?: Record<string, { installPath?: string }[]> };
 
+/** Turns a Claude Code plugin on or off for every repo (enabledPlugins in ~/.claude/settings.json). */
+export function setPluginEnabled(id: string, on: boolean) {
+  const file = join(claudeDir(), "settings.json");
+  // A file we can't parse holds settings we'd wipe by rewriting it: leave it alone.
+  const settings = existsSync(file) ? readJson<{ enabledPlugins?: Record<string, boolean> }>(file) : {};
+  if (!settings) throw new Error(`${file} isn't valid JSON, so skilllib won't rewrite it`);
+  settings.enabledPlugins = { ...settings.enabledPlugins, [id]: on };
+  mkdirSync(claudeDir(), { recursive: true });
+  writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+}
+
 function pluginSkills(): SourcedSkill[] {
   const plugins = join(claudeDir(), "plugins");
   const enabled = readJson<{ enabledPlugins?: Record<string, boolean> }>(join(claudeDir(), "settings.json"))?.enabledPlugins ?? {};
@@ -179,7 +190,8 @@ function pluginSkills(): SourcedSkill[] {
       return root ? skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: id })) : [];
     });
 
-  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/.
+  // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/. Claude Code calls them
+  // "<name>@synced" and skips the ones set to false in enabledPlugins (`claude plugin disable`).
   const syncedDir = join(plugins, "synced");
   const fromSynced = existsSync(syncedDir)
     ? readdirSync(syncedDir)
@@ -190,7 +202,8 @@ function pluginSkills(): SourcedSkill[] {
             .flatMap((d) => {
               const root = join(syncedDir, bucket, d.name);
               const name = readJson<{ name?: string }>(join(root, ".claude-plugin", "plugin.json"))?.name ?? d.name;
-              return skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: `${name} (claude.ai)` }));
+              if (enabled[`${name}@synced`] === false) return [];
+              return skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: `${name}@synced` }));
             }),
         )
     : [];
