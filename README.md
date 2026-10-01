@@ -261,13 +261,17 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 - **Where it looks.** When names collide, the first one listed wins:
   1. enterprise (managed settings)
-  2. `~/.claude/skills`
-  3. `.claude/skills`
-  4. nested `<subfolder>/.claude/skills`
-  5. plugins (as `/plugin:skill`)
-  6. bundled
+  2. `~/.claude/skills` (`CLAUDE_CONFIG_DIR` moves it)
+  3. `.claude/skills`, in the folder you start in and each parent up to the repo root
+  4. claude.ai skills, from `~/.claude/skills/synced` (then they run only as `/anthropic-skills:name`)
 
-  It also reads claude.ai skills from `~/.claude/skills/synced` and folders passed with `--add-dir`. It **doesn't read `.agents/skills`** (verified).
+  Some skills load next to these under their own name instead of competing:
+  - nested `<subfolder>/.claude/skills`, once Claude touches a file there (as `/subfolder:skill`)
+  - plugins (as `/plugin:skill`)
+  - folders passed with `--add-dir`
+
+  Your skill replaces a bundled command with the same name. Only direct child folders count, and links to skill folders work.
+- It **doesn't read `.agents/skills`** (verified in its binary, October 2026). `claude import cursor` copies skills from there once; skilllib links them instead, so there is still one copy.
 - **How it uses them.** Descriptions are always in context; the full `SKILL.md` loads on `/name` or when Claude decides it's relevant.
   - `disable-model-invocation: true`: only you can run it.
   - `user-invocable: false`: only Claude can.
