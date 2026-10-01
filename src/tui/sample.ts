@@ -2,7 +2,7 @@
  * Sample data for tests and headless screen checks: a few repos, a library and what loads
  * everywhere, held in memory. Its ops change it in place; `reload()` hands back a fresh copy.
  */
-import type { HarnessId } from "../harnesses.js";
+import { harness, type HarnessId } from "../harnesses.js";
 import type { LocalSkill, MachineSkill, Ops, Project, RepoInfo, World } from "./world.js";
 
 const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor"];
@@ -20,7 +20,7 @@ function localAgents(s: SampleSkill, enabled: HarnessId[]): HarnessId[] {
 function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   if (m.broken) return [];
   const reads: HarnessId[] =
-    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
+    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : m.where === "~/.codex/skills" ? ["codex", "cursor"] : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
   return enabled.filter((a) => reads.includes(a));
 }
 
@@ -149,6 +149,7 @@ export function sampleWorld(): World {
       machine("tailwind-tips", "global", "~/.agents/skills", { origin: "skills.sh: tailwindlabs/skills", dupes: { steps: ["~/.claude/skills/tailwind-tips: duplicate copy → link"], git: [] } }),
       machine("frontend-design", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
       machine("pr-review", "global", "~/.claude/skills", { kept: true }),
+      machine("security-audit", "global", "~/.codex/skills", { installed: "2026-09-22 18:30" }),
       machine("old-helper", "global", "~/.claude/skills", { broken: true }),
       machine("vercel-deploy", "plugin", "vercel@claude-plugins-official", { pluginParts: ["commands", "agents", "hooks"] }),
       machine("vercel-env", "plugin", "vercel@claude-plugins-official", { pluginParts: ["commands", "agents", "hooks"] }),
@@ -240,6 +241,11 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       w.machine.find((x) => x.name === name && x.source === "global")!.kept = keep;
       return keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`;
     },
+    linkGlobal: (m, agents) => {
+      const x = w.machine.find((y) => y.path === m.path)!;
+      x.agents = [...new Set([...x.agents, ...agents])];
+      return `${m.name} now loads for ${agents.map((a) => harness(a).name).join(", ")} too`;
+    },
     moveGlobal: (m, repos) => {
       lib(m.name) || toLibrary(m.name);
       for (const r of repos) add(r, m.name);
@@ -297,6 +303,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "testing-guide": "How we write unit and e2e tests: fixtures, factories, Playwright selectors.",
   "deploy-preview": "Deploy a preview environment for a branch and post the URL to the PR.",
   "release-notes": "Write release notes from merged PRs in the team's voice.",
+  "security-audit": "Audit a change for injection, auth and secrets issues before merge.",
   "my-scratchpad": "Personal notes and snippets for this repo.",
   "vercel-deploy": "Deploy this app to Vercel with the right env and region.",
   "writing-style": "Docs voice and tone: short sentences, second person, no marketing words.",

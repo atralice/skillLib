@@ -1,7 +1,7 @@
 ╭── ◆ skilllib ────────────╮╭── Skills  4/11 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 20   Issues 8   Local 9   Global 5   Plugins 3   Vendor 3                         │
-│   ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          17   ││   + Add a skill…                                                                       │
+│   ▤ Your skills     7    ││  All 21   Issues 8   Local 9   Global 6   Plugins 3   Vendor 3                         │
+│   ◈ Global          14   ││     Skill              Source         Uses  Issue                                      │
+│   ✓ Health          19   ││   + Add a skill…                                                                       │
 │   Projects ───────────── ││   ✦ Fix 7 issues automatically…                                                        │
 │ ▌ ◆ web-app          ✕   ││   ⋯ web-app…                                                                           │
 │     api-server       ✕   ││ ▌ ✕ stripe-payments    lib v2           11  Loaded twice                               │

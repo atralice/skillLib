@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
-import { dirname, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
-import { ALL_PROJECT_DIRS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
+import { ALL_PROJECT_DIRS, CURSOR_PICKS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
 import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 import { readManifest, writeManifest } from "./project.js";
@@ -68,13 +68,15 @@ function namesIn(dirs: string[]): string[] {
 }
 
 /**
- * Which copy each agent runs when several folders hold one. Claude Code,
- * Codex and Zed read one folder each; Cursor reads several and, in our
- * test (September 2026), ran the .claude/skills copy over .agents/skills.
+ * Which copies each agent runs when several folders hold one. Codex doesn't merge
+ * same-name skills, so it runs every copy it reads; Cursor runs one, in its own
+ * order (CURSOR_PICKS); the others read a single folder.
  */
-function runsFrom(id: HarnessId, dirsWithCopy: string[], readsOf: (id: HarnessId) => string[]): string | undefined {
+function runsFrom(id: HarnessId, dirsWithCopy: string[], readsOf: (id: HarnessId) => string[]): string[] {
   const reads = readsOf(id).filter((d) => dirsWithCopy.includes(d));
-  return reads.find((d) => d.endsWith(join(".claude", "skills"))) ?? reads[0];
+  if (id === "codex") return reads;
+  const pick = (d: string) => CURSOR_PICKS.indexOf(basename(dirname(d)));
+  return id === "cursor" ? [...reads].sort((a, b) => pick(a) - pick(b)).slice(0, 1) : reads.slice(0, 1);
 }
 
 function conflictOf(name: string, root: string | null, reals: Entry[], enabled: HarnessId[], readsOf: (id: HarnessId) => string[]): Conflict {
@@ -82,7 +84,7 @@ function conflictOf(name: string, root: string | null, reals: Entry[], enabled: 
   return {
     name,
     root,
-    copies: reals.map((r) => ({ dir: r.dir, path: r.path, runs: enabled.filter((id) => runsFrom(id, dirs, readsOf) === r.dir) })),
+    copies: reals.map((r) => ({ dir: r.dir, path: r.path, runs: enabled.filter((id) => runsFrom(id, dirs, readsOf).includes(r.dir)) })),
   };
 }
 

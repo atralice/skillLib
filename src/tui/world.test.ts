@@ -7,7 +7,7 @@ const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 test("sample data shows every kind of issue", () => {
   const w = sampleWorld();
   const found = new Set([...w.projects.flatMap((p) => ids(w, p.name)), ...w.machine.flatMap((m) => machineIssues(w, m).map((i) => i.id))].map((id) => id.split(":")[0]));
-  for (const kind of ["missing", "twice-g", "kept-g", "twice-p", "copies", "conflict", "cursor-plugin", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "copies-g", "conflict-g", "broken"])
+  for (const kind of ["missing", "twice-g", "kept-g", "twice-p", "copies", "conflict", "cursor-plugin", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "copies-g", "conflict-g", "broken", "blind-global"])
     expect(found).toContain(kind);
 });
 
@@ -100,4 +100,23 @@ test("replacing a plugin: its skills join your library, grouped by the plugin", 
   fix.pickRepos!(w, []);
   expect(w.machine.some((m) => m.source === "plugin" && m.where === "vercel@claude-plugins-official")).toBe(false);
   expect(w.library.filter((l) => l.origin === "plugin: vercel@claude-plugins-official").map((l) => l.name)).toEqual(["vercel-deploy", "vercel-env", "nextjs"]);
+});
+
+test("a global skill only Codex loads: Claude Code can't see it, and a link fixes that", () => {
+  const w = sampleWorld();
+  const audit = w.machine.find((m) => m.name === "security-audit")!;
+  // Not reviewed yet: linking it is one of your choices, next to moving it to repos.
+  const review = machineIssues(w, audit).find((i) => i.id === "global:security-audit")!;
+  expect(review.short).toBe("Not reviewed · Claude Code can't see it");
+  expect(review.decision).toBe(true);
+  expect(review.fixes.map((f) => f.label)).toEqual(["Move it to the repos that need it…", "Link it for Claude Code", "Keep it global on purpose", "Delete it"]);
+  // Kept global on purpose: the link is the plain fix.
+  review.fixes[2]!.run(w);
+  const blind = machineIssues(w, audit).find((i) => i.id === "blind-global:security-audit")!;
+  expect(blind.decision).toBe(false);
+  blind.fixes[0]!.run(w);
+  expect(machineIssues(w, audit)).toEqual([]);
+  // A duplicate copy elsewhere is tidy's job first, not a missing link.
+  const tailwind = w.machine.find((m) => m.name === "tailwind-tips")!;
+  expect(machineIssues(w, tailwind).map((i) => i.short)).not.toContain("Not reviewed · Claude Code can't see it");
 });

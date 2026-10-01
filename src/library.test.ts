@@ -28,6 +28,7 @@ beforeEach(() => {
   process.env.HOME = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+  delete process.env.CODEX_HOME;
   setHarnesses(["claude-code"]);
   project = join(tmp, "project");
   mkdirSync(project);
@@ -346,6 +347,7 @@ test("nested skill folders in a monorepo are found apart from the repo's own, wi
   setHarnesses(["claude-code", "codex", "cursor"]);
   writeSkill(join(project, "packages", "web", ".claude", "skills", "lint"), "web");
   writeSkill(join(project, "packages", "api", ".agents", "skills", "lint"), "api");
+  writeSkill(join(project, "packages", "api", ".codex", "skills", "deploy"), "api");
   writeSkill(join(project, "packages", "web", ".claude", "skills", "alpha"), "v1");
   writeSkill(join(project, "node_modules", "dep", ".claude", "skills", "junk"), "x");
   writeSkill(join(project, ".agents", "skills", "shared"), "x");
@@ -357,7 +359,9 @@ test("nested skill folders in a monorepo are found apart from the repo's own, wi
   expect(projectStatus(project).map((s) => s.name)).toEqual(["shared"]);
   expect(nestedSkills(project).map((s) => [s.location, s.name, s.state, s.visibility])).toEqual([
     ["packages/api/.agents/skills", "lint", "repo skill", [{ id: "claude-code", paths: 0 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 1 }]],
-    ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
-    ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
+    ["packages/api/.codex/skills", "deploy", "local only", [{ id: "claude-code", paths: 0 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 1 }]],
+    // Cursor reads nested .claude folders too (its third-party setting, on by default).
+    ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 0 }]],
+    ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 0 }]],
   ]);
 });

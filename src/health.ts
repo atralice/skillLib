@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, librarySkillDir, linkAll, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, librarySkillDir, linkAll, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
@@ -264,6 +264,42 @@ export function findIssues(
       detail: `${unreviewed.join(", ")}. Choose which repos keep each (Global → Clean up…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
     });
   }
+
+  // Global skills some of your agents can't see, e.g. a Codex skill in ~/.agents/skills (Claude Code
+  // doesn't read it). A link fixes it. For skills you keep global on purpose that's a repair; for the
+  // others it makes them load in more places, so it's a choice (moving them to repos is the other one).
+  const enabled = enabledHarnesses();
+  // Another copy by that name (a duplicate, a plugin's) may reach the agent already.
+  const seenBy = new Map<string, Set<HarnessId>>();
+  for (const m of loaded) seenBy.set(m.name, new Set([...(seenBy.get(m.name) ?? []), ...m.harnesses]));
+  const blindOf = (m: SourcedSkill) => enabled.filter((id) => !seenBy.get(m.name)!.has(id));
+  const blindGlobal = loaded.filter((m) => m.movable && m.harnesses.length && blindOf(m).length);
+  for (const onPurpose of [true, false]) {
+    const skills = blindGlobal.filter((m) => kept.has(m.name) === onPurpose);
+    if (!skills.length) continue;
+    const missing = [...new Set(skills.flatMap(blindOf))];
+    const link: Choice = {
+      label: `Link ${skills.length === 1 ? "it" : "them"} for ${agentNames(missing)}`,
+      hint: "links only; nothing is copied or moved",
+      run: () => {
+        const results = skills.map((m) => ({ m, ...linkGlobal(m.path, blindOf(m)) }));
+        const skipped = results.flatMap((r) => r.skipped);
+        return `Linked ${plural(results.filter((r) => r.linked.length).length, "global skill")} for ${agentNames(missing)}${skipped.length ? `; skipped ${skipped.join(", ")} (a different skill has that name)` : ""}`;
+      },
+    };
+    issues.push({
+      id: `usable:global${onPurpose ? ":kept" : ""}`,
+      severity: "suggestion",
+      title: `${plural(skills.length, "global skill")}${onPurpose ? " you keep global" : ""} not usable by ${agentNames(missing)}`,
+      detail: `${skills.map((m) => `${m.name} (only ${agentNames(m.harnesses)})`).join(", ")}. ${
+        onPurpose
+          ? "A link in each agent's global folder makes the one real copy reach every agent you use."
+          : `Link ${skills.length === 1 ? "it" : "them"} for every agent, or move ${skills.length === 1 ? "it" : "them"} to the repos that need ${skills.length === 1 ? "it" : "them"} (skilllib → Global), which works for every agent too.`
+      }`,
+      ...(onPurpose ? { fix: link } : { choices: [link] }),
+    });
+  }
+
   const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
   // A repo copy and a global copy load twice only if one of your agents loads both.
   const globalCopies = loaded.filter((m) => m.kind !== "plugin");

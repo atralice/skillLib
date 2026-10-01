@@ -25,6 +25,7 @@ beforeEach(() => {
   process.env.HOME = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+  delete process.env.CODEX_HOME;
   setHarnesses(["claude-code"]);
   repo = join(tmp, "app");
   mkdirSync(join(repo, ".git"), { recursive: true });

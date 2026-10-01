@@ -138,6 +138,7 @@ What skilllib flags:
 | **Differs from library** · **Not tracked** · **Only in this repo** | Update your library from it, or replace it · track it · import it |
 | **Unused 30 days** | Remove it from the repo |
 | **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it |
+| ***Agent* can't see it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
 
 ### Adding and removing skills
 
@@ -145,7 +146,7 @@ What skilllib flags:
 - **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link.
   - Claude Code (with or without Cursor): `.claude/skills/<name>`.
   - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`.
-  - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed only read `.agents/skills`.
+  - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
 - **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
 - **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
@@ -176,6 +177,8 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 - **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally.
 - **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
 - **Delete it**: it goes to Settings › Backups.
+
+When some of your agents can't see a global skill, the flag says so (**Not reviewed · Claude Code can't see it**). This happens, for example, with a Codex skill in `~/.agents/skills` or `~/.codex/skills`, which Claude Code doesn't read. Then a fourth choice appears: **Link it for Claude Code** adds a link in `~/.claude/skills`, and nothing is copied or moved. Moving it to repos works for every agent too. For a skill you keep global on purpose, the link is the ★ fix.
 
 Vendor skills (plugins, claude.ai, Cursor built-ins) are managed at their source: `/plugin` in Claude Code, or claude.ai's settings.
 
@@ -232,7 +235,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 - **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
 - **It never adds links.** That's `skilllib link`, or a skill's *can't see it* fix.
 - **It leaves committed files alone** unless you say so: Health asks first, and `skilllib tidy` needs `--allow-git`.
-- **Cursor lists a skill once** even when it reaches it through several folders (tested September 2026). It lists a plugin's copy and your copy separately.
+- **Cursor lists a skill once** even when it reaches it through several folders (tested September 2026). It runs the copy from the first of `.cursor`, `.claude`, `.codex`, `.grok`, `.agents` (seen in its app bundle, October 2026). It lists a plugin's copy and your copy separately.
 
 ### Backups
 
@@ -253,7 +256,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 |---|---|---|
 | **The repo** | `.claude/skills`, `.agents/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
 | **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide |
-| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.cursor/skills` | **Every repo** |
+| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills` | **Every repo** |
 | **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin) | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
 
@@ -261,13 +264,17 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 - **Where it looks.** When names collide, the first one listed wins:
   1. enterprise (managed settings)
-  2. `~/.claude/skills`
-  3. `.claude/skills`
-  4. nested `<subfolder>/.claude/skills`
-  5. plugins (as `/plugin:skill`)
-  6. bundled
+  2. `~/.claude/skills` (`CLAUDE_CONFIG_DIR` moves it)
+  3. `.claude/skills`, in the folder you start in and each parent up to the repo root
+  4. claude.ai skills, from `~/.claude/skills/synced` (then they run only as `/anthropic-skills:name`)
 
-  It also reads claude.ai skills from `~/.claude/skills/synced` and folders passed with `--add-dir`. It **doesn't read `.agents/skills`** (verified).
+  Some skills load next to these under their own name instead of competing:
+  - nested `<subfolder>/.claude/skills`, once Claude touches a file there (as `/subfolder:skill`)
+  - plugins (as `/plugin:skill`)
+  - folders passed with `--add-dir`
+
+  Your skill replaces a bundled command with the same name. Only direct child folders count, and links to skill folders work.
+- It **doesn't read `.agents/skills`** (verified in its binary, October 2026). `claude import cursor` copies skills from there once; skilllib links them instead, so there is still one copy.
 - **How it uses them.** Descriptions are always in context; the full `SKILL.md` loads on `/name` or when Claude decides it's relevant.
   - `disable-model-invocation: true`: only you can run it.
   - `user-invocable: false`: only Claude can.
@@ -278,14 +285,21 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 - **Where it looks.**
   - Project: `.agents/skills` and `.cursor/skills`, including nested ones, which apply only to files inside them.
   - Your home folder: `~/.agents/skills` and `~/.cursor/skills`.
-  - For compatibility: `.claude/skills`, `.codex/skills`, `~/.claude/skills` and `~/.codex/skills`.
-  - Also marketplace plugins and Cursor's built-ins. Cloud Agents only see `~/.cursor/skills`.
+  - For compatibility: `.claude/skills`, `.codex/skills`, `.grok/skills` and the same three in your home folder. The setting **Include Third-Party Plugins, Skills, and Other Configs** (on by default) turns these on, and it also imports your enabled Claude Code plugins. It always uses your home folder: `CLAUDE_CONFIG_DIR` and `CODEX_HOME` don't apply. skilllib leaves `.grok/skills` alone: it's Grok's folder, and skilllib can't tell what Grok needs.
+  - Also marketplace plugins and Cursor's built-ins (`~/.cursor/skills-cursor`). Cloud Agents only see `~/.cursor/skills`.
+  - It finds every `SKILL.md` up to 10 folders deep. It skips dot folders, `node_modules`, `dist` and `build`, and Codex's bundled skill names (like `skill-creator`) under `.codex/skills`.
 - **How it uses them.** Descriptions decide relevance, and the full content loads on use; `/` runs one. `paths:` globs limit a skill to matching files, and `disable-model-invocation: true` makes it manual.
-- **Limits.** There's no per-project switch for global skills. Its docs don't say how it handles one skill reached through two folders.
+- **Same name in several folders.** It loads the skill once, from the first of `.cursor`, `.claude`, `.codex`, `.grok`, `.agents` (project before home folder). The claude.ai copies in `~/.claude/skills/synced` count as a different skill.
+- **Limits.** There's no per-project switch for global skills.
 
 ### ◎ Codex · [docs](https://learn.chatgpt.com/docs/build-skills)
 
-- **Where it looks.** `.agents/skills` in the working folder, its parents and the repo root; then `~/.agents/skills`; `/etc/codex/skills` (admin); and OpenAI's bundled skills. It **doesn't read `.claude/skills`**.
+- **Where it looks.**
+  - Project: `.agents/skills` in the working folder, its parents up to the repo root, and `.codex/skills`.
+  - Your home folder: `~/.agents/skills`, and `~/.codex/skills` (`$CODEX_HOME/skills`). Codex's docs no longer list `~/.codex/skills`, but Codex still reads it for backward compatibility, and its built-in skill installer puts skills there (verified in its source, October 2026).
+  - Also `/etc/codex/skills` (admin) and OpenAI's bundled skills in `~/.codex/skills/.system`.
+  - It finds a `SKILL.md` up to 6 folders deep and skips dot folders. skilllib only lists direct children (`<folder>/<name>/SKILL.md`), which is where Codex's installer puts them.
+  - It **doesn't read `.claude/skills`**, so Claude Code and Codex share no folder.
 - **How it uses them.** Names and descriptions come first (about 2% of context); `SKILL.md` loads when used, and `$` picks one.
   - Same-name skills aren't merged.
   - `policy.allow_implicit_invocation: false` in `agents/openai.yaml` keeps a skill manual.
@@ -293,7 +307,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 ### ℤ Zed · [docs](https://zed.dev/docs/ai/skills)
 
-- **Where it looks.** `<worktree>/.agents/skills` (trusted worktrees only) and `~/.agents/skills`. Only direct child folders count, and on a name collision the project's skill wins.
+- **Where it looks.** `<worktree>/.agents/skills` (trusted worktrees only) and `~/.agents/skills`, nothing else (verified in its source, October 2026). Only direct child folders count, and on a name collision the project's skill wins.
 - **How it uses them.** The agent sees a catalog of names and descriptions; `/` or `@skill` runs one. Changes apply without a restart.
 
 ---
@@ -358,7 +372,7 @@ The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so a
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 | `~/.claude/skills/skilllib/` | The skill that lets your agents use skilllib (`agent-skill install`) |
 
-Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` is honored.
+Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honored.
 
 ## FAQ
 
@@ -391,7 +405,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.5.0 && git push --tags
+   git tag v1.6.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.
