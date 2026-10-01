@@ -7,6 +7,7 @@ import {
   restoreBackup,
   importSkill,
   librarySkills,
+  nestedSkills,
   projectStatus,
   removeSkill,
   linkAll,
@@ -22,11 +23,11 @@ import { latestVersion } from "./versions.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { libraryFor, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
-import { scanUsage, summarize, type UsageSummary } from "./usage.js";
+import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
-import { findIssues, runFix } from "./health.js";
+import { findIssues, runFix, usageIssues } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -143,20 +144,34 @@ export async function status(args: Args) {
     return;
   }
   const skills = projectStatus(root);
+  const nested = nestedSkills(root);
   info(`${basename(root)} ${dim(tildify(root))}\n`);
-  if (skills.length === 0) {
+  if (skills.length === 0 && nested.length === 0) {
     info("No skills in this project yet. Add one from your library with: skilllib add <name>");
     return;
   }
   const usage = await usageBySkill(args.days, root);
-  table(
-    skills.map((s) => ({
-      Skill: s.name,
-      Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
-      [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
-      "Last used": lastUsed(usage.get(s.name)),
-    })),
-  );
+  if (skills.length) {
+    table(
+      skills.map((s) => ({
+        Skill: s.name,
+        Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
+        [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
+        "Last used": lastUsed(usage.get(s.name)),
+      })),
+    );
+  }
+  if (nested.length) {
+    info(`${skills.length ? "\n" : ""}In subfolders ${dim("(Claude Code loads .claude/skills when you work there; Codex loads .agents/skills when started there)")}`);
+    table(
+      nested.map((s) => ({
+        Skill: s.name,
+        Folder: s.location,
+        Status: colorState(s.state),
+        [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
+      })),
+    );
+  }
 
   const states = new Set(skills.map((s) => s.state));
   const hints: string[] = [];
@@ -435,9 +450,24 @@ export function restore(args: Args) {
 }
 
 /** Lists problems and suggestions; --fix applies every automatic fix. */
-export function doctor(args: Args) {
+export async function doctor(args: Args) {
   const projects = visibleProjects();
-  const issues = findIssues(projects, machineSkills(), new Set(librarySkills().map((s) => s.name)));
+  const machine = machineSkills();
+  const libraryNames = new Set(librarySkills().map((s) => s.name));
+  const issues = findIssues(projects, machine, libraryNames);
+  if (enabledHarnesses().includes("claude-code")) {
+    const projectOf = projectOfFactory(projects);
+    const uses = await scanUsage(args.days);
+    const inProject = usesByProject(uses, projectOf);
+    const total = new Map(summarize(uses, projectOf).map((s) => [s.skill, s.uses]));
+    issues.push(
+      ...usageIssues(projects, machine, libraryNames, {
+        inProject: (root, skill) => inProject.get(root)?.get(skill) ?? 0,
+        total: (skill) => total.get(skill) ?? 0,
+        days: args.days,
+      }),
+    );
+  }
   if (args.json) {
     return json(
       issues.map(({ fix, choices, ...issue }) => ({

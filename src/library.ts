@@ -5,7 +5,7 @@ import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibH
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
-import { globalSkillDirs, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
+import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
@@ -175,30 +175,13 @@ export function projectStatus(root: string): ProjectSkill[] {
   for (const [name, paths] of byName) {
     const real = paths.find((p) => !isLink(p)) ?? paths[0]!;
     const location = relative(root, join(real, "..")).split(sep).join("/");
-    const latest = latestVersion(name);
-    const local = treeHash(real);
-    const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
-    const committed = location === AGENTS_SKILLS_DIR;
     const source = lock[name]?.source;
-    const state: SkillState = source
-      ? "from npx skills"
-      : committed
-        ? latest === null
-          ? "repo skill"
-          : sameAsLibrary
-            ? "repo skill, in library"
-            : "repo skill, differs from library"
-        : latest === null
-          ? "local only"
-          : sameAsLibrary
-            ? "untracked copy of library skill"
-            : "untracked, differs from library";
     unmanaged.push({
       name,
       managed: false,
-      state,
+      state: unmanagedState(name, real, location === AGENTS_SKILLS_DIR, source),
       version: null,
-      latest: latest?.version ?? null,
+      latest: latestVersion(name)?.version ?? null,
       location,
       path: real,
       visibility: visibilityOf(root, name, enabled),
@@ -207,6 +190,72 @@ export function projectStatus(root: string): ProjectSkill[] {
   }
 
   return [...managed, ...unmanaged].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills). */
+function unmanagedState(name: string, real: string, committed: boolean, source: string | undefined): SkillState {
+  if (source) return "from npx skills";
+  const latest = latestVersion(name);
+  const local = treeHash(real);
+  const sameAsLibrary = latest !== null && (latest.hash === local || versionForHash(name, local ?? "") !== null);
+  if (committed) return latest === null ? "repo skill" : sameAsLibrary ? "repo skill, in library" : "repo skill, differs from library";
+  return latest === null ? "local only" : sameAsLibrary ? "untracked copy of library skill" : "untracked, differs from library";
+}
+
+/** Nested skill folders and who reads them (Zed reads only the worktree root). */
+const NESTED_READERS: [string, HarnessId[]][] = [
+  [PROJECT_SKILLS_DIR, ["claude-code"]],
+  [AGENTS_SKILLS_DIR, ["codex", "cursor"]],
+  [".cursor/skills", ["cursor"]],
+];
+
+/** Folders never searched for nested skills: dependencies and build output. */
+const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "target", "coverage"]);
+
+/**
+ * Skill folders below a repo's root, as monorepos have (packages/web/.claude/skills).
+ * Claude Code loads <folder>/.claude/skills when you work on files in <folder>;
+ * Cursor does the same with .agents/skills and .cursor/skills; Codex loads
+ * <folder>/.agents/skills when it starts there (it walks up to the repo root). They're reported apart from projectStatus: they aren't repo-wide,
+ * so linking, tracking or tidying them into the root folders would change who loads them.
+ * A nested git repo is a project of its own and isn't searched.
+ */
+export function nestedSkills(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): ProjectSkill[] {
+  const found: ProjectSkill[] = [];
+  const walk = (dir: string, left: number) => {
+    let subs: string[] = [];
+    try {
+      subs = readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !NESTED_SKIP.has(d.name))
+        .map((d) => join(dir, d.name));
+    } catch {
+      return;
+    }
+    for (const sub of subs) {
+      if (existsSync(join(sub, ".git"))) continue;
+      for (const [skillsDir, readers] of NESTED_READERS) {
+        const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
+        for (const path of skillDirsIn(join(sub, skillsDir))) {
+          // A link to a skill elsewhere in the repo is that skill, already reported.
+          if (isLink(path) && (realpathOrNull(path) ?? "").startsWith((realpathOrNull(root) ?? root) + sep)) continue;
+          const name = basename(path);
+          found.push({
+            name,
+            managed: false,
+            state: unmanagedState(name, path, skillsDir === AGENTS_SKILLS_DIR, undefined),
+            version: null,
+            latest: latestVersion(name)?.version ?? null,
+            location,
+            path,
+            visibility: enabled.map((id) => ({ id, paths: readers.includes(id) ? 1 : 0 })),
+          });
+        }
+      }
+      if (left > 1) walk(sub, left - 1);
+    }
+  };
+  walk(root, depth);
+  return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
 export type LinkResult = { created: string[]; blocked: string[] };
@@ -391,6 +440,20 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
   });
 }
 
+/**
+ * Puts a managed skill back to the version skilllib.json pins (or the newest,
+ * if none is pinned). The edited copy goes to ~/.skilllib/edit-backup first,
+ * restorable from Health.
+ */
+export function discardEdits(root: string, name: string): Change {
+  const dep = readManifest(root).skills[name];
+  if (!dep) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
+  const dir = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
+  const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
+  if (existsSync(dir) && !isLink(dir)) stash(dir, "edit-backup");
+  return addSkill(root, name, { force: true, version: pinned });
+}
+
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
 export function updateProject(root: string, names?: string[], { force = false } = {}): Change[] {
   const { skills } = readManifest(root);
@@ -419,9 +482,10 @@ export function importSkill(dir: string, { force = false } = {}): { name: string
   if (existing === incoming) return { name, status: "unchanged" };
   if (existing !== null && !force) return { name, status: "exists" };
   mkdirSync(libraryDir(), { recursive: true });
-  const origin = originFor(dir);
+  // A new version keeps where the skill first came from (saving a repo's edits doesn't make it "from that repo").
+  const origin = existing !== null && libraryOrigins()[name] ? null : originFor(dir);
   copySkill(dir, to);
-  recordOrigin(name, origin);
+  if (origin) recordOrigin(name, origin);
   forgetLatest(name);
   latestVersion(name);
   return { name, status: existing === null ? "added" : "updated" };
@@ -548,14 +612,15 @@ export function createSkill(name: string, description: string): { ok: true; dir:
 
 /**
  * trash: deleted from the library · global-backup: unloaded from global ·
- * tidy-backup: a duplicate copy replaced by a link · plugin: a Claude Code
- * plugin skilllib removed (path holds its scope; see plugins.ts)
+ * tidy-backup: a duplicate copy replaced by a link · edit-backup: a project
+ * copy's local edits, discarded · plugin: a Claude Code plugin skilllib removed
+ * (path holds its scope; see plugins.ts)
  */
-export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "plugin"; path: string; movedAt: string; from: string };
+export type Backup = { name: string; kind: "trash" | "global-backup" | "tidy-backup" | "edit-backup" | "plugin"; path: string; movedAt: string; from: string };
 
 /** Everything skilllib moved out of the way, newest first. */
 export function listBackups(): Backup[] {
-  return (["trash", "global-backup", "tidy-backup"] as const)
+  return (["trash", "global-backup", "tidy-backup", "edit-backup"] as const)
     .flatMap((kind) => {
       const dir = join(skilllibHome(), kind);
       if (!existsSync(dir)) return [];
@@ -573,12 +638,14 @@ export function listBackups(): Backup[] {
 
 /**
  * Puts a backup back where it came from: trash → library, global-backup →
- * ~/.claude/skills, tidy-backup → the folder it was in. A link tidy left in
- * its place is replaced by the original.
+ * ~/.claude/skills, tidy-backup and edit-backup → the folder it was in. A link
+ * tidy left in its place is replaced by the original, and so is the library
+ * version that replaced discarded edits (it's still in the library).
  */
 export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: false; reason: string } {
   const to = backup.from;
   if (backup.kind === "tidy-backup" && isLink(to)) unlinkSync(to);
+  if (backup.kind === "edit-backup" && !isLink(to) && versionForHash(backup.name, treeHash(to) ?? "") !== null) rmSync(to, { recursive: true, force: true });
   let taken = existsSync(to);
   try {
     taken = taken || lstatSync(to) !== null;

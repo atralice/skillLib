@@ -165,7 +165,7 @@ const GIT_LABEL: Record<NonNullable<W.LocalSkill["git"]>, string> = { committed:
 // ─── Screens' data ──────────────────────────────────────
 
 /** Which copy a skill's row shows when it loads from several places: the repo's, then yours, then vendors'. */
-const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, plugin: 2, "claude.ai": 3, cursor: 3 };
+const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
 
 /** Copies grouped by name, the copy to show first. */
 function byName(copies: W.Usable[]): W.Usable[][] {
@@ -401,7 +401,7 @@ function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
 /** Global's actions: all on the machine-wide copy (see W.machineActions), plus vendor settings you change at the source. */
 function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
   const m = u.machine!;
-  const atSource = m.source === "plugin" ? "Turn it off with /plugin in Claude Code" : m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : "Cursor manages it";
+  const atSource = m.source === "plugin" ? "Turn it off with /plugin in Claude Code" : m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : m.source === "system" ? `An admin manages ${m.where}` : "Cursor manages it";
   return [
     ...W.machineActions(m).map(fixOption),
     ...(m.source === "plugin" ? [fixOption(W.replacePluginFix(w, m.where))] : []),

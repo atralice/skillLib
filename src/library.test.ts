@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, importSkill, projectStatus, removeSkill, syncProject, updateProject } from "./library.js";
+import { addSkill, importSkill, nestedSkills, projectStatus, removeSkill, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
@@ -341,4 +341,24 @@ describe("harnesses", () => {
     expect(projectStatus(project)[0]).toMatchObject({ location: ".claude/skills", state: "ok" });
     expect(syncProject(project)).toEqual([]);
   });
+});
+
+test("nested skill folders in a monorepo are found apart from the repo's own, with who loads them", () => {
+  setHarnesses(["claude-code", "codex", "cursor"]);
+  writeSkill(join(project, "packages", "web", ".claude", "skills", "lint"), "web");
+  writeSkill(join(project, "packages", "api", ".agents", "skills", "lint"), "api");
+  writeSkill(join(project, "packages", "web", ".claude", "skills", "alpha"), "v1");
+  writeSkill(join(project, "node_modules", "dep", ".claude", "skills", "junk"), "x");
+  writeSkill(join(project, ".agents", "skills", "shared"), "x");
+  mkdirSync(join(project, "packages", "api", ".claude", "skills"), { recursive: true });
+  symlinkSync(join(project, ".agents", "skills", "shared"), join(project, "packages", "api", ".claude", "skills", "shared"));
+  mkdirSync(join(project, "vendored", ".git"), { recursive: true }); // a repo of its own
+  writeSkill(join(project, "vendored", ".claude", "skills", "theirs"), "x");
+
+  expect(projectStatus(project).map((s) => s.name)).toEqual(["shared"]);
+  expect(nestedSkills(project).map((s) => [s.location, s.name, s.state, s.visibility])).toEqual([
+    ["packages/api/.agents/skills", "lint", "repo skill", [{ id: "claude-code", paths: 0 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 1 }]],
+    ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
+    ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 0 }, { id: "codex", paths: 0 }]],
+  ]);
 });

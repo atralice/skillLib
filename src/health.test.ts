@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { findIssues, runFix } from "./health.js";
-import { addSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
+import { findIssues, runFix, usageIssues } from "./health.js";
+import { addSkill, createSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
@@ -53,7 +53,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   skill(join(tmp, ".claude", "skills", "synced", "b", "twice"));
 
   const issues = findIssues([project], machineSkills(), new Set());
-  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", `local:${project}:deploy`, "agent-skill"]);
+  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", "review:global", `local:${project}:deploy`, "agent-skill"]);
 
   // doctor --fix only runs the fixes; importing is a choice.
   expect(issues.find((i) => i.id.startsWith("local:"))?.fix).toBeUndefined();
@@ -61,7 +61,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   expect(existsSync(join(tmp, "home", "library", "deploy"))).toBe(false);
   for (const issue of issues) issue.choices?.[0]?.run();
   // Your skill wins over the claude.ai copy, but only claude.ai can turn its copy off.
-  const left = findIssues([project], machineSkills(), new Set(["deploy", "twice"]));
+  const left = findIssues([project], machineSkills(), new Set(["deploy", "twice"])).filter((i) => i.id !== "review:global");
   expect(left.map((i) => [i.id, i.fix, i.choices])).toEqual([["dup:twice", undefined, undefined]]);
   expect(left[0]?.detail).toContain("Your skill wins");
   expect(existsSync(join(tmp, ".claude", "skills", "twice"))).toBe(true);
@@ -86,8 +86,12 @@ test("flags a project skill that also loads globally", () => {
 
   // One issue for both projects, and a choice: doctor --fix never moves your global skills.
   const issues = findIssues([project, other], machineSkills(), new Set(["alpha"])).filter((i) => i.id !== "agent-skill");
-  expect(issues.map((i) => [i.id, i.title, i.fix])).toEqual([["twice:alpha", "alpha: in web, api and also loaded globally", undefined]]);
-  expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "alpha no longer loads globally" });
+  expect(issues.map((i) => [i.id, i.title, i.fix])).toEqual([
+    ["review:global", "1 global skill of yours loads in every repo", undefined],
+    ["twice:alpha", "alpha: in web, api and also loaded globally", undefined],
+  ]);
+  expect(issues[0]?.choices).toBeUndefined();
+  expect(runFix(issues[1]!.choices![0]!)).toEqual({ ok: true, message: "alpha no longer loads globally" });
   expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);
 });
 
@@ -216,6 +220,103 @@ test("skills npx skills installed in a project keep their source and aren't call
 
   importSkill(join(project, ".claude", "skills", "video-edit"));
   expect(libraryOrigins()["video-edit"]).toBe("skills.sh: genmedia-labs/skills");
+});
+
+test("a repo's own skill that also loads globally is flagged, and never offered for removal", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  skill(join(project, ".agents", "skills", "alpha")); // committed by the team; Codex loads it
+  skill(join(tmp, ".claude", "skills", "alpha")); // Claude Code loads this one
+
+  const twice = () => findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:alpha");
+  // No agent loads both copies: nothing to fix (unloading the global one would take it from Claude Code).
+  expect(twice()).toBeUndefined();
+
+  skill(join(tmp, ".agents", "skills", "alpha")); // now Codex loads a global copy too
+  expect(twice()?.title).toBe("alpha: in web and also loaded globally");
+  expect(twice()?.detail).toContain("load both the repo's copy and the global one");
+  expect(twice()?.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
+
+  // Kept global on purpose: skilllib can't remove the team's copy, so it only says so.
+  setKeepGlobal(["alpha"], true);
+  expect(twice()?.choices).toBeUndefined();
+  expect(twice()?.detail).toContain("web has its own copy");
+});
+
+test("local edits to an installed skill: save them as a new version, or discard them (restorable)", () => {
+  const project = join(tmp, "web");
+  mkdirSync(project);
+  skill(join(tmp, "src", "alpha"), "v1");
+  importSkill(join(tmp, "src", "alpha"));
+  const origin = libraryOrigins().alpha;
+  addSkill(project, "alpha");
+  const copy = join(project, ".claude", "skills", "alpha", "SKILL.md");
+  const edited = () => findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `edited:${project}:alpha`);
+
+  expect(edited()).toBeUndefined();
+  writeFileSync(copy, "---\ndescription: d\n---\nmy edit\n");
+  expect(edited()?.choices?.map((c) => c.label)).toEqual(["Save as a new version in Your skills", "Discard the edits"]);
+  expect(runFix(edited()!.choices![0]!)).toEqual({ ok: true, message: "alpha: saved as v2; web uses it" });
+  expect(readManifest(project).skills.alpha?.version).toBe(2);
+  expect(readFileSync(join(tmp, "home", "library", "alpha", "SKILL.md"), "utf-8")).toContain("my edit");
+  expect(libraryOrigins().alpha).toBe(origin); // still where it first came from
+  expect(edited()).toBeUndefined();
+
+  writeFileSync(copy, "---\ndescription: d\n---\noops\n");
+  expect(runFix(edited()!.choices![1]!)).toEqual({ ok: true, message: "alpha: edits discarded, back to v2" });
+  expect(readFileSync(copy, "utf-8")).toContain("my edit");
+  const backup = listBackups().find((b) => b.kind === "edit-backup");
+  expect(backup && restoreBackup(backup)).toMatchObject({ ok: true });
+  expect(readFileSync(copy, "utf-8")).toContain("oops");
+});
+
+test("nested skills count for skills loaded twice, but are never linked, imported or tracked from Health", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "mono");
+  skill(join(project, "packages", "web", ".claude", "skills", "alpha"));
+  skill(join(project, "packages", "web", ".claude", "skills", "solo"));
+  skill(join(tmp, ".claude", "skills", "alpha"));
+
+  const issues = findIssues([project], machineSkills(), new Set());
+  expect(issues.find((i) => i.id === "twice:alpha")?.title).toBe("alpha: in mono and also loaded globally");
+  // Codex doesn't load them from the root, but a link there would make them repo-wide.
+  expect(issues.map((i) => i.id).filter((id) => /^(usable|local|adopt|tidy):(?!global)/.test(id))).toEqual([]);
+});
+
+test("usage hints: skills a repo hasn't used, and library skills in no repo; skills newer than the window are left out", () => {
+  const project = join(tmp, "web");
+  skill(join(tmp, "src", "alpha"));
+  skill(join(tmp, "src", "idle"));
+  importSkill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "idle"));
+  addSkill(project, "alpha");
+  skill(join(project, ".agents", "skills", "team"));
+  const library = new Set(["alpha", "idle"]);
+  const none = { inProject: () => 0, total: () => 0 };
+
+  // Everything was just added: nothing is "unused in 30 days" yet.
+  expect(usageIssues([project], machineSkills(), library, { ...none, days: 30 })).toEqual([]);
+
+  Bun.sleepSync(5); // file times have sub-millisecond precision; "0 days" means added before now
+  const issues = usageIssues([project], machineSkills(), library, { ...none, days: 0 });
+  expect(issues.map((i) => [i.id, i.title])).toEqual([
+    [`unused:${project}`, "web: 2 skills unused in 0 days"],
+    ["unused:library", "1 skill in Your skills: in no repo, unused in 0 days"],
+  ]);
+  // Only what skilllib installed is offered for removal; the repo's own is the team's.
+  expect(issues[0]?.choices?.map((c) => c.label)).toEqual(["Remove the 1 skill skilllib installed from web"]);
+  expect(runFix(issues[0]!.choices![0]!)).toEqual({ ok: true, message: "web: removed alpha" });
+  expect(runFix(issues[1]!.choices![0]!)).toEqual({ ok: true, message: "Deleted 1 skill from Your skills" });
+  expect(listBackups().map((b) => [b.name, b.kind])).toEqual([["idle", "trash"]]);
+
+  // A skill `skilllib new` just made has no version yet: judged by its folder's age, so not flagged within the window.
+  expect(createSkill("fresh", "d").ok).toBe(true);
+  expect(usageIssues([], machineSkills(), new Set(["fresh"]), { ...none, days: 30 })).toEqual([]);
+
+  // Used there: no hint. And without Claude Code there are no transcripts, so no hints at all.
+  expect(usageIssues([project], machineSkills(), new Set(), { inProject: () => 1, total: () => 1, days: 0 })).toEqual([]);
+  setHarnesses(["codex"]);
+  expect(usageIssues([project], machineSkills(), library, { ...none, days: 0 })).toEqual([]);
 });
 
 test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link for Claude Code", () => {

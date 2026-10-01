@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 
 /**
@@ -11,8 +11,9 @@ import { readSkillInfo, skillDirsIn } from "./skills.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
+ * - system: a machine-wide folder an admin manages (/etc/codex/skills)
  */
-export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in";
+export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system";
 
 export type SourcedSkill = {
   name: string;
@@ -60,9 +61,29 @@ function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
   return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().includes(dir));
 }
 
-/** The global skill folders your harnesses read (~/.claude/skills, ~/.agents/skills, …). */
+/** Machine-wide folders an admin manages: read, never changed. */
+const systemDirs = () => [codexSystemDir()];
+
+/** Your global skill folders that your harnesses read (~/.claude/skills or $CLAUDE_CONFIG_DIR/skills, ~/.agents/skills, …). */
 export function globalSkillDirs(): string[] {
-  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => d.startsWith(userHome()));
+  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !systemDirs().includes(d));
+}
+
+/** Skills in the system folders (/etc/codex/skills). */
+function systemSkills(enabled: HarnessId[]): SourcedSkill[] {
+  return systemDirs().flatMap((dir) =>
+    skillDirsIn(dir).map((path) => ({
+      name: basename(path),
+      kind: "system" as const,
+      origin: dir.replace(/\\/g, "/"),
+      path,
+      description: readSkillInfo(path).description,
+      movable: false,
+      broken: false,
+      harnesses: harnessesReading(dir, enabled),
+      links: [],
+    })),
+  ).filter((s) => s.harnesses.length > 0);
 }
 
 /**
@@ -175,6 +196,7 @@ function claudeAiSkills(enabled: HarnessId[]): SourcedSkill[] {
 }
 
 type InstalledPlugins = { plugins?: Record<string, { scope?: string; installPath?: string }[]> };
+type PluginSettings = { enabledPlugins?: Record<string, boolean> };
 
 /** Turns a Claude Code plugin on or off for every repo (enabledPlugins in ~/.claude/settings.json). */
 export function setPluginEnabled(id: string, on: boolean) {
@@ -187,22 +209,38 @@ export function setPluginEnabled(id: string, on: boolean) {
   writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
 }
 
+function repoSettingsFiles(root: string): string[] {
+  return [join(root, ".claude", "settings.json"), join(root, ".claude", "settings.local.json")];
+}
+
 /**
- * Skills in enabled Claude Code plugins. Cursor imports these plugins too, but
- * only user-scope installs from installed_plugins.json: not the ones synced
- * from claude.ai.
+ * enabledPlugins as Claude Code resolves it: ~/.claude/settings.json, then (in
+ * a repo) its .claude/settings.json and .claude/settings.local.json, each
+ * overriding the one before for the plugins it names.
  */
-function pluginSkills(harnesses: HarnessId[]): SourcedSkill[] {
+export function enabledPlugins(root?: string): Record<string, boolean> {
+  const files = [join(claudeDir(), "settings.json"), ...(root ? repoSettingsFiles(root) : [])];
+  return Object.assign({}, ...files.map((f) => readJson<PluginSettings>(f)?.enabledPlugins ?? {}));
+}
+
+/**
+ * Skills in enabled Claude Code plugins. Claude Code follows enabledPlugins as
+ * it resolves in `root` (a repo can turn one on or off). Cursor imports these
+ * plugins too, but only user-scope installs your user settings turn on: not the
+ * ones synced from claude.ai.
+ */
+function pluginSkills(harnesses: HarnessId[], root?: string): SourcedSkill[] {
   const claude = harnesses.includes("claude-code");
   const cursor = harnesses.includes("cursor");
   if (!claude && !cursor) return [];
   const plugins = join(claudeDir(), "plugins");
-  const enabled = readJson<{ enabledPlugins?: Record<string, boolean> }>(join(claudeDir(), "settings.json"))?.enabledPlugins ?? {};
   const installed = readJson<InstalledPlugins>(join(plugins, "installed_plugins.json"))?.plugins ?? {};
+  const user = enabledPlugins();
+  const enabled = root ? enabledPlugins(root) : user;
 
-  const fromMarketplaces = Object.entries(enabled)
-    .filter(([, on]) => on)
-    .flatMap(([id]) => {
+  const fromMarketplaces = [...new Set([...Object.keys(enabled), ...Object.keys(user)])]
+    .filter((id) => (claude && enabled[id]) || (cursor && user[id]))
+    .flatMap((id) => {
       const [name = "", marketplace = ""] = id.split("@");
       const candidates = [
         ...(installed[id] ?? []).flatMap((i) => (i.installPath ? [i.installPath] : [])),
@@ -210,11 +248,11 @@ function pluginSkills(harnesses: HarnessId[]): SourcedSkill[] {
         join(plugins, "marketplaces", marketplace, "external_plugins", name),
         join(plugins, "marketplaces", marketplace),
       ];
-      const root = candidates.find((c) => existsSync(join(c, "skills")));
-      if (!root) return [];
-      const inCursor = cursor && (installed[id] ?? []).some((i) => i.scope === "user" && i.installPath === root);
-      const loadedBy: HarnessId[] = [...(claude ? ["claude-code" as const] : []), ...(inCursor ? ["cursor" as const] : [])];
-      return loadedBy.length ? skillDirsIn(join(root, "skills")).map((path) => ({ path, origin: id, loadedBy })) : [];
+      const dir = candidates.find((c) => existsSync(join(c, "skills")));
+      if (!dir) return [];
+      const inCursor = cursor && user[id] && (installed[id] ?? []).some((i) => i.scope === "user" && i.installPath === dir);
+      const loadedBy: HarnessId[] = [...(claude && enabled[id] ? ["claude-code" as const] : []), ...(inCursor ? ["cursor" as const] : [])];
+      return loadedBy.length ? skillDirsIn(join(dir, "skills")).map((path) => ({ path, origin: id, loadedBy })) : [];
     });
 
   // Plugins synced from claude.ai live under plugins/synced/<bucket>/<id>/. Claude Code calls them
@@ -248,10 +286,13 @@ function pluginSkills(harnesses: HarnessId[]): SourcedSkill[] {
   }));
 }
 
+const byKindAndName = (a: SourcedSkill, b: SourcedSkill) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name);
+
 /**
  * Every skill your harnesses load in all projects on this machine, with where
  * it came from. claude.ai and Claude Code plugin skills reach Claude Code and
- * Cursor.
+ * Cursor; plugins are the ones ~/.claude/settings.json turns on (a repo can
+ * differ for Claude Code: skillsLoadedIn).
  */
 export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): SourcedSkill[] {
   return [
@@ -259,9 +300,18 @@ export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): Source
     ...claudeAiSkills(enabled),
     ...pluginSkills(enabled),
     ...cursorBuiltInSkills(enabled),
-  ].sort(
-    (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name),
-  );
+    ...systemSkills(enabled),
+  ].sort(byKindAndName);
+}
+
+/**
+ * The machine's skills as your agents see them in `root`: a repo's
+ * .claude/settings(.local).json can turn a plugin on just there, or off just there.
+ */
+export function skillsLoadedIn(root: string, machine: SourcedSkill[], enabled: HarnessId[] = enabledHarnesses()): SourcedSkill[] {
+  if (!enabled.includes("claude-code")) return machine;
+  if (!repoSettingsFiles(root).some((f) => readJson<PluginSettings>(f)?.enabledPlugins)) return machine;
+  return [...machine.filter((m) => m.kind !== "plugin"), ...pluginSkills(enabled, root)].sort(byKindAndName);
 }
 
 // ─── Library origins ────────────────────────────────────

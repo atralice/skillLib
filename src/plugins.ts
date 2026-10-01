@@ -48,8 +48,8 @@ function extrasOf(root: string): string[] {
   ];
 }
 
-/** Claude Code plugins behind the plugin skills machineSkills found. */
-export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
+/** Claude Code plugins behind the plugin skills in `machine` (machineSkills, or skillsLoadedIn for the repo `root`). */
+export function claudePlugins(machine: SourcedSkill[], root?: string): ClaudePlugin[] {
   const installed =
     readJson<{ plugins?: Record<string, { scope?: string; projectPath?: string }[]> }>(join(claudeDir(), "plugins", "installed_plugins.json"))?.plugins ?? {};
   const byOrigin = new Map<string, string[]>();
@@ -57,7 +57,8 @@ export function claudePlugins(machine: SourcedSkill[]): ClaudePlugin[] {
   return [...byOrigin].map(([origin, skills]) => {
     const synced = origin.endsWith("@synced");
     const id = origin;
-    const entry = installed[origin]?.[0];
+    const entries = installed[origin] ?? [];
+    const entry = entries.find((e) => root && e.projectPath === root) ?? entries.find((e) => (e.scope ?? "user") === "user") ?? entries[0];
     return {
       id,
       scope: synced ? null : (entry?.scope ?? "user"),
@@ -101,19 +102,36 @@ function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reaso
   }
 }
 
+/** Sets "<id>": on in a settings file's enabledPlugins, keeping everything else in it. */
+function setPluginIn(file: string, id: string, on: boolean): { ok: true } | { ok: false; reason: string } {
+  const settings = existsSync(file) ? readJson<Record<string, unknown>>(file) : {};
+  if (!settings) return { ok: false, reason: `can't read ${file}` };
+  const enabled = (settings.enabledPlugins as Record<string, boolean> | undefined) ?? {};
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ ...settings, enabledPlugins: { ...enabled, [id]: on } }, null, 2) + "\n");
+  return { ok: true };
+}
+
 /**
  * Plugins synced from claude.ai aren't installed, so `claude plugin` can't
  * touch them; Claude Code's documented switch is "<name>@synced": false in
  * enabledPlugins (~/.claude/settings.json).
  */
 function turnOffSynced(id: string): { ok: true } | { ok: false; reason: string } {
-  const file = join(claudeDir(), "settings.json");
-  const settings = existsSync(file) ? readJson<Record<string, unknown>>(file) : {};
-  if (!settings) return { ok: false, reason: `can't read ${file}` };
-  const enabled = (settings.enabledPlugins as Record<string, boolean> | undefined) ?? {};
-  mkdirSync(claudeDir(), { recursive: true });
-  writeFileSync(file, JSON.stringify({ ...settings, enabledPlugins: { ...enabled, [id]: false } }, null, 2) + "\n");
-  return { ok: true };
+  return setPluginIn(join(claudeDir(), "settings.json"), id, false);
+}
+
+/**
+ * Turns a plugin off in one repo only; it stays on everywhere else. `claude
+ * plugin disable --scope local`, run in the repo, writes "<id>": false to its
+ * .claude/settings.local.json, which overrides the user and project settings
+ * (checked with Claude Code 2.1.283). Synced plugins get the same line written directly.
+ */
+export function turnOffIn(plugin: ClaudePlugin, root: string): { ok: boolean; message: string } {
+  const r = plugin.synced
+    ? setPluginIn(join(root, ".claude", "settings.local.json"), plugin.id, false)
+    : claude(["plugin", "disable", plugin.id, "--scope", "local"], root);
+  return r.ok ? { ok: true, message: `${plugin.id} turned off in ${basename(root)}; other repos keep it` } : { ok: false, message: `${plugin.id}: ${r.reason}` };
 }
 
 function removedFile(): string {

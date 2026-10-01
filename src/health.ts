@@ -1,10 +1,12 @@
+import { lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, importSkill, isGitTracked, isLink, linkAll, linkGlobal, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
-import { claudePlugins, cursorPluginSkills, removePlugin } from "./plugins.js";
-import type { SourcedSkill } from "./sources.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, librarySkillDir, linkAll, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
+import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
+import { versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
@@ -76,15 +78,21 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
  * Things worth fixing across the machine: broken links, skills loaded twice
  * (duplicate copies, plugins that duplicate your skills), copies that differ,
  * projects behind the library, and skills that only live in one project.
+ * `loadedIn` is what agents load in a repo besides its own skills: the machine's,
+ * with plugins that repo's Claude Code settings turn on or off. `nestedOf` lists
+ * skill folders below a repo's root (monorepos); they count for skills loaded twice.
  */
 export function findIssues(
   projects: string[],
   machine: SourcedSkill[],
   libraryNames: Set<string>,
   statusOf: (root: string) => ProjectSkill[] = projectStatus,
+  loadedIn: (root: string) => SourcedSkill[] = (root) => skillsLoadedIn(root, machine),
+  nestedOf: (root: string) => ProjectSkill[] = nestedSkills,
 ): Issue[] {
   const issues: Issue[] = [];
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
+  const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
   for (const skill of machine.filter((m) => m.broken)) {
     issues.push({
@@ -102,7 +110,7 @@ export function findIssues(
     });
   }
 
-  // Your global skill and a vendor copy (claude.ai, a built-in) loaded by the same agent. Your skill wins,
+  // Your global skill and a vendor copy (claude.ai, a built-in, /etc/codex/skills) loaded by the same agent. Your skill wins,
   // but only the vendor can turn theirs off. Plugins get their own issue; two copies of yours are tidy's job.
   const loaded = machine.filter((m) => !m.broken);
   const byName = new Map<string, SourcedSkill[]>();
@@ -116,15 +124,52 @@ export function findIssues(
       id: `dup:${name}`,
       severity: "problem",
       title: `${name}: loaded twice in ${harnesses.join(" and ")}`,
-      detail: `${copies.map((c) => `${c.kind} (${c.origin})`).join(" and ")}. Your skill wins: turn the ${vendor.map((c) => c.kind).join(" and ")} copy off at its source${vendor.some((c) => c.kind === "claude.ai") ? " (claude.ai → Settings → Skills)" : ""}.`,
+      detail: `${copies.map((c) => `${c.kind} (${c.origin})`).join(" and ")}. Your skill wins: turn the ${vendor.map((c) => c.kind).join(" and ")} copy off at its source${vendor.some((c) => c.kind === "claude.ai") ? " (claude.ai → Settings → Skills)" : ""}${vendor.some((c) => c.kind === "system") ? ` (whoever manages ${vendor.find((c) => c.kind === "system")!.origin})` : ""}.`,
     });
   }
 
-  // Plugins that duplicate your skills: your skill wins, the plugin goes.
-  const loadedYours = new Set([...loaded.filter((m) => m.movable).map((m) => m.name), ...[...statuses.values()].flat().map((s) => s.name)]);
-  const yours = new Set([...libraryNames, ...loadedYours]);
-  for (const plugin of claudePlugins(machine)) {
-    const dupes = plugin.skills.map((p) => basename(p)).filter((n) => yours.has(n));
+  // Plugins that duplicate your skills: your skill wins, and the plugin goes, everywhere or only in the repos where both load.
+  const loadedHere = new Map(projects.map((root) => [root, loadedIn(root)]));
+  // Skill names Claude Code loads in a repo (plugins are Claude Code only): its own and nested ones it can see.
+  const seenByClaude = (s: ProjectSkill) => s.visibility.some((v) => v.id === "claude-code" && v.paths > 0);
+  const namesIn = (root: string) => [...new Set([...statuses.get(root)!, ...nested.get(root)!].filter(seenByClaude).map((s) => s.name))];
+  const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
+  const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
+  const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
+    const where = basename(root);
+    const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
+    const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
+    return [
+      { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it", run: () => orThrow(turnOffIn(plugin, root)) },
+      // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
+      ...(names.length && allManaged
+        ? [
+            {
+              label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
+              hint: "the plugin's copy stays; Your skills keeps yours",
+              run: () => {
+                for (const s of copies) {
+                  const r = removeSkill(root, s.name);
+                  if (r.action !== "removed") throw new Error(`${s.name}: ${r.reason}`);
+                }
+                return `${copies.map((s) => s.name).join(", ")} removed from ${where}; the plugin's copy stays`;
+              },
+            },
+          ]
+        : []),
+    ];
+  };
+
+  const machinePlugins = claudePlugins(machine);
+  for (const plugin of machinePlugins) {
+    const names = plugin.skills.map((p) => basename(p));
+    // Repos where the plugin still loads (a repo can turn it off) and has a copy of one of its skills.
+    const inRepos = projects
+      .filter((root) => loadedHere.get(root)!.some((m) => plugin.skills.includes(m.path)))
+      .map((root) => [root, namesIn(root).filter((n) => names.includes(n))] as const)
+      .filter(([, d]) => d.length);
+    const loadedYours = new Set([...globalYours, ...inRepos.flatMap(([, d]) => d)]);
+    const dupes = names.filter((n) => libraryNames.has(n) || loadedYours.has(n));
     if (!dupes.length) continue;
     const others = plugin.skills.length - dupes.length;
     const pluginName = plugin.id.split("@")[0]!;
@@ -134,32 +179,54 @@ export function findIssues(
       run: () => orThrow(removePlugin(plugin, "delete")),
     };
     const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => orThrow(removePlugin(plugin, "off")) };
-    const notLoaded = dupes.filter((n) => !loadedYours.has(n));
+    const bothLoad = dupes.filter((n) => loadedYours.has(n));
+    const notInstalled = dupes.filter((n) => !installedYours.has(n));
     issues.push({
       id: `plugin:${plugin.id}`,
-      severity: notLoaded.length === dupes.length ? "suggestion" : "problem",
+      severity: bothLoad.length ? "problem" : "suggestion",
       title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}`,
       detail: [
-        notLoaded.length < dupes.length ? `Claude Code loads both (the plugin's as /${pluginName}:${dupes[0]}). Your skill wins.` : "",
-        notLoaded.length
-          ? `Your ${notLoaded.join(", ")} ${notLoaded.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notLoaded.length === 1 ? "it" : "them"} where you need ${notLoaded.length === 1 ? "it" : "them"}.`
+        bothLoad.length ? `Claude Code loads both (the plugin's as /${pluginName}:${bothLoad[0]}). Your skill wins.` : "",
+        notInstalled.length
+          ? `Your ${notInstalled.join(", ")} ${notInstalled.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notInstalled.length === 1 ? "it" : "them"} where you need ${notInstalled.length === 1 ? "it" : "them"}.`
           : "",
         others ? `The plugin's other ${plural(others, "skill")} are copied into Your skills first, so nothing is lost.` : "",
         plugin.extras.length
           ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
           : "",
         plugin.synced ? "It's synced from claude.ai, so it can only be turned off here." : "",
+        inRepos.length ? `Or keep it and turn it off only in ${inRepos.map(([root]) => basename(root)).join(", ")}.` : "",
       ]
         .filter(Boolean)
         .join(" "),
-      choices: plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off],
+      choices: [...(plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off]), ...inRepos.flatMap(([root, d]) => repoChoices(plugin, root, d))],
     });
+  }
+
+  // Plugins a repo's own Claude Code settings turn on: they collide only there.
+  const machinePluginSkills = new Set(machinePlugins.flatMap((p) => p.skills));
+  for (const root of projects) {
+    const where = basename(root);
+    const repoOnly = loadedHere.get(root)!.filter((m) => m.kind === "plugin" && !machinePluginSkills.has(m.path));
+    for (const plugin of claudePlugins(repoOnly, root)) {
+      const names = plugin.skills.map((p) => basename(p));
+      const inRepo = namesIn(root).filter((n) => names.includes(n));
+      const dupes = names.filter((n) => inRepo.includes(n) || globalYours.has(n));
+      if (!dupes.length) continue;
+      issues.push({
+        id: `plugin:${root}:${plugin.id}`,
+        severity: "problem",
+        title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}, on in ${where}`,
+        detail: `${where}'s Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /${plugin.id.split("@")[0]}:${dupes[0]}). Your skill wins.`,
+        choices: repoChoices(plugin, root, inRepo),
+      });
+    }
   }
 
   // Cursor plugins can't be read or changed from outside Cursor: report them.
   if (enabledHarnesses().includes("cursor")) {
     const byPlugin = new Map<string, string[]>();
-    for (const s of cursorPluginSkills().filter((x) => loadedYours.has(x.name))) byPlugin.set(s.plugin, [...(byPlugin.get(s.plugin) ?? []), s.name]);
+    for (const s of cursorPluginSkills().filter((x) => installedYours.has(x.name))) byPlugin.set(s.plugin, [...(byPlugin.get(s.plugin) ?? []), s.name]);
     for (const [plugin, names] of byPlugin) {
       issues.push({
         id: `cursor-plugin:${plugin}`,
@@ -186,7 +253,17 @@ export function findIssues(
   }
   issues.push(...global.conflicts.map(conflictIssue));
 
+  // Your global skills you haven't decided about load in every repo. Where each lives is your call: no fix.
   const kept = keptGlobal();
+  const unreviewed = [...new Set(loaded.filter((m) => m.movable && !kept.has(m.name)).map((m) => m.name))];
+  if (unreviewed.length) {
+    issues.push({
+      id: "review:global",
+      severity: "suggestion",
+      title: `${plural(unreviewed.length, "global skill")} of yours ${unreviewed.length === 1 ? "loads" : "load"} in every repo`,
+      detail: `${unreviewed.join(", ")}. Choose which repos keep each (Global → Clean up…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
+    });
+  }
 
   // Global skills some of your agents can't see, e.g. a Codex skill in ~/.agents/skills (Claude Code
   // doesn't read it). A link fixes it. For skills you keep global on purpose that's a repair; for the
@@ -222,8 +299,11 @@ export function findIssues(
     });
   }
 
-  const alsoGlobal = new Map<string, string[]>(); // skill → projects with a managed copy
-  const globalNames = new Set(loaded.filter((m) => m.kind !== "plugin").map((m) => m.name));
+  const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
+  // A repo copy and a global copy load twice only if one of your agents loads both.
+  const globalCopies = loaded.filter((m) => m.kind !== "plugin");
+  const alsoLoadedGlobally = (s: ProjectSkill) =>
+    globalCopies.some((m) => m.name === s.name && m.harnesses.some((id) => s.visibility.some((v) => v.id === id && v.paths > 0)));
   for (const root of projects) {
     const where = basename(root);
     const status = statuses.get(root)!;
@@ -337,31 +417,79 @@ export function findIssues(
           choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
         });
       }
-      if (globalNames.has(s.name) && s.managed) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), root]);
+      if (s.state === "edited locally" || s.state === "edited locally, update available") {
+        // Keeping the edits is also fine: skilllib never overwrites them. So these are choices, and "keep" is doing nothing.
+        const newer = s.state !== "edited locally";
+        const pinned = s.version ? `v${s.version}` : "the library version";
+        issues.push({
+          id: `edited:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} has local edits`,
+          detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.`,
+          choices: [
+            {
+              label: "Save as a new version in Your skills",
+              hint: newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`,
+              run: () => {
+                importSkill(s.path, { force: true });
+                const c = addSkill(root, s.name);
+                if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
+                return `${s.name}: saved as v${c.to}; ${where} uses it`;
+              },
+            },
+            {
+              label: "Discard the edits",
+              hint: `back to ${pinned}; the edited copy is restorable from Health`,
+              run: () => {
+                const c = discardEdits(root, s.name);
+                if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
+                return `${s.name}: edits discarded, back to v${c.to}`;
+              },
+            },
+          ],
+        });
+      }
+      if (alsoLoadedGlobally(s)) alsoGlobal.set(s.name, [...(alsoGlobal.get(s.name) ?? []), { root, managed: s.managed }]);
+    }
+  }
+
+  // Nested skill folders load too, in their part of the repo.
+  for (const root of projects) {
+    for (const n of nested.get(root)!) {
+      const copies = alsoGlobal.get(n.name) ?? [];
+      if (alsoLoadedGlobally(n) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false }]);
     }
   }
 
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
-  for (const [name, roots] of alsoGlobal) {
-    const wheres = roots.map((r) => basename(r)).join(", ");
+  for (const [name, copies] of alsoGlobal) {
+    const wheres = copies.map((c) => basename(c.root)).join(", ");
+    // Only copies skilllib installed can be removed from here; a repo's own skill is the team's.
+    const removable = copies.filter((c) => c.managed).map((c) => c.root);
+    const repoOwn = copies.filter((c) => !c.managed).map((c) => basename(c.root));
     if (kept.has(name)) {
       // You keep it global on purpose: the project copies are the extra ones (Claude Code runs the global one anyway).
+      const removeWheres = removable.map((r) => basename(r)).join(", ");
       issues.push({
         id: `twice:${name}`,
         severity: "suggestion",
         title: `${name}: in ${wheres}, and you keep it global`,
-        detail: "The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.",
-        choices: [
-          {
-            label: `Remove the copies in ${wheres}`,
-            hint: "the global copy stays",
-            run: () => {
-              const removed = roots.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
-              return `${name}: removed from ${removed.join(", ") || "no project"}; the global copy stays`;
-            },
-          },
-        ],
+        detail: `The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.${
+          repoOwn.length ? ` ${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : ""
+        }`,
+        choices: removable.length
+          ? [
+              {
+                label: `Remove the copies in ${removeWheres}`,
+                hint: "the global copy stays",
+                run: () => {
+                  const removed = removable.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
+                  return `${name}: removed from ${removed.join(", ") || "no project"}; the global copy stays`;
+                },
+              },
+            ]
+          : undefined,
       });
       continue;
     }
@@ -370,7 +498,9 @@ export function findIssues(
       id: `twice:${name}`,
       severity: "suggestion",
       title: `${name}: in ${wheres} and also loaded globally`,
-      detail: "The project copies are enough; the global one loads it in every other project too. Or keep it global on purpose (Global → Enter).",
+      detail: `${
+        repoOwn.length === copies.length ? `Agents there load both the repo's copy and the global one.` : "The project copies are enough; the global one loads it in every other project too."
+      } ${movable ? "Stop loading it globally, or keep it global on purpose (Global → Enter)." : `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`}`,
       choices: movable
         ? [
             {
@@ -410,5 +540,91 @@ export function findIssues(
     });
   }
 
+  return issues;
+}
+
+/** When a skill folder appeared: creation time where the filesystem keeps it, else its inode change time (a copy can't carry an old one over). */
+function addedAt(path: string): number {
+  try {
+    const st = lstatSync(path);
+    return st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
+  } catch {
+    return Date.now();
+  }
+}
+
+/**
+ * Hints from usage: skills a repo has that you haven't used there in `days`
+ * days, and library skills in no repo that you haven't used at all. Apart from
+ * findIssues because usage comes from reading transcripts (slow, async). Only
+ * Claude Code leaves transcripts skilllib can read, so without it there are no
+ * hints: everything would look unused. Skills added within `days` are left out.
+ */
+export function usageIssues(
+  projects: string[],
+  machine: SourcedSkill[],
+  libraryNames: Set<string>,
+  uses: { inProject: (root: string, skill: string) => number; total: (skill: string) => number; days: number },
+  statusOf: (root: string) => { name: string; managed: boolean; path: string; state: string }[] = projectStatus,
+): Issue[] {
+  if (!enabledHarnesses().includes("claude-code")) return [];
+  const issues: Issue[] = [];
+  const since = Date.now() - uses.days * 24 * 60 * 60 * 1000;
+
+  for (const root of projects) {
+    const where = basename(root);
+    const unused = statusOf(root).filter((s) => s.state !== "folder missing" && uses.inProject(root, s.name) === 0 && addedAt(s.path) <= since);
+    if (!unused.length) continue;
+    const removable = unused.filter((s) => s.managed);
+    issues.push({
+      id: `unused:${root}`,
+      severity: "suggestion",
+      title: `${where}: ${plural(unused.length, "skill")} unused in ${uses.days} days`,
+      detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
+        unused.length > removable.length ? " The repo's own skills are the team's: remove those in the repo if nobody needs them." : ""
+      }`,
+      choices: removable.length
+        ? [
+            {
+              label: `Remove ${removable.length === unused.length ? "them" : `the ${plural(removable.length, "skill")} skilllib installed`} from ${where}`,
+              hint: "Your skills keeps them; edited ones stay",
+              run: () => {
+                const changes = removable.map((s) => removeSkill(root, s.name));
+                const removed = changes.filter((c) => c.action === "removed").map((c) => c.name);
+                const kept = changes.filter((c) => c.action !== "removed").map((c) => c.name);
+                return `${where}: removed ${removed.join(", ") || "nothing"}${kept.length ? `; kept ${kept.join(", ")} (local edits)` : ""}`;
+              },
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  // Library skills in no repo and not loaded globally, unused everywhere.
+  const installed = new Set([...projects.flatMap((root) => statusOf(root).map((s) => s.name)), ...machine.filter((m) => !m.broken).map((m) => m.name)]);
+  const idle = [...libraryNames].filter((name) => {
+    // No version yet (a skill `skilllib new` just made): its folder's age instead.
+    const first = versionHistory(name)[0];
+    return !installed.has(name) && uses.total(name) === 0 && (first ? Date.parse(first.date) : addedAt(librarySkillDir(name))) <= since;
+  });
+  if (idle.length) {
+    issues.push({
+      id: "unused:library",
+      severity: "suggestion",
+      title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${uses.days} days`,
+      detail: `${idle.sort().join(", ")}. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.`,
+      choices: [
+        {
+          label: `Delete ${idle.length === 1 ? "it" : `all ${idle.length}`} from Your skills`,
+          hint: "restorable from Health",
+          run: () => {
+            const done = idle.map((name) => [name, deleteLibrarySkill(name)] as const);
+            const failed = done.filter(([, r]) => !r.ok).map(([name]) => name);
+            return `Deleted ${plural(done.length - failed.length, "skill")} from Your skills${failed.length ? `; kept ${failed.join(", ")}` : ""}`;
+          },
+        },
+      ],
+    });
+  }
   return issues;
 }

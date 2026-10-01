@@ -267,3 +267,23 @@ test("repo names stay unique however deep folders clash", () => {
   const names = uniqueNames(["/u/work/acme/app", "/u/home/acme/app", "/u/work/api"]);
   expect([...names.values()]).toEqual(["work/acme/app", "home/acme/app", "api"]);
 });
+
+test("a plugin the repo's settings turn on loads only there, and can be turned off there", () => {
+  writeSkill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  const synced = join(tmp, ".claude", "plugins", "synced", "b", "sy");
+  writeSkill(join(synced, "skills", "beta"));
+  writeSkill(join(repo, ".claude", "skills", "alpha"));
+  writeSkill(join(repo, ".claude", "skills", "beta"));
+  writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+
+  let w = loadWorld();
+  expect(w.machine.filter((m) => m.source === "plugin").map((m) => m.where)).toEqual(["sy@synced"]);
+  expect(usable(w, "app").filter((u) => u.source === "plugin").map((u) => `${u.where}/${u.name}`)).toEqual(["pt@mk/alpha", "sy@synced/beta"]);
+
+  const fix = issuesOf(w, "app", local(w, "beta")).find((i) => i.id.startsWith("twice-p"))!.fixes.find((f) => f.label.includes("only"))!;
+  expect(fix.label).toBe("Turn the plugin off in app only");
+  fix.run(w);
+  expect(JSON.parse(readFileSync(join(repo, ".claude", "settings.local.json"), "utf-8"))).toEqual({ enabledPlugins: { "sy@synced": false } });
+  w = loadWorld();
+  expect(usable(w, "app").filter((u) => u.source === "plugin").map((u) => u.where)).toEqual(["pt@mk"]);
+});
