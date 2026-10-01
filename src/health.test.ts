@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
-import { addSkill, createSkill, deleteGlobal, importSkill, listBackups, projectStatus, restoreBackup } from "./library.js";
+import { addSkill, createSkill, deleteGlobal, importSkill, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
@@ -362,4 +362,22 @@ test("Codex honors CODEX_HOME for its user skills, and reads .codex/skills in a 
   skill(join(project, ".codex", "skills", "repo-only"));
   expect(projectStatus(project).find((s) => s.name === "repo-only")!.visibility).toEqual([{ id: "codex", paths: 1 }]);
   delete process.env.CODEX_HOME;
+});
+
+test("an empty CODEX_HOME means ~/.codex, never a folder relative to where you run skilllib", () => {
+  process.env.CODEX_HOME = "";
+  setHarnesses(["codex"]);
+  skill(join(tmp, ".codex", "skills", "legacy"));
+  expect(machineSkills().map((m) => [m.name, m.harnesses])).toEqual([["legacy", ["codex"]]]);
+  delete process.env.CODEX_HOME;
+});
+
+test("linking a global skill replaces a broken link in the way, and leaves a different skill alone", () => {
+  skill(join(tmp, ".agents", "skills", "x"));
+  skill(join(tmp, ".agents", "skills", "y"));
+  skill(join(tmp, ".claude", "skills", "y"));
+  symlinkSync(join(tmp, "gone"), join(tmp, ".claude", "skills", "x"));
+  expect(linkGlobal(join(tmp, ".agents", "skills", "x"), ["claude-code"]).linked).toEqual([join(tmp, ".claude", "skills", "x")]);
+  expect(existsSync(join(tmp, ".claude", "skills", "x", "SKILL.md"))).toBe(true);
+  expect(linkGlobal(join(tmp, ".agents", "skills", "y"), ["claude-code"])).toEqual({ linked: [], skipped: [join(tmp, ".claude", "skills", "y")] });
 });

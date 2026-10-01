@@ -21,9 +21,9 @@ export function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR ?? join(userHome(), ".claude");
 }
 
-/** Codex's config dir, honoring CODEX_HOME like Codex does. */
+/** Codex's config dir, honoring CODEX_HOME like Codex does (it treats an empty one as unset). */
 export function codexHome(): string {
-  return process.env.CODEX_HOME ?? join(userHome(), ".codex");
+  return process.env.CODEX_HOME?.trim() || join(userHome(), ".codex");
 }
 
 /** Codex's machine-wide skill folder. SKILLLIB_CODEX_SYSTEM_DIR redirects it (tests). */

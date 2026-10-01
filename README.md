@@ -254,9 +254,9 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 | Where | Examples | Who sees it |
 |---|---|---|
-| **The repo** | `.claude/skills`, `.agents/skills`, `.cursor/skills`, `.codex/skills`, `.grok/skills` | Agents working in that repo |
+| **The repo** | `.claude/skills`, `.agents/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
 | **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide |
-| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills`, `~/.grok/skills` | **Every repo** |
+| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills` | **Every repo** |
 | **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin) | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
 
@@ -285,7 +285,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 - **Where it looks.**
   - Project: `.agents/skills` and `.cursor/skills`, including nested ones, which apply only to files inside them.
   - Your home folder: `~/.agents/skills` and `~/.cursor/skills`.
-  - For compatibility: `.claude/skills`, `.codex/skills`, `.grok/skills` and the same three in your home folder. The setting **Include Third-Party Plugins, Skills, and Other Configs** (on by default) turns these on, and it also imports your enabled Claude Code plugins. It always uses your home folder: `CLAUDE_CONFIG_DIR` and `CODEX_HOME` don't apply.
+  - For compatibility: `.claude/skills`, `.codex/skills`, `.grok/skills` and the same three in your home folder. The setting **Include Third-Party Plugins, Skills, and Other Configs** (on by default) turns these on, and it also imports your enabled Claude Code plugins. It always uses your home folder: `CLAUDE_CONFIG_DIR` and `CODEX_HOME` don't apply. skilllib leaves `.grok/skills` alone: it's Grok's folder, and skilllib can't tell what Grok needs.
   - Also marketplace plugins and Cursor's built-ins (`~/.cursor/skills-cursor`). Cloud Agents only see `~/.cursor/skills`.
   - It finds every `SKILL.md` up to 10 folders deep. It skips dot folders, `node_modules`, `dist` and `build`, and Codex's bundled skill names (like `skill-creator`) under `.codex/skills`.
 - **How it uses them.** Descriptions decide relevance, and the full content loads on use; `/` runs one. `paths:` globs limit a skill to matching files, and `disable-model-invocation: true` makes it manual.

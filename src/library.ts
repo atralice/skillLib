@@ -204,9 +204,10 @@ function unmanagedState(name: string, real: string, committed: boolean, source: 
 
 /** Nested skill folders and who reads them (Zed reads only the worktree root). */
 const NESTED_READERS: [string, HarnessId[]][] = [
-  [PROJECT_SKILLS_DIR, ["claude-code"]],
+  [PROJECT_SKILLS_DIR, ["claude-code", "cursor"]],
   [AGENTS_SKILLS_DIR, ["codex", "cursor"]],
   [".cursor/skills", ["cursor"]],
+  [".codex/skills", ["codex", "cursor"]],
 ];
 
 /** Folders never searched for nested skills: dependencies and build output. */
@@ -215,8 +216,8 @@ const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "
 /**
  * Skill folders below a repo's root, as monorepos have (packages/web/.claude/skills).
  * Claude Code loads <folder>/.claude/skills when you work on files in <folder>;
- * Cursor does the same with .agents/skills and .cursor/skills; Codex loads
- * <folder>/.agents/skills when it starts there (it walks up to the repo root). They're reported apart from projectStatus: they aren't repo-wide,
+ * Cursor does the same with .agents, .cursor, .claude and .codex skills; Codex loads
+ * <folder>/.agents/skills and <folder>/.codex/skills when it starts there (it walks up to the repo root). They're reported apart from projectStatus: they aren't repo-wide,
  * so linking, tracking or tidying them into the root folders would change who loads them.
  * A nested git repo is a project of its own and isn't searched.
  */
@@ -576,8 +577,9 @@ export function unloadGlobal(
 /**
  * Makes a global skill reach agents that can't see it, with a link in each
  * one's first global folder (~/.claude/skills for Claude Code, ~/.agents/skills
- * for Codex and Zed). Nothing is copied or moved. A folder already holding a
- * skill by that name is left alone and reported.
+ * for the others). Nothing is copied or moved. A broken link in the way is
+ * replaced; a folder already holding a different skill by that name is left
+ * alone and reported.
  */
 export function linkGlobal(path: string, agents: HarnessId[]): { linked: string[]; skipped: string[] } {
   const name = basename(path);
@@ -585,7 +587,8 @@ export function linkGlobal(path: string, agents: HarnessId[]): { linked: string[
   const skipped: string[] = [];
   for (const dir of new Set(agents.map((id) => harness(id).globalDirs()[0]!))) {
     const link = join(dir, name);
-    if (entryExists(link)) {
+    if (isLink(link) && realpathOrNull(link) === null) unlinkSync(link);
+    else if (entryExists(link)) {
       if (realpathOrNull(link) !== realpathOrNull(path)) skipped.push(link);
       continue;
     }

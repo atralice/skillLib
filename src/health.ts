@@ -270,8 +270,9 @@ export function findIssues(
   // others it makes them load in more places, so it's a choice (moving them to repos is the other one).
   const enabled = enabledHarnesses();
   // Another copy by that name (a duplicate, a plugin's) may reach the agent already.
-  const seenBy = (name: string) => new Set(loaded.filter((m) => m.name === name).flatMap((m) => m.harnesses));
-  const blindOf = (m: SourcedSkill) => enabled.filter((id) => !seenBy(m.name).has(id));
+  const seenBy = new Map<string, Set<HarnessId>>();
+  for (const m of loaded) seenBy.set(m.name, new Set([...(seenBy.get(m.name) ?? []), ...m.harnesses]));
+  const blindOf = (m: SourcedSkill) => enabled.filter((id) => !seenBy.get(m.name)!.has(id));
   const blindGlobal = loaded.filter((m) => m.movable && m.harnesses.length && blindOf(m).length);
   for (const onPurpose of [true, false]) {
     const skills = blindGlobal.filter((m) => kept.has(m.name) === onPurpose);

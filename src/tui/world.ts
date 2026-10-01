@@ -388,7 +388,7 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
       title: blind.length ? `Global, not reviewed: loads in every repo, but ${names} can't see it` : "Global, not reviewed: loads in every repo",
       short: blind.length ? `Not reviewed · ${names} can't see it` : "Not reviewed",
       decision: true,
-      fixes: blind.length ? [move!, link, ...rest] : globalFixes(m),
+      fixes: blind.length ? [move!, link, ...rest] : [move!, ...rest],
     });
   }
   return issues;

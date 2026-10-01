@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { addSkill, importSkill, listBackups, restoreBackup } from "./library.js";
+import { addSkill, importSkill, linkEverywhere, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { applyTidy, gitVisibleSteps, planGlobalTidy, planProjectTidy } from "./tidy.js";
 import { forgetLatest } from "./versions.js";
@@ -208,5 +208,37 @@ describe("global tidy", () => {
     expect(report.plans).toEqual([]);
     expect(report.conflicts.map((c) => [c.name, c.copies.map((x) => x.runs)])).toEqual([["web", [["claude-code"], ["codex"]]]]);
     expect(report.skipped.map((s) => s.name)).toEqual(["tool"]);
+  });
+});
+
+describe("folders that aren't one agent's", () => {
+  test("the team's .agents/skills copy stays the repo skill when Cursor's folder has a copy too", () => {
+    setHarnesses(["claude-code", "codex"]);
+    writeSkill(at(".agents", "team"), "x");
+    writeSkill(at(".cursor", "team"), "x");
+    expect(projectStatus(project).map((s) => [s.location, s.state])).toEqual([[".agents/skills", "repo skill"]]);
+  });
+
+  test("Cursor's links go in .agents/skills, and tidy never touches .grok/skills (Grok's folder)", () => {
+    setHarnesses(["cursor"]);
+    writeSkill(at(".claude", "solo"), "x");
+    linkEverywhere(project, "solo", ".claude/skills");
+    expect(existsSync(at(".cursor", "solo"))).toBe(false);
+
+    setHarnesses(["claude-code", "codex"]);
+    writeSkill(at(".agents", "g"), "same");
+    writeSkill(at(".grok", "g"), "same");
+    expect(planProjectTidy(project).plans.flatMap((p) => p.steps).filter((s) => s.path.includes(".grok"))).toEqual([]);
+  });
+
+  test("Codex runs every copy it reads; Cursor runs the one it picks first", () => {
+    setHarnesses(["codex", "cursor"]);
+    writeSkill(at(".agents", "x"), "one");
+    writeSkill(at(".codex", "x"), "two");
+    const [conflict] = planProjectTidy(project).conflicts;
+    expect(conflict?.copies.map((c) => [c.dir.slice(project.length + 1), c.runs])).toEqual([
+      [".agents/skills", ["codex"]],
+      [".codex/skills", ["cursor", "codex"]],
+    ]);
   });
 });
