@@ -295,6 +295,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
   - Project: `.agents/skills` in the working folder, its parents up to the repo root, and `.codex/skills`.
   - Your home folder: `~/.agents/skills`, and `~/.codex/skills` (`$CODEX_HOME/skills`). Codex's docs no longer list `~/.codex/skills`, but Codex still reads it for backward compatibility, and its built-in skill installer puts skills there (verified in its source, October 2026).
   - Also `/etc/codex/skills` (admin) and OpenAI's bundled skills in `~/.codex/skills/.system`.
+  - It finds a `SKILL.md` up to 6 folders deep and skips dot folders. skilllib only lists direct children (`<folder>/<name>/SKILL.md`), which is where Codex's installer puts them.
   - It **doesn't read `.claude/skills`**, so Claude Code and Codex share no folder.
 - **How it uses them.** Names and descriptions come first (about 2% of context); `SKILL.md` loads when used, and `$` picks one.
   - Same-name skills aren't merged.
