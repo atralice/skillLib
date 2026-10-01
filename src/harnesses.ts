@@ -25,7 +25,11 @@ const home = userHome;
  * Where each harness reads skills, from their docs (September 2026):
  * - Claude Code: .claude/skills, ~/.claude/skills (verified: it ignores .agents/skills)
  * - Cursor (cursor.com/docs/context/skills): .agents, .cursor, and for compatibility
- *   .claude and .codex skill folders, in the project and in your home folder
+ *   .claude and .codex skill folders, in the project and in your home folder.
+ *   Verified in its app bundle (September 2026): it finds every SKILL.md in those
+ *   folders up to 10 levels deep (skipping dot folders), so it also loads the
+ *   claude.ai skills in ~/.claude/skills/synced; and its third-party setting that
+ *   reads .claude also imports enabled user-scope Claude Code plugins.
  * - Codex (learn.chatgpt.com/docs/build-skills): .agents/skills from the working
  *   folder up to the repo root, ~/.agents/skills, /etc/codex/skills
  * - Zed (zed.dev/docs/ai/skills): <worktree>/.agents/skills and ~/.agents/skills only

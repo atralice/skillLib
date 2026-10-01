@@ -20,7 +20,7 @@ function localAgents(s: SampleSkill, enabled: HarnessId[]): HarnessId[] {
 function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   if (m.broken) return [];
   const reads: HarnessId[] =
-    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : ["claude-code"];
+    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
   return enabled.filter((a) => reads.includes(a));
 }
 
