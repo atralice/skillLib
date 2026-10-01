@@ -511,8 +511,8 @@ export function unloadGlobal(
 
 /**
  * Makes a global skill reach agents that can't see it, with a link in each
- * one's main global folder (~/.claude/skills for Claude Code, ~/.agents/skills
- * for the others). Nothing is copied or moved. A folder already holding a
+ * one's first global folder (~/.claude/skills for Claude Code, ~/.agents/skills
+ * for Codex and Zed). Nothing is copied or moved. A folder already holding a
  * skill by that name is left alone and reported.
  */
 export function linkGlobal(path: string, agents: HarnessId[]): { linked: string[]; skipped: string[] } {
