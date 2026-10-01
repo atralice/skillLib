@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { setHarnesses } from "./config.js";
 import { addSkill, importSkill, linkEverywhere, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
@@ -236,7 +236,7 @@ describe("folders that aren't one agent's", () => {
     writeSkill(at(".agents", "x"), "one");
     writeSkill(at(".codex", "x"), "two");
     const [conflict] = planProjectTidy(project).conflicts;
-    expect(conflict?.copies.map((c) => [c.dir.slice(project.length + 1), c.runs])).toEqual([
+    expect(conflict?.copies.map((c) => [relative(project, c.dir).replace(/\\/g, "/"), c.runs])).toEqual([
       [".agents/skills", ["codex"]],
       [".codex/skills", ["cursor", "codex"]],
     ]);
