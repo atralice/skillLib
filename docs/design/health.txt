@@ -1,7 +1,7 @@
-╭── ◆ skilllib ────────────╮╭── To fix  2/18 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 17                                                                                │
-│   ◈ Global          13   ││     Skill              Where            Issue                                          │
-│ ▌ ✓ Health          17   ││   ✦ Fix 13 issues automatically…                                                       │
+╭── ◆ skilllib ────────────╮╭── To fix  2/20 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 19                                                                                │
+│   ◈ Global          14   ││     Skill              Where            Issue                                          │
+│ ▌ ✓ Health          19   ││   ✦ Fix 14 issues automatically…                                                       │
 │   Projects ───────────── ││ ▌ ✕ commit-style       Global           Copies differ                                  │
 │   ◆ web-app          ✕   ││   ✕ stripe-payments    web-app          Loaded twice                                   │
 │     api-server       ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
@@ -10,7 +10,7 @@
 │     billing              ││   ✕ frontend-design    Global           Loaded twice                                   │
 │     blog                 ││   ✕ old-helper         Global           Broken link                                    │
 │     cli-tools            ││   ✕ seo-meta           web-app          Folder missing                                 │
-│     dotfiles             ││   ⚠ stripe-payments    Global           Not reviewed                                   │
+│     dotfiles             ││   ⚠ stripe-payments    Global           Not reviewed · Codex can't see it              │
 │     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     e2e-tests            │╭── commit-style ────────────────────────────────────────────────────────────────────────╮
 │     infra                ││ Conventional commits with a short imperative subject and a why-focused body.           │

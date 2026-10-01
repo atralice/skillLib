@@ -28,6 +28,7 @@ beforeEach(() => {
   process.env.HOME = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+  delete process.env.CODEX_HOME;
   setHarnesses(["claude-code"]);
   project = join(tmp, "project");
   mkdirSync(project);

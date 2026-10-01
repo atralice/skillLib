@@ -7,7 +7,7 @@
 <text x="144.4" y="54.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">────────────╮</text>
 <text x="254.0" y="54.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
 <text x="279.3" y="54.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> Skills </text>
-<text x="346.8" y="54.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs"> 4/20 </text>
+<text x="346.8" y="54.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs"> 4/21 </text>
 <text x="397.3" y="54.0" fill="#8b9dff" xml:space="preserve" textLength="615.4" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────╮</text>
 <text x="18.0" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="73.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">▤ Your skills     </text>
@@ -15,23 +15,23 @@
 <text x="245.6" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="73.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <rect x="270.9" y="59.0" width="67.4" height="19" fill="#8b9dff"/>
-<text x="270.9" y="73.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> All 20 </text>
+<text x="270.9" y="73.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> All 21 </text>
 <text x="346.8" y="73.0" fill="#f2c94c" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Issues 8 </text>
 <text x="439.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs"> Local 9 </text>
-<text x="523.8" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Global 5 </text>
+<text x="523.8" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Global 6 </text>
 <text x="616.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> Plugins 3 </text>
 <text x="717.7" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Vendor 3 </text>
 <text x="1004.3" y="73.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="92.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">◈ Global          </text>
-<text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">13  </text>
+<text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">14  </text>
 <text x="245.6" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Skill              Source         Uses  Issue                                     </text>
 <text x="1004.3" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">17  </text>
+<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">19  </text>
 <text x="245.6" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="708.1" lengthAdjust="spacingAndGlyphs">+ Add a skill…                                                                      </text>

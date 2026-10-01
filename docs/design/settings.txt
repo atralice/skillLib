@@ -1,8 +1,8 @@
 ╭── ◆ skilllib ────────────╮╭── Settings ────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││   Agents ───────────────────────────────────────────────────────────────────────────── │
-│   ◈ Global          13   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
-│   ✓ Health          17   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
-│   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills                                     │
+│   ◈ Global          14   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
+│   ✓ Health          19   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
+│   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
 │   ◆ web-app          ✕   ││   [ ] ℤ Zed                         .agents/skills                                     │
 │     api-server       ✕   ││   Project folders ──────────────────────────────────────────────────────────────────── │
 │     docs-site        ·   ││   ~/Projects                        scanned for git repos                              │

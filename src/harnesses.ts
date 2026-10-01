@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, codexHome, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 
 export type HarnessId = "claude-code" | "cursor" | "codex" | "zed";
 
@@ -25,13 +25,18 @@ const home = userHome;
  * Where each harness reads skills, from their docs (September 2026):
  * - Claude Code: .claude/skills, ~/.claude/skills (verified: it ignores .agents/skills)
  * - Cursor (cursor.com/docs/context/skills): .agents, .cursor, and for compatibility
- *   .claude and .codex skill folders, in the project and in your home folder.
- *   Verified in its app bundle (September 2026): it finds every SKILL.md in those
+ *   .claude, .codex and .grok skill folders, in the project and in your home folder.
+ *   Verified in its app bundle (3.22, October 2026): it finds every SKILL.md in those
  *   folders up to 10 levels deep (skipping dot folders), so it also loads the
- *   claude.ai skills in ~/.claude/skills/synced; and its third-party setting that
- *   reads .claude also imports enabled user-scope Claude Code plugins.
- * - Codex (learn.chatgpt.com/docs/build-skills): .agents/skills from the working
- *   folder up to the repo root, ~/.agents/skills, /etc/codex/skills
+ *   claude.ai skills in ~/.claude/skills/synced. The same skill in several folders
+ *   loads once, from the first of .cursor, .claude, .codex, .grok, .agents. Its
+ *   third-party setting (on by default) gates .claude/.codex/.grok and also imports
+ *   enabled Claude Code plugins.
+ * - Codex (learn.chatgpt.com/docs/build-skills, and codex-rs/ext/skills/src/host_roots.rs):
+ *   .agents/skills from the working folder up to the repo root, .codex/skills, ~/.agents/skills,
+ *   /etc/codex/skills, and $CODEX_HOME/skills (~/.codex/skills). The docs dropped that last one,
+ *   but Codex still reads it ("deprecated, kept for backward compatibility") and its
+ *   skill-installer writes there. Its bundled skills live in ~/.codex/skills/.system.
  * - Zed (zed.dev/docs/ai/skills): <worktree>/.agents/skills and ~/.agents/skills only
  */
 export const HARNESSES: Harness[] = [
@@ -51,8 +56,10 @@ export const HARNESSES: Harness[] = [
     short: "Cu",
     icon: "⬡",
     color: "#E8E8E8",
-    projectDirs: [".agents/skills", ".cursor/skills", ".claude/skills", ".codex/skills"],
-    globalDirs: () => [join(home(), ".agents", "skills"), join(home(), ".cursor", "skills"), join(claudeDir(), "skills"), join(home(), ".codex", "skills")],
+    // In the order Cursor picks a copy when several folders hold the same skill.
+    projectDirs: [".cursor/skills", ".claude/skills", ".codex/skills", ".grok/skills", ".agents/skills"],
+    // Cursor ignores CLAUDE_CONFIG_DIR and CODEX_HOME: it always reads these under your home folder.
+    globalDirs: () => [".cursor", ".claude", ".codex", ".grok", ".agents"].map((d) => join(home(), d, "skills")),
     installed: () => existsSync(join(home(), ".cursor")) || onPath("cursor-agent") || hasApp("Cursor"),
   },
   {
@@ -61,9 +68,9 @@ export const HARNESSES: Harness[] = [
     short: "Cx",
     icon: "◎",
     color: "#10A37F",
-    projectDirs: [".agents/skills"],
-    globalDirs: () => [join(home(), ".agents", "skills"), "/etc/codex/skills"],
-    installed: () => existsSync(join(home(), ".codex")) || onPath("codex") || hasApp("Codex"),
+    projectDirs: [".agents/skills", ".codex/skills"],
+    globalDirs: () => [join(home(), ".agents", "skills"), join(codexHome(), "skills"), "/etc/codex/skills"],
+    installed: () => existsSync(codexHome()) || onPath("codex") || hasApp("Codex"),
   },
   {
     id: "zed",

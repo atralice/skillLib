@@ -37,6 +37,7 @@ beforeEach(() => {
   process.env.USERPROFILE = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+  delete process.env.CODEX_HOME;
   project = join(tmp, "project");
   mkdirSync(join(project, ".git"), { recursive: true });
 });

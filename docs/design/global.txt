@@ -1,16 +1,16 @@
-╭── ◆ skilllib ────────────╮╭── Loads everywhere ────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 13   Issues 5   Global 6   Plugins 4   Vendor 3                                   │
-│ ▌ ◈ Global          13   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          17   ││   ✦ Fix 3 issues automatically…                                                        │
-│   Projects ───────────── ││   ⧉ Review prompt for your 5 global skills…                                            │
+╭── ◆ skilllib ────────────╮╭── Loads everywhere  3/11 ──────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 14   Issues 7   Global 7   Plugins 4   Vendor 3                                   │
+│ ▌ ◈ Global          14   ││     Skill              Source         Uses  Issue                                      │
+│   ✓ Health          19   ││   ✦ Fix 4 issues automatically…                                                        │
+│   Projects ───────────── ││   ⧉ Review prompt for your 6 global skills…                                            │
 │   ◆ web-app          ✕   ││ ▌ ✕ ▸ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
 │     api-server       ✕   ││   ✕ old-helper         global            –  Broken link                                │
-│     docs-site        ·   ││   ⚠ tailwind-tips      global            –  Extra copies                               │
-│     mobile-app       ⚠   ││     ▸ ⧉ vercel plugin (3)                                                              │
-│     billing              ││     pr-review          global ✓          4                                             │
-│     blog                 ││     ▸ claude.ai skills (2)                                                             │
-│     cli-tools            ││     use-railway        ⧉ railway         2                                             │
-│     dotfiles             ││     create-rule        cursor            –                                             │
+│     docs-site        ·   ││   ⚠ pr-review          global ✓          4  Codex can't see it                         │
+│     mobile-app       ⚠   ││   ⚠ security-audit     global            –  Not reviewed · Claude Code can't see it    │
+│     billing              ││   ⚠ tailwind-tips      global            –  Extra copies                               │
+│     blog                 ││     ▸ ⧉ vercel plugin (3)                                                              │
+│     cli-tools            ││     ▸ claude.ai skills (2)                                                             │
+│     dotfiles             ││     use-railway        ⧉ railway         2                                             │
 │     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     e2e-tests            │╭── commit + 2 more · installed together 2026-09-20 ─────────────────────────────────────╮
 │     infra                ││ commit-style, frontend-design, stripe-payments                                         │

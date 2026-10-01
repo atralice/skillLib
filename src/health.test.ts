@@ -23,6 +23,7 @@ beforeEach(() => {
   process.env.HOME = tmp;
   process.env.SKILLLIB_HOME = join(tmp, "home");
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+  delete process.env.CODEX_HOME;
   setHarnesses(["claude-code"]);
   mkdirSync(join(tmp, ".claude", "skills"), { recursive: true });
 });
@@ -215,4 +216,49 @@ test("skills npx skills installed in a project keep their source and aren't call
 
   importSkill(join(project, ".claude", "skills", "video-edit"));
   expect(libraryOrigins()["video-edit"]).toBe("skills.sh: genmedia-labs/skills");
+});
+
+test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link for Claude Code", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, ".agents", "skills", "shared"));
+  skill(join(tmp, ".codex", "skills", "legacy"));
+  skill(join(tmp, ".codex", "skills", ".system", "imagegen")); // Codex's bundled skills: not yours
+  const loads = () => Object.fromEntries(machineSkills().map((m) => [m.name, m.harnesses]));
+  expect(loads()).toEqual({ legacy: ["codex"], shared: ["codex"] });
+
+  // Not kept global: linking makes them load in more places, so it's a choice doctor --fix never makes.
+  const issue = findIssues([], machineSkills(), new Set()).find((i) => i.id === "usable:global")!;
+  expect(issue.title).toBe("2 global skills not usable by Claude Code");
+  expect(issue.fix).toBeUndefined();
+  runFix(issue.choices![0]!);
+  expect(lstatSync(join(tmp, ".claude", "skills", "legacy")).isSymbolicLink()).toBe(true);
+  expect(loads()).toEqual({ legacy: ["claude-code", "codex"], shared: ["claude-code", "codex"] });
+  expect(findIssues([], machineSkills(), new Set()).map((i) => i.id)).not.toContain("usable:global");
+});
+
+test("a skill you keep global gets the link as a plain fix; another copy by that name already counts", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, ".agents", "skills", "kept"));
+  skill(join(tmp, ".agents", "skills", "twin"));
+  skill(join(tmp, ".claude", "skills", "twin"));
+  setKeepGlobal(["kept"], true);
+  const ids = findIssues([], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids).toContain("usable:global:kept");
+  expect(ids).not.toContain("usable:global");
+  findIssues([], machineSkills(), new Set()).find((i) => i.id === "usable:global:kept")!.fix!.run();
+  expect(existsSync(join(tmp, ".claude", "skills", "kept", "SKILL.md"))).toBe(true);
+});
+
+test("Codex honors CODEX_HOME for its user skills, and reads .codex/skills in a repo", () => {
+  process.env.CODEX_HOME = join(tmp, "codex-home");
+  setHarnesses(["codex"]);
+  skill(join(tmp, "codex-home", "skills", "moved"));
+  skill(join(tmp, ".codex", "skills", "stale")); // not read once CODEX_HOME points elsewhere
+  expect(machineSkills().map((m) => [m.name, m.harnesses])).toEqual([["moved", ["codex"]], ["stale", []]]);
+
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".codex", "skills", "repo-only"));
+  expect(projectStatus(project).find((s) => s.name === "repo-only")!.visibility).toEqual([{ id: "codex", paths: 1 }]);
+  delete process.env.CODEX_HOME;
 });

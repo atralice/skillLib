@@ -113,6 +113,8 @@ export type Ops = {
   unloadGlobal(m: MachineSkill): Result;
   deleteGlobal(m: MachineSkill): Result;
   keepGlobal(name: string, keep: boolean): Result;
+  /** Links a global skill into the global folders of agents that can't see it. */
+  linkGlobal(m: MachineSkill, agents: HarnessId[]): Result;
   /** `group`: the group it moved with, recorded as its origin so it stays grouped in your library. */
   moveGlobal(m: MachineSkill, repos: string[], group?: string): Result;
   createSkill(name: string): Result;
@@ -354,8 +356,31 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
     });
   if (m.source === "global" && m.dupes) issues.push(...dupeIssues(null, m.name, m.dupes));
   if (m.source === "global" && m.cursorPlugin && m.agents.includes("cursor")) issues.push(cursorPluginIssue(m.name, m.cursorPlugin));
-  if (m.source === "global" && !m.kept)
-    issues.push({ id: `global:${m.name}`, severity: "warning", title: "Global, not reviewed: loads in every repo", short: "Not reviewed", decision: true, fixes: globalFixes(m) });
+  // An agent you use can't see it, e.g. a Codex skill in ~/.agents/skills that Claude Code doesn't read.
+  // Another copy by that name (a duplicate, a plugin's) may reach it; duplicates are tidied first.
+  const seen = new Set(w.machine.filter((x) => x.name === m.name && !x.broken).flatMap((x) => x.agents));
+  const blind = m.source === "global" && m.agents.length && !m.dupes ? w.agents.filter((a) => !seen.has(a)) : [];
+  const names = blind.map((a) => harness(a).name).join(", ");
+  const link: Fix = {
+    label: `Link it for ${names}`,
+    preview: `Add a link in the global skills folder ${names} read${blind.length === 1 ? "s" : ""} (nothing is copied or moved), so ${names} load${blind.length === 1 ? "s" : ""} it in every repo too.`,
+    run: (w) => w.ops.linkGlobal(m, blind),
+  };
+  // Kept global on purpose: every agent should load it, so the link is the fix.
+  if (m.kept && blind.length)
+    issues.push({ id: `blind-global:${m.name}`, severity: "warning", title: `${names} can't see it: only ${m.agents.map((a) => harness(a).name).join(", ")} load${m.agents.length === 1 ? "s" : ""} it`, short: `${names} can't see it`, decision: false, fixes: [link] });
+  // Not reviewed yet: where it lives is your call, and linking it for the others is one more choice.
+  if (m.source === "global" && !m.kept) {
+    const [move, ...rest] = globalFixes(m);
+    issues.push({
+      id: `global:${m.name}`,
+      severity: "warning",
+      title: blind.length ? `Global, not reviewed: loads in every repo, but ${names} can't see it` : "Global, not reviewed: loads in every repo",
+      short: blind.length ? `Not reviewed · ${names} can't see it` : "Not reviewed",
+      decision: true,
+      fixes: blind.length ? [move!, link, ...rest] : globalFixes(m),
+    });
+  }
   return issues;
 }
 

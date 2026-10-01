@@ -21,6 +21,11 @@ export function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR ?? join(userHome(), ".claude");
 }
 
+/** Codex's config dir, honoring CODEX_HOME like Codex does. */
+export function codexHome(): string {
+  return process.env.CODEX_HOME ?? join(userHome(), ".codex");
+}
+
 /** Where skilllib installs project skills; the folder Claude Code reads. */
 export const PROJECT_SKILLS_DIR = ".claude/skills";
 /** The cross-agent folder (Codex, Cursor, Amp, `npx skills`). Repos often commit their own skills here. */

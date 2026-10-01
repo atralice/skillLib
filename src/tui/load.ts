@@ -17,6 +17,7 @@ import {
   importSkill,
   librarySkills,
   linkEverywhere,
+  linkGlobal,
   listBackups,
   projectStatus,
   relinkDependency,
@@ -351,6 +352,12 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : `${m.name}: ${r.reason}`;
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
+    linkGlobal: (m, agents) => {
+      const r = linkGlobal(m.path, agents);
+      const linked = r.linked.map(tildify).join(", ");
+      const skipped = r.skipped.length ? `; ${r.skipped.map(tildify).join(", ")} already holds a different skill` : "";
+      return `${m.name}: ${linked ? `linked ${linked}` : "nothing linked"}${skipped}`;
+    },
     moveGlobal: (m, repos, group) => {
       // Your library already has a different skill by that name: moving this one would swap in the other.
       if (importSkill(m.path).status === "exists") return `${m.name}: your library has a different ${m.name}; nothing moved (update your library from this copy first)`;

@@ -509,6 +509,29 @@ export function unloadGlobal(
   return { ok: true, movedTo };
 }
 
+/**
+ * Makes a global skill reach agents that can't see it, with a link in each
+ * one's main global folder (~/.claude/skills for Claude Code, ~/.agents/skills
+ * for the others). Nothing is copied or moved. A folder already holding a
+ * skill by that name is left alone and reported.
+ */
+export function linkGlobal(path: string, agents: HarnessId[]): { linked: string[]; skipped: string[] } {
+  const name = basename(path);
+  const linked: string[] = [];
+  const skipped: string[] = [];
+  for (const dir of new Set(agents.map((id) => harness(id).globalDirs()[0]!))) {
+    const link = join(dir, name);
+    if (entryExists(link)) {
+      if (realpathOrNull(link) !== realpathOrNull(path)) skipped.push(link);
+      continue;
+    }
+    mkdirSync(dir, { recursive: true });
+    linkDir(path, link);
+    linked.push(link);
+  }
+  return { linked, skipped };
+}
+
 /** Creates a new library skill with a starter SKILL.md. */
 export function createSkill(name: string, description: string): { ok: true; dir: string } | { ok: false; reason: string } {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return { ok: false, reason: "use lowercase letters, digits and dashes" };

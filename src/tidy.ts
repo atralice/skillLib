@@ -68,13 +68,12 @@ function namesIn(dirs: string[]): string[] {
 }
 
 /**
- * Which copy each agent runs when several folders hold one. Claude Code,
- * Codex and Zed read one folder each; Cursor reads several and, in our
- * test (September 2026), ran the .claude/skills copy over .agents/skills.
+ * Which copy each agent runs when several folders hold one: the first folder
+ * it reads. Cursor's folders are listed in the order it picks a copy
+ * (.cursor, .claude, .codex, .grok, .agents; seen in its app bundle, October 2026).
  */
 function runsFrom(id: HarnessId, dirsWithCopy: string[], readsOf: (id: HarnessId) => string[]): string | undefined {
-  const reads = readsOf(id).filter((d) => dirsWithCopy.includes(d));
-  return reads.find((d) => d.endsWith(join(".claude", "skills"))) ?? reads[0];
+  return readsOf(id).find((d) => dirsWithCopy.includes(d));
 }
 
 function conflictOf(name: string, root: string | null, reals: Entry[], enabled: HarnessId[], readsOf: (id: HarnessId) => string[]): Conflict {
