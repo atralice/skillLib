@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, codexSystemDir, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 
 export type HarnessId = "claude-code" | "cursor" | "codex" | "zed";
 
@@ -62,7 +62,7 @@ export const HARNESSES: Harness[] = [
     icon: "◎",
     color: "#10A37F",
     projectDirs: [".agents/skills"],
-    globalDirs: () => [join(home(), ".agents", "skills"), "/etc/codex/skills"],
+    globalDirs: () => [join(home(), ".agents", "skills"), codexSystemDir()],
     installed: () => existsSync(join(home(), ".codex")) || onPath("codex") || hasApp("Codex"),
   },
   {

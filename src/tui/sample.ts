@@ -251,6 +251,7 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       w.library.push({ name, latest: 1 });
       return `Created ${name} v1 (its SKILL.md would open in your editor)`;
     },
+    pluginOffHere: (repo, id) => `${id} turned off in ${repo}; other repos keep it`,
     replacePlugin: (id, repos) => {
       const skills = w.machine.filter((m) => m.source === "plugin" && m.where === id);
       for (const m of skills) if (!lib(m.name)) w.library.push({ name: m.name, latest: 1, origin: `plugin: ${id}` });

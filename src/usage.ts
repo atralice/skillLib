@@ -111,3 +111,16 @@ export function summarize(uses: SkillUse[], projectOf: (cwd: string) => string |
   }
   return [...bySkill.values()].sort((a, b) => b.uses - a.uses);
 }
+
+/** Uses per project root, per skill name as used. `projectOf` maps a session's cwd to a project root (or null). */
+export function usesByProject(uses: SkillUse[], projectOf: (cwd: string) => string | null): Map<string, Map<string, number>> {
+  const byProject = new Map<string, Map<string, number>>();
+  for (const use of uses) {
+    const root = projectOf(use.cwd);
+    if (!root) continue;
+    const counts = byProject.get(root) ?? new Map<string, number>();
+    counts.set(use.skill, (counts.get(use.skill) ?? 0) + 1);
+    byProject.set(root, counts);
+  }
+  return byProject;
+}

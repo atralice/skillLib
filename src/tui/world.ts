@@ -7,7 +7,7 @@ import type { GitState } from "../git.js";
 import { harness, type HarnessId } from "../harnesses.js";
 import { matchScore } from "../search.js";
 
-export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor";
+export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
 
 /** Same-name copies that should be one real copy plus links (see tidy.ts). */
@@ -44,7 +44,8 @@ export type LocalSkill = {
 
 export type MachineSkill = {
   name: string;
-  source: "global" | "plugin" | "claude.ai" | "cursor";
+  /** system: a machine-wide folder an admin manages (/etc/codex/skills). */
+  source: "global" | "plugin" | "claude.ai" | "cursor" | "system";
   /** Global folder, plugin id, or where a vendor skill comes from. */
   where: string;
   /** Where it was installed from, e.g. an `npx skills` repo. */
@@ -79,6 +80,8 @@ export type Project = {
   /** skilllib.json's git state; "no git" when the repo isn't a git repo. */
   manifest: GitState | "none" | "no git";
   skills: LocalSkill[];
+  /** What loads here besides its own skills, when the repo's Claude Code settings turn a plugin on or off (else World.machine). */
+  machine?: MachineSkill[];
 };
 
 export type RepoInfo = { remote?: string; branch?: string; dirty: number };
@@ -116,6 +119,8 @@ export type Ops = {
   /** `group`: the group it moved with, recorded as its origin so it stays grouped in your library. */
   moveGlobal(m: MachineSkill, repos: string[], group?: string): Result;
   createSkill(name: string): Result;
+  /** Turns a Claude Code plugin off in one repo only (its .claude/settings.local.json). */
+  pluginOffHere(repo: string, id: string): Result;
   /** A plugin's skills into your library (and these repos), then the plugin uninstalled from Claude Code. */
   replacePlugin(id: string, repos: string[]): Result;
   /** Deletes a library skill, first removing it from every repo that tracks it (each copy backed up). */
@@ -222,13 +227,18 @@ export function dailyUses(w: World, name: string, onlyRepo?: string): number[] {
   return days;
 }
 
+/** What loads in a project besides its own skills: World.machine, unless its settings turn a plugin on or off. */
+export function machineIn(w: World, p: Project): MachineSkill[] {
+  return p.machine ?? w.machine;
+}
+
 /** Everything agents can use in a project: its own skills plus what loads everywhere. */
 export function usable(w: World, projectName: string): Usable[] {
   const p = project(w, projectName);
   const uses = (n: string) => w.usage[projectName]?.[n] ?? 0;
   return [
     ...p.skills.map((s): Usable => ({ name: s.name, source: s.source, where: s.dir, agents: s.agents, uses: uses(s.name), local: s })),
-    ...w.machine.map((m): Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: uses(m.name), machine: m })),
+    ...machineIn(w, p).map((m): Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: uses(m.name), machine: m })),
   ];
 }
 
@@ -364,8 +374,9 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
   const s = u.local!;
   const issues: Issue[] = [];
   const shares = (m: MachineSkill) => m.name === s.name && !m.broken && m.agents.some((a) => s.agents.includes(a));
-  const g = w.machine.find((m) => m.source === "global" && shares(m));
-  const vendor = w.machine.find((m) => m.source !== "global" && shares(m));
+  const loaded = machineIn(w, project(w, projectName));
+  const g = loaded.find((m) => m.source === "global" && shares(m));
+  const vendor = loaded.find((m) => m.source !== "global" && shares(m));
   const l = lib(w, s.name);
   const remove: Fix = {
     label: "Remove this repo's copy",
@@ -433,11 +444,17 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       decision: true,
       fixes: [
         ...(s.source !== "repo" ? [{ ...remove, label: `Remove this repo's copy, use the ${vendor.source}'s` }] : []),
-        {
-          label: vendor.source === "plugin" ? "Turn the plugin off with /plugin in Claude Code" : `Turn it off in ${vendor.where}`,
-          preview: "skilllib can't turn it off for you yet.",
-          run: () => `Turn ${vendor.where} off at its source; skilllib picks it up next time`,
-        },
+        vendor.source === "plugin"
+          ? {
+              label: `Turn the plugin off in ${projectName} only`,
+              preview: `Sets "${vendor.where}": false in ${projectName}'s .claude/settings.local.json (claude plugin disable --scope local). Other repos keep it.`,
+              run: (w: World) => w.ops.pluginOffHere(projectName, vendor.where),
+            }
+          : {
+              label: `Turn it off in ${vendor.where}`,
+              preview: "skilllib can't turn it off for you.",
+              run: () => `Turn ${vendor.where} off at its source; skilllib picks it up next time`,
+            },
       ],
     });
   if (s.dupes) issues.push(...dupeIssues(projectName, s.name, s.dupes));
@@ -646,6 +663,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
   if (m?.source === "plugin") return [{ key: `plugin:${m.where}`, label: `⧉ ${m.where.split("@")[0]} plugin` }];
   if (m?.source === "claude.ai") return [{ key: "claude.ai", label: "claude.ai skills" }];
   if (m?.source === "cursor") return [{ key: "cursor", label: "Cursor built-ins" }];
+  if (m?.source === "system") return [{ key: `system:${m.where}`, label: m.where }];
   if (m) {
     const origin = originGroup(m.origin);
     return [...(origin ? [origin] : []), ...byTime("global", m.installed), ...byWord("global", m.name)];

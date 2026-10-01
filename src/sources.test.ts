@@ -47,6 +47,44 @@ test("classifies global, skills.sh, claude.ai, and plugin skills", () => {
   delete process.env.CLAUDE_CONFIG_DIR;
 });
 
+test("reads Codex's /etc/codex/skills as a system folder skilllib never changes", () => {
+  const home = join(tmp, "sys-home");
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  process.env.CLAUDE_CONFIG_DIR = join(home, ".claude");
+  process.env.SKILLLIB_CODEX_SYSTEM_DIR = join(tmp, "etc", "codex", "skills");
+  skill(join(tmp, "etc", "codex", "skills", "house-style"));
+  try {
+    setHarnesses(["codex"]);
+    expect(machineSkills().map((s) => [s.kind, s.name, s.origin, s.movable, s.harnesses])).toEqual([
+      // Shown with "/" on every OS.
+      ["system", "house-style", join(tmp, "etc", "codex", "skills").replace(/\\/g, "/"), false, ["codex"]],
+    ]);
+    // Only Codex reads it.
+    setHarnesses(["claude-code"]);
+    expect(machineSkills()).toEqual([]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.SKILLLIB_CODEX_SYSTEM_DIR;
+  }
+});
+
+test("a CLAUDE_CONFIG_DIR outside your home is still your global folder, not a system one", () => {
+  const home = join(tmp, "cfg-home");
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  process.env.CLAUDE_CONFIG_DIR = join(tmp, "opt", "claude");
+  skill(join(tmp, "opt", "claude", "skills", "mine"));
+  try {
+    setHarnesses(["claude-code"]);
+    expect(machineSkills().map((s) => [s.kind, s.name, s.movable])).toEqual([["global", "mine", true]]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+  }
+});
+
 test("Cursor loads claude.ai skills and user-scope Claude Code plugins, not synced plugins", () => {
   const home = join(tmp, "cursor-home");
   const claude = join(home, ".claude");

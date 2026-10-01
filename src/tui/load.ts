@@ -35,8 +35,8 @@ import {
 import { userHome } from "../paths.js";
 import { findProjectRoot, isProjectCandidate } from "../project.js";
 import { readSkillInfo } from "../skills.js";
-import { claudeBinary, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin } from "../plugins.js";
-import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, type SourcedSkill } from "../sources.js";
+import { claudeBinary, claudePlugins, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin, turnOffIn } from "../plugins.js";
+import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, skillsLoadedIn, type SourcedSkill } from "../sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
@@ -119,7 +119,7 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   const global = s.kind === "global" || s.kind === "skills.sh";
   return {
     name: s.name,
-    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : "cursor",
+    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : "cursor",
     where: global ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
     ...(s.kind === "skills.sh" ? { origin: `npx skills: ${s.origin}` } : {}),
     path: s.path,
@@ -169,7 +169,8 @@ export function loadWorld(): World {
   // Cursor plugins: reported only (Cursor's plugin state can't be read).
   const cursorPlugin = new Map(agents.includes("cursor") ? cursorPluginSkills().map((s) => [s.name, s.plugin]) : []);
   const globalDupes = dupesOf(planGlobalTidy({ enabled: agents }), null);
-  const machine = machineSkills(agents).map((s) => {
+  const sourced = machineSkills(agents);
+  const machine = sourced.map((s) => {
     descriptions[s.name] ??= s.description;
     const m = machineSkill(s, kept);
     if (m.source !== "global" || m.broken) return m;
@@ -177,6 +178,13 @@ export function loadWorld(): World {
     const plugin = cursorPlugin.get(m.name);
     return { ...m, ...(dupes ? { dupes } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
   });
+  // A repo's Claude Code settings can turn a plugin on or off just there.
+  const plugins = (root: string): Pick<Project, "machine"> => {
+    const loaded = skillsLoadedIn(root, sourced, agents);
+    if (loaded === sourced) return {};
+    for (const s of loaded) descriptions[s.name] ??= s.description;
+    return { machine: loaded.map((s) => machine[sourced.indexOf(s)] ?? machineSkill(s, kept)) };
+  };
   const projects = roots.map((root): Project => {
     const status = projectStatus(root);
     const hasManifest = existsSync(join(root, "skilllib.json"));
@@ -192,6 +200,7 @@ export function loadWorld(): World {
         const plugin = cursorPlugin.get(s.name);
         return { ...localSkill(root, s, git), ...(d ? { dupes: d } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
       }),
+      ...plugins(root),
     };
   });
   const backups = [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt));
@@ -368,6 +377,14 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     createSkill: (name) => {
       const r = createSkill(name, "");
       return r.ok ? `Created ${name} in your library: edit its SKILL.md from Your skills` : `${name}: ${r.reason}`;
+    },
+    pluginOffHere: (repo, id) => {
+      const root = rootOf(repo);
+      const plugin = claudePlugins(skillsLoadedIn(root, machineSkills()), root).find((p) => p.id === id);
+      if (!plugin) return `${id} isn't on in ${repo}`;
+      const r = turnOffIn(plugin, root);
+      if (!r.ok) throw new Error(r.message);
+      return r.message;
     },
     replacePlugin: (id, repos) => {
       const skills = machineSkills().filter((s) => s.kind === "plugin" && s.origin === id && !s.broken);

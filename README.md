@@ -131,7 +131,7 @@ What skilllib flags:
 | Issue | Fixes |
 |---|---|
 | **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global |
-| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off with `/plugin` |
+| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`) |
 | **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
 | **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
 | ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
@@ -224,9 +224,10 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
 | **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
-| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. |
+| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
 | A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
+| A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |
 
 - **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
 - **It never adds links.** That's `skilllib link`, or a skill's *can't see it* fix.
@@ -239,6 +240,7 @@ skilllib never really deletes anything you can't get back. What it removes goes 
 - removed library skills and untracked copies go to `~/.skilllib/trash`
 - removed global skills go to `~/.skilllib/global-backup`
 - copies replaced by a link go to `~/.skilllib/tidy-backup`
+- edits `skilllib doctor` discards go to `~/.skilllib/edit-backup`
 - removed plugins are listed too; restoring one reinstalls it
 
 ---
@@ -250,8 +252,9 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 | Where | Examples | Who sees it |
 |---|---|---|
 | **The repo** | `.claude/skills`, `.agents/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
+| **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide |
 | **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.cursor/skills` | **Every repo** |
-| **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills | Every repo; only the vendor can remove them |
+| **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin) | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
 
 ### ✻ Claude Code · [docs](https://code.claude.com/docs/en/skills)
@@ -350,7 +353,7 @@ The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so a
 | `~/.skilllib/library/` | Your skills (master copies). Worth putting under git. |
 | `~/.skilllib/store/` | Every version of every skill, immutable |
 | `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
-| `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/` | Everything skilllib removed, restorable from Settings › Backups |
+| `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/`, `edit-backup/` | Everything skilllib removed, restorable from Settings › Backups |
 | `~/.skilllib/plugin-backup.json` | Plugins skilllib uninstalled, so Settings › Backups can reinstall them |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 | `~/.claude/skills/skilllib/` | The skill that lets your agents use skilllib (`agent-skill install`) |
@@ -388,7 +391,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.4.1 && git push --tags
+   git tag v1.5.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.
