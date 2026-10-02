@@ -1,13 +1,12 @@
-import { existsSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
-import { MANIFEST_FILE } from "./paths.js";
-import { librarySkills, projectStatus, type SkillState } from "./library.js";
+import { readdirSync } from "node:fs";
+import { basename } from "node:path";
+import { librarySkills, nestedSkills, projectStatus, type ProjectSkill, type SkillState } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo, type GitState } from "./git.js";
 import type { HarnessId } from "./harnesses.js";
-import { isProjectCandidate, readManifest } from "./project.js";
+import { projectHere, readManifest } from "./project.js";
 import { tildify } from "./output.js";
-import { machineSkills, type SourceKind } from "./sources.js";
+import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
 import { findIssues } from "./health.js";
 
 /*
@@ -20,12 +19,12 @@ import { findIssues } from "./health.js";
 
 /**
  * - library: added from your skills with skilllib (pinned in skilllib.json)
- * - repo:    committed to the repo's .agents/skills by the team
- * - local:   in the repo's skill folders, not managed by skilllib
+ * - repo:    the team's: committed to git (any skill folder), or in .agents/skills
+ * - local:   only on this machine: not committed, not managed by skilllib
  */
 export type ProjectSource = "library" | "repo" | "local";
 
-/** The repo's own skills that share every attribute. */
+/** The repo's own skills (or its subfolders') that share every attribute. */
 export type HereGroup = {
   source: ProjectSource;
   skills: string[];
@@ -61,6 +60,9 @@ export type Here = {
   files: string[];
   agents: HarnessId[];
   skills: HereGroup[];
+  /** Skills in subfolders (monorepo packages), always with their `dir`: agents load them only when they work there. */
+  nested?: HereGroup[];
+  /** Skills that load in every repo, as this one loads them (its .claude/settings can turn a plugin on or off). */
   global: GlobalGroup[];
   issues: HereIssue[];
   /** Claude Code uses in this repo per skill, when there were any. */
@@ -83,7 +85,7 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 /** Where a global skill comes from, stated once for its whole group. */
 function globalFrom(kind: SourceKind, origin: string, path: string): string {
   // Always "/", like the other source labels, so it reads the same on every OS.
-  if (kind === "global") return tildify(path.replace(/[\\/][^\\/]+$/, "")).replace(/\\/g, "/");
+  if (kind === "global" || kind === "skilllib") return tildify(path.replace(/[\\/][^\\/]+$/, "")).replace(/\\/g, "/");
   return origin;
 }
 
@@ -101,33 +103,45 @@ function topLevel(root: string): string[] {
   }
 }
 
-/** Every skill your agents can use in `root`: the repo's own, then global ones grouped by source. */
+/** Every skill your agents can use in `root`: the repo's own, its subfolders', then global ones grouped by source. */
 export function usableHere(root: string, uses: Map<string, number> = new Map()): Here {
   const agents = enabledHarnesses();
-  const git = gitInfo(root);
-  // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills.
-  const inRepo = isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE)));
-  const project = inRepo ? projectStatus(root) : [];
-  const skills = groupBy<HereGroup>(
-    project.map((s) => {
-      const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
-      const behind = s.managed && s.latest !== null && s.version !== null && s.latest > s.version;
-      const attrs = {
-        source: (s.managed ? "library" : s.state.startsWith("repo skill") ? "repo" : "local") as ProjectSource,
-        ...(s.location !== ".claude/skills" && { dir: s.location }),
-        ...(s.version !== null && { version: s.version }),
-        ...(s.state !== "ok" && s.state !== "local only" && !s.state.startsWith("repo skill") && { state: s.state }),
-        ...(behind && { latest: s.latest! }),
-        ...(git && { git: git.of(relativeTo(root, s.path)) }),
-        ...(!sameSet(loadedBy, agents) && { agents: loadedBy }),
-      };
-      return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];
-    }),
-  );
+  // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills,
+  // and subfolders are just folders.
+  const inRepo = projectHere(root) === root;
+  // Monorepo packages' own skill folders.
+  const nestedHere = inRepo ? nestedSkills(root, { enabled: agents }) : [];
+  const git = gitInfo(root, [...new Set(nestedHere.map((s) => s.location))]);
+  const group = (list: ProjectSkill[]) =>
+    groupBy<HereGroup>(
+      list.map((s) => {
+        const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
+        const behind = s.managed && s.latest !== null && s.version !== null && s.latest > s.version;
+        const gitState = git?.of(relativeTo(root, s.path));
+        // A copy git tracks is the team's wherever it lives (.claude/skills too), as the TUI shows it.
+        const repo = !s.managed && (s.state.startsWith("repo skill") || gitState === "committed" || gitState === "changed");
+        const usual = s.state === "ok" || s.state === "local only" || (repo && s.state !== "from npx skills");
+        const attrs = {
+          source: (s.managed ? "library" : repo ? "repo" : "local") as ProjectSource,
+          ...(s.location !== ".claude/skills" && { dir: s.location }),
+          ...(s.version !== null && { version: s.version }),
+          ...(!usual && { state: s.state }),
+          ...(behind && { latest: s.latest! }),
+          ...(gitState && { git: gitState }),
+          ...(!sameSet(loadedBy, agents) && { agents: loadedBy }),
+        };
+        return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];
+      }),
+    );
+  const skills = group(inRepo ? projectStatus(root) : []);
+  const nested = group(nestedHere);
 
   const machine = machineSkills(agents);
+  // As this repo loads them: its .claude/settings(.local).json can turn a plugin on or off just here.
+  // (findIssues takes the machine's skills and applies the repo's settings itself.)
+  const loaded = inRepo ? skillsLoadedIn(root, machine, agents) : machine;
   const global = groupBy<GlobalGroup>(
-    machine
+    loaded
       .filter((m) => !m.broken && m.harnesses.length > 0)
       .map((m) => {
         const from = globalFrom(m.kind, m.origin, m.path);
@@ -148,6 +162,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
     files: topLevel(root),
     agents,
     skills,
+    ...(nested.length > 0 && { nested }),
     global,
     issues: [...issues.values()],
     ...(Object.keys(usesHere).length > 0 && { usesHere }),

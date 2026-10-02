@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, skilllibHome, userHome } from "./paths.js";
 import { versionForHash } from "./versions.js";
 
 /**
@@ -34,6 +33,16 @@ export function findProjectRoot(from: string = process.cwd()): string {
     if (parent === dir) return resolve(from);
     dir = parent;
   }
+}
+
+/**
+ * The project you're in: the root findProjectRoot finds, but only a repo (or a
+ * folder with skilllib.json) that isn't your home folder. Null otherwise:
+ * outside a repo, the skill folders around you are the global ones.
+ */
+export function projectHere(from: string = process.cwd()): string | null {
+  const root = findProjectRoot(from);
+  return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE))) ? root : null;
 }
 
 export function projectSkillsDir(root: string): string {
@@ -90,7 +99,22 @@ export function knownProjects(): string[] {
   const path = projectsFile();
   if (!existsSync(path)) return [];
   const list = JSON.parse(readFileSync(path, "utf-8")) as string[];
-  return list.filter((p) => existsSync(p) && isProjectCandidate(p));
+  return onePerFolder(list.filter((p) => existsSync(p) && isProjectCandidate(p)));
+}
+
+/**
+ * One path per real folder: a repo reached through a symlinked folder (a projects folder on another
+ * drive, macOS /var → /private/var) is otherwise recorded twice, by scan and by commands run in it (#52).
+ * Keeps the path you know, the one through the symlink.
+ */
+export function onePerFolder(paths: string[]): string[] {
+  const byReal = new Map<string, string>();
+  for (const p of paths) {
+    const real = realPath(p);
+    const seen = byReal.get(real);
+    if (seen === undefined || (seen === real && p !== real)) byReal.set(real, p);
+  }
+  return [...new Set(byReal.values())];
 }
 
 /**
@@ -98,12 +122,13 @@ export function knownProjects(): string[] {
  * like a project but isn't one; every session would otherwise count as "in" it.
  */
 export function isProjectCandidate(root: string): boolean {
-  return resolve(root) !== homedir();
+  // Real paths: the folder you're in comes back without symlinks, while $HOME may go through one (#51).
+  return realPath(root) !== realPath(userHome());
 }
 
 export function rememberProjects(roots: string[]) {
   const incoming = roots.map((r) => resolve(r)).filter(isProjectCandidate);
-  const all = [...new Set([...knownProjects(), ...incoming])].sort();
+  const all = onePerFolder([...knownProjects(), ...incoming]).sort();
   mkdirSync(skilllibHome(), { recursive: true });
   writeFileSync(projectsFile(), JSON.stringify(all, null, 2) + "\n");
 }

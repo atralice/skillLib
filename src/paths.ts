@@ -1,9 +1,19 @@
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /** The user's home folder; reads $HOME each time so tests (and odd setups) can redirect it. */
 export function userHome(): string {
   return process.env.HOME || homedir();
+}
+
+/** A path with its symlinks resolved (e.g. macOS /var → /private/var), or as given when it doesn't exist. */
+export function realPath(path: string): string {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return resolve(path);
+  }
 }
 
 /** Where skilllib keeps its state. Override with SKILLLIB_HOME. */

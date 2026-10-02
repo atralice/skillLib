@@ -28,10 +28,13 @@ function git(root: string, args: string[], input?: string): string | null {
   }
 }
 
-/** Git state of every skill folder in a project, or null when it isn't a git repo. */
-export function gitInfo(root: string): GitInfo | null {
+/**
+ * Git state of every skill folder in a project, or null when it isn't a git repo.
+ * `extraDirs`: more folders to cover, relative to the root (e.g. nested skill folders).
+ */
+export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null {
   if (!existsSync(join(root, ".git"))) return null;
-  const dirs = [...ALL_PROJECT_DIRS, MANIFEST_FILE].filter((d) => existsSync(join(root, d)));
+  const dirs = [...ALL_PROJECT_DIRS, MANIFEST_FILE, ...extraDirs].filter((d) => existsSync(join(root, d)));
   if (dirs.length === 0) return { of: () => "new" };
 
   const tracked = (git(root, ["ls-files", "-z", "--", ...dirs]) ?? "").split("\0").filter(Boolean);

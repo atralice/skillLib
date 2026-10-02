@@ -7,7 +7,7 @@ import type { GitState } from "../git.js";
 import { harness, type HarnessId } from "../harnesses.js";
 import { matchScore } from "../search.js";
 
-export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system";
+export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
 
 /** Same-name copies that should be one real copy plus links (see tidy.ts). */
@@ -22,7 +22,7 @@ export type Dupes = {
 
 export type LocalSkill = {
   name: string;
-  /** lib: tracked in skilllib.json · repo: the team's, in .agents/skills · untracked: only on this machine. */
+  /** lib: tracked in skilllib.json · repo: the team's (in .agents/skills, or committed to git), never removed · untracked: only on this machine. */
   source: "lib" | "repo" | "untracked";
   /** Project folder holding the real copy, e.g. ".claude/skills". */
   dir: string;
@@ -33,19 +33,28 @@ export type LocalSkill = {
   version?: number;
   edited?: boolean;
   missing?: boolean;
-  /** How it compares with your library: the same, different, or not there (tracked but deleted from it). */
+  /** How it compares with your library: the same, different, or not there (tracked but deleted from it, or never in yours). */
   library?: "same" | "differs" | "missing";
+  /**
+   * Agents that can't see it, and only would through a link in a folder git tracks. Git doesn't share the real copy
+   * (not committed), so that link would break for teammates: skilllib never adds it until it's committed.
+   */
+  unshared?: HarnessId[];
   /** Its git state; null when the repo isn't a git repo. */
   git: GitState | null;
   dupes?: Dupes;
   /** A Cursor plugin with the same skill (Cursor's plugin state can't be read: maybe off). */
   cursorPlugin?: string;
+  /** Where it was installed from, e.g. "npx skills: owner/repo" (the repo's skills-lock.json). */
+  origin?: string;
+  /** When its folder appeared here (ms): a skill added a minute ago isn't "unused". */
+  added?: number;
 };
 
 export type MachineSkill = {
   name: string;
-  /** system: a machine-wide folder an admin manages (/etc/codex/skills). */
-  source: "global" | "plugin" | "claude.ai" | "cursor" | "system";
+  /** system: a machine-wide folder an admin manages (/etc/codex/skills) · skilllib: skilllib's own skill (`where`: its global folder). */
+  source: "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
   /** Global folder, plugin id, or where a vendor skill comes from. */
   where: string;
   /** Where it was installed from, e.g. an `npx skills` repo. */
@@ -87,12 +96,29 @@ export type Project = {
 export type RepoInfo = { remote?: string; branch?: string; dirty: number };
 export type Backup = { name: string; from: string; at: string };
 
-/** What a fix did; `then` asks for one more confirmation (e.g. linking into a folder git tracks). */
-export type Result = string | { message: string; then: Fix };
+/**
+ * What a fix did. `then` asks for one more confirmation (e.g. linking into a folder git tracks);
+ * `failed` when it didn't do what it was for (the app shows ✗).
+ */
+export type Result = string | { message: string; then: Fix } | { message: string; failed: true };
+
+export const failed = (message: string): Result => ({ message, failed: true });
+export const isFailure = (r: Result): boolean => typeof r !== "string" && "failed" in r;
+/** The follow-up question a result asks, if any. */
+export const followUp = (r: Result): Fix | undefined => (typeof r !== "string" && "then" in r ? r.then : undefined);
+/** A result's message. */
+export const said = (r: Result): string => (typeof r === "string" ? r : r.message);
+/** Several results as one: their messages, failed if any failed. */
+export const joined = (results: Result[]): Result => {
+  const message = results.map(said).join(" · ");
+  return results.some(isFailure) ? failed(message) : message;
+};
 
 /** Everything that changes something, and a few lookups too slow to do for every repo up front. */
 export type Ops = {
   add(repo: string, name: string): Result;
+  /** Library skills into several repos; links git-tracked folders held back are one question for all of them. */
+  addTo(repos: string[], names: string[]): Result;
   remove(repo: string, name: string): Result;
   /** Reinstall a tracked skill whose folder is missing. */
   restore(repo: string, name: string): Result;
@@ -118,8 +144,12 @@ export type Ops = {
   keepGlobal(name: string, keep: boolean): Result;
   /** Links a global skill into the global folders of agents that can't see it. */
   linkGlobal(m: MachineSkill, agents: HarnessId[]): Result;
-  /** `group`: the group it moved with, recorded as its origin so it stays grouped in your library. */
-  moveGlobal(m: MachineSkill, repos: string[], group?: string): Result;
+  /**
+   * Global skills into your library and these repos, no longer loading globally. One result for all of them,
+   * asking before linking into folders git tracks. `group`: the group they moved with, recorded as their
+   * origin so they stay grouped in your library.
+   */
+  moveGlobal(skills: MachineSkill[], repos: string[], group?: string): Result;
   createSkill(name: string): Result;
   /** Turns a Claude Code plugin off in one repo only (its .claude/settings.local.json). */
   pluginOffHere(repo: string, id: string): Result;
@@ -144,6 +174,10 @@ export type Ops = {
   openFolder(path: string): Result;
   /** Copies text for an agent (and saves it); says where it went. */
   copy(text: string, what: string): Result;
+  /** Installs (or refreshes) the skilllib skill in the global folders your agents read. */
+  installAgentSkill(): Result;
+  /** Removes the skilllib skill from the global folders it was installed in. */
+  removeAgentSkill(): Result;
 };
 
 export type World = {
@@ -164,6 +198,8 @@ export type World = {
   hidden: string[];
   /** You've picked your agents (otherwise the first run asks). */
   agentsChosen: boolean;
+  /** The skilllib skill, which lets your agents answer "which skills can I use here?" with skilllib. */
+  agentSkill: "installed" | "outdated" | "missing";
   ops: Ops;
 };
 
@@ -208,7 +244,7 @@ export type Issue = {
 export const SEVERITY_RANK: Record<Severity, number> = { problem: 0, warning: 1, hint: 2 };
 
 export function filterOf(source: Source): Exclude<Filter, "all"> {
-  return source === "lib" || source === "repo" || source === "untracked" ? "local" : source === "global" ? "global" : source === "plugin" ? "plugins" : "vendor";
+  return source === "lib" || source === "repo" || source === "untracked" ? "local" : source === "global" || source === "skilllib" ? "global" : source === "plugin" ? "plugins" : "vendor";
 }
 
 export function project(w: World, name: string): Project {
@@ -251,6 +287,12 @@ function lib(w: World, name: string): LibrarySkill | undefined {
 // ─── Health ─────────────────────────────────────────────
 
 const agentNames = (ids: HarnessId[]) => ids.map((a) => harness(a).name).join(", ");
+
+/** ", and repo-web used it in the last 30 days": the other repos that lose a global skill (no copy of their own) though they use it. */
+function usedElsewhere(w: World, except: string | null, name: string): string {
+  const repos = w.projects.filter((p) => p.name !== except && (w.usage[p.name]?.[name] ?? 0) > 0 && !p.skills.some((s) => s.name === name)).map((p) => p.name);
+  return repos.length ? `, and ${repos.join(", ")} used it in the last 30 days` : "";
+}
 
 /** Duplicate copies of a skill in a repo, or in your global folders (`repo` null). */
 function dupeIssues(repo: string | null, name: string, d: Dupes): Issue[] {
@@ -315,7 +357,7 @@ export function globalFixes(m: MachineSkill): Fix[] {
       label: "Move it to the repos that need it…",
       preview: `Pick repos. ${m.name} goes into your library and those repos, and stops loading globally (original backed up).`,
       run: () => "",
-      pickRepos: (w, repos) => w.ops.moveGlobal(m, repos),
+      pickRepos: (w, repos) => w.ops.moveGlobal([m], repos),
     },
     m.kept
       ? { label: "Stop marking it as global on purpose", preview: `skilllib warns about ${m.name} again, like any global skill.`, run: (w) => w.ops.keepGlobal(m.name, false) }
@@ -330,11 +372,13 @@ export function globalFixes(m: MachineSkill): Fix[] {
  */
 export function machineActions(m: MachineSkill): Fix[] {
   if (m.broken) return []; // its issue already offers "Remove the link"
-  return m.source === "global" ? globalFixes(m) : [];
+  return m.source === "global" ? globalFixes(m) : m.source === "skilllib" ? [removeAgentSkillFix()] : [];
 }
 
 /** Issues on skills that load everywhere, independent of any project. */
 export function machineIssues(w: World, m: MachineSkill): Issue[] {
+  // skilllib's own skill: only whether it's current for every agent you use.
+  if (m.source === "skilllib") return [agentSkillIssue(w)].flatMap((i) => (i ? [i] : []));
   if (m.broken)
     return [
       {
@@ -355,11 +399,12 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
       severity: "problem",
       title: `Loaded twice: also in ${other.source} ${other.where}`,
       short: "Loaded twice",
-      decision: false,
+      // Every repo then runs the other copy instead of yours: a decision, never "fix all".
+      decision: true,
       fixes: [
         {
           label: `Keep the ${other.source}'s copy, stop loading yours globally`,
-          preview: `Copy ${m.name} into your library if needed, then move ${m.path} to the backups.`,
+          preview: `Copy ${m.name} into your library if needed, then move ${m.path} to the backups. Every repo then runs the ${other.source}'s copy instead of yours.`,
           run: (w) => w.ops.unloadGlobal(m),
         },
       ],
@@ -409,7 +454,17 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
     run: (w) => w.ops.remove(projectName, s.name),
   };
 
-  if (s.missing)
+  // Sync restores a missing folder from your library: one the library doesn't have (a teammate's skill, another library) can't come back.
+  if (s.missing && s.library === "missing")
+    issues.push({
+      id: `unavailable:${s.name}`,
+      severity: "problem",
+      title: "Pinned in skilllib.json, but not in your library: import it, or set SKILLLIB_HOME to the library that has it",
+      short: "Pinned, not in your library",
+      decision: true,
+      fixes: [{ label: "Remove it from skilllib.json", preview: `${projectName}'s skilllib.json stops pinning ${s.name} v${s.version}. There's no folder to delete.`, run: (w) => w.ops.remove(projectName, s.name) }],
+    });
+  else if (s.missing)
     issues.push({
       id: `missing:${s.name}`,
       severity: "problem",
@@ -418,7 +473,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       decision: false,
       fixes: [{ label: "Restore it (sync)", preview: `Reinstall ${s.name} v${s.version} into ${s.dir}.`, run: (w) => w.ops.restore(projectName, s.name) }],
     });
-  if (s.source === "lib" && s.library === "missing")
+  else if (s.source === "lib" && s.library === "missing")
     issues.push({
       id: `not-in-lib:${s.name}`,
       severity: "problem",
@@ -439,7 +494,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         ...(s.source !== "repo" ? [{ ...remove, label: "Remove this repo's copy, keep it global" }] : []),
         {
           label: "Stop loading it globally after all",
-          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Other repos stop seeing it.`,
+          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Every other repo stops seeing it${usedElsewhere(w, projectName, s.name)}.`,
           run: (w: World) => w.ops.unloadGlobal(g),
         },
       ],
@@ -450,17 +505,31 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "problem",
       title: `Loaded twice: also global in ${g.where}`,
       short: "Loaded twice",
-      decision: false,
+      // Unloading the global copy changes every repo: a decision, never "fix all".
+      decision: true,
       fixes: [
         {
           label: "Keep this repo's copy, stop loading it globally",
-          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Other repos stop seeing it.`,
+          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Every other repo stops seeing it${usedElsewhere(w, projectName, s.name)}.`,
           run: (w) => w.ops.unloadGlobal(g),
         },
         ...(s.source !== "repo" ? [{ ...remove, label: "Keep it global, remove it from this repo" }] : []),
       ],
     });
-  if (vendor)
+  // This repo's settings turned the plugin off for Claude Code, but Cursor ignores them and still lists both.
+  // Turning it off here again changes nothing, and removing this copy would leave Claude Code with neither:
+  // only taking the plugin off everywhere helps.
+  const cursorOnly = vendor?.source === "plugin" && w.agents.includes("claude-code") && !vendor.agents.includes("claude-code");
+  if (vendor && cursorOnly)
+    issues.push({
+      id: `twice-p:${s.name}`,
+      severity: "warning",
+      title: `Same name as a skill in plugin ${vendor.where}: Claude Code has it off in ${projectName}, but Cursor ignores repo settings and lists both`,
+      short: "Cursor also lists a plugin's copy",
+      decision: true,
+      fixes: [replacePluginFix(w, vendor.where)],
+    });
+  else if (vendor)
     issues.push({
       id: `twice-p:${s.name}`,
       severity: "problem",
@@ -472,7 +541,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         vendor.source === "plugin"
           ? {
               label: `Turn the plugin off in ${projectName} only`,
-              preview: `Sets "${vendor.where}": false in ${projectName}'s .claude/settings.local.json (claude plugin disable --scope local). Other repos keep it.`,
+              preview: `Sets "${vendor.where}": false in ${projectName}'s .claude/settings.local.json (claude plugin disable --scope local), a local-only file git ignores. Other repos keep it.${vendor.agents.includes("cursor") ? " Cursor ignores repo settings, so it still lists both." : ""}`,
               run: (w: World) => w.ops.pluginOffHere(projectName, vendor.where),
             }
           : {
@@ -506,20 +575,34 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       fixes: [{ label: `Update to v${l.latest}`, preview: `Replace ${s.dir}/${s.name} with library v${l.latest}.`, run: (w) => w.ops.update(projectName, s.name) }],
     });
   const blind = w.agents.filter((a) => !u.agents.includes(a));
-  if (!s.missing && blind.length)
+  // Some agents only get it once it's committed: a link to an uncommitted copy in a folder git tracks breaks for teammates.
+  const unshared = blind.filter((a) => s.unshared?.includes(a));
+  const linkable = blind.filter((a) => !unshared.includes(a));
+  const commitFirst = unshared.length ? ` ${agentNames(unshared)} ${unshared.length === 1 ? "needs" : "need"} it committed first (git tracks the folder they read).` : "";
+  if (!s.missing && linkable.length)
     issues.push({
       id: `blind:${s.name}`,
       severity: "warning",
-      title: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
-      short: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
+      title: `${agentNames(blind)} can't see it`,
+      short: `${agentNames(blind)} can't see it`,
       decision: false,
       fixes: [
         {
           label: "Link it for every agent",
-          preview: `Add links (nothing is copied or moved), so ${blind.map((a) => harness(a).name).join(", ")} load it too.`,
+          preview: `Add links (nothing is copied or moved), so ${agentNames(linkable)} ${linkable.length === 1 ? "loads" : "load"} it too.${commitFirst}`,
           run: (w) => w.ops.link(projectName, s.name),
         },
       ],
+    });
+  else if (!s.missing && unshared.length)
+    issues.push({
+      id: `blind:${s.name}`,
+      severity: "warning",
+      title: `${agentNames(unshared)} can't see it: commit ${s.dir}/${s.name} first, then link it (git tracks the folder they read, and a link to an uncommitted copy would break for teammates)`,
+      short: `${agentNames(unshared)} can't see it: commit it first`,
+      // Nothing skilllib can do: committing is yours.
+      decision: true,
+      fixes: [],
     });
   // Copies that differ need a winner first: comparing one of them with your library says nothing.
   const differ = !!s.dupes?.differ;
@@ -543,7 +626,8 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "hint",
       title: "Same as your library skill, but not tracked",
       short: "Not tracked",
-      decision: false,
+      // It writes to the repo's skilllib.json (and your library): your call, never in Fix all (as in doctor, #11).
+      decision: true,
       fixes: [{ label: "Track it", preview: `Record ${s.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(projectName, s.name) }],
     });
   if (s.source === "untracked" && !l && !vendor && !differ)
@@ -552,7 +636,8 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "hint",
       title: "Only exists in this repo",
       short: "Only in this repo",
-      decision: false,
+      // It writes to the repo's skilllib.json (and your library): your call, never in Fix all (as in doctor, #11).
+      decision: true,
       fixes: [
         {
           label: "Import it into your library",
@@ -561,7 +646,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         },
       ],
     });
-  if (s.source === "lib" && w.days && u.uses === 0 && !s.missing)
+  if (s.source === "lib" && w.days && u.uses === 0 && !s.missing && (s.added ?? 0) <= Date.now() - 30 * 24 * 60 * 60 * 1000)
     issues.push({
       id: `unused:${s.name}`,
       severity: "hint",
@@ -571,6 +656,69 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       fixes: [{ ...remove, label: "Remove it from this repo", preview: `Delete ${s.dir}/${s.name} in ${projectName}. Your library keeps it.` }],
     });
   return issues;
+}
+
+/** Installs or refreshes the skilllib skill for every agent you use. */
+export function agentSkillFix(w: World): Fix {
+  return {
+    label: w.agentSkill === "outdated" ? "Update the skilllib skill" : "Install the skilllib skill for your agents",
+    preview:
+      "One global skill, skilllib, where your agents look in every repo (~/.claude/skills, and ~/.agents/skills for Codex and Zed). Then ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add. `skilllib agent-skill remove` takes it out.",
+    run: (w) => w.ops.installAgentSkill(),
+  };
+}
+
+/** Takes the skilllib skill out of your global folders (`skilllib agent-skill remove`). */
+export function removeAgentSkillFix(): Fix {
+  return {
+    label: "Remove the skilllib skill",
+    preview:
+      "Removes it from ~/.claude/skills and ~/.agents/skills, where skilllib put it. Your agents then stop using skilllib to answer which skills they can use. Settings › skilllib skill puts it back.",
+    run: (w) => w.ops.removeAgentSkill(),
+  };
+}
+
+/** Your agents don't have the skilllib skill. Installing adds a global skill, so it's your call; refreshing it isn't. */
+export function agentSkillIssue(w: World): Issue | null {
+  // No agents picked yet: there's nowhere to put it.
+  if (w.agentSkill === "installed" || !w.agents.length) return null;
+  const missing = w.agentSkill === "missing";
+  return {
+    id: "agent-skill",
+    severity: missing ? "hint" : "warning",
+    title: missing ? "Your agents don't know about skilllib" : "The skilllib skill for your agents is out of date",
+    short: missing ? "Your agents don't know about skilllib" : "Out of date",
+    decision: missing,
+    fixes: [agentSkillFix(w)],
+  };
+}
+
+/**
+ * "Fix all": runs the fixes and says what happened. A fix whose result asks a follow-up was held back
+ * (it needs your OK, e.g. git tracks the folder); its message says what and why.
+ */
+export function runAll(w: World, fixes: Fix[]): Result {
+  const held: string[] = [];
+  const bad: string[] = [];
+  for (const fix of fixes) {
+    let r: Result;
+    try {
+      r = fix.run(w);
+    } catch (e) {
+      r = failed((e as Error).message);
+    }
+    if (isFailure(r)) bad.push(said(r));
+    else if (followUp(r)) held.push(said(r));
+  }
+  const ok = fixes.length - held.length - bad.length;
+  const message = [
+    `Applied ${ok}${ok === fixes.length ? "" : ` of ${fixes.length}`} fix${fixes.length === 1 ? "" : "es"}${ok ? " (anything removed is in Settings › Backups)" : ""}`,
+    held.length ? `${held.join("; ")} (fix ${held.length === 1 ? "it" : "them"} on ${held.length === 1 ? "its" : "their"} own to go ahead)` : "",
+    bad.length ? `couldn't: ${bad.join("; ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return bad.length ? failed(message) : message;
 }
 
 export function worst(issues: Issue[]): Issue | undefined {
@@ -613,11 +761,7 @@ export function deleteLibraryFix(w: World, names: string[]): Fix {
     ]
       .filter(Boolean)
       .join(" "),
-    run: (w) =>
-      names
-        .map((n) => w.ops.deleteLibrary(n))
-        .map((r) => (typeof r === "string" ? r : r.message))
-        .join(" · "),
+    run: (w) => joined(names.map((n) => w.ops.deleteLibrary(n))),
   };
 }
 
@@ -689,6 +833,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
   if (m?.source === "claude.ai") return [{ key: "claude.ai", label: "claude.ai skills" }];
   if (m?.source === "cursor") return [{ key: "cursor", label: "Cursor built-ins" }];
   if (m?.source === "system") return [{ key: `system:${m.where}`, label: m.where }];
+  if (m?.source === "skilllib") return [];
   if (m) {
     const origin = originGroup(m.origin);
     return [...(origin ? [origin] : []), ...byTime("global", m.installed), ...byWord("global", m.name)];
@@ -741,6 +886,8 @@ export type AddRow = {
   /** Hands the writing to an agent; changes nothing here. */
   agent?: boolean;
   run?: (w: World) => Result;
+  /** Runs once the new skill's SKILL.md has been edited: installing it then puts in what you wrote, not the template. */
+  afterEdit?: (w: World) => Result;
 };
 
 /**
@@ -769,10 +916,8 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
           name: q ? `+ Create "${q}"${where}` : "+ Create a new skill (type its name)",
           note: "",
           description: "",
-          run: (w) => {
-            const made = w.ops.createSkill(q);
-            return target ? w.ops.add(target, q) : made;
-          },
+          run: (w) => w.ops.createSkill(q),
+          ...(target ? { afterEdit: (w: World) => w.ops.add(target, q) } : {}),
         },
         { key: "agent", agent: true, name: q ? `✦ Write "${q}" with an agent` : "✦ Write a new skill with an agent", note: "", description: "" },
       ];

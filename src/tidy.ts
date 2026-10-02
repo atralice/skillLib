@@ -5,8 +5,9 @@ import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
 import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
-import { globalSkillDirs, projectSkillsLock } from "./sources.js";
+import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
 import { treeHash } from "./skills.js";
 
 /**
@@ -14,14 +15,15 @@ import { treeHash } from "./skills.js";
  * - link:    point a wrong or broken link at the real copy
  * - unlink:  remove a link no agent you use needs
  * - replace: swap an identical (or, if you chose, a differing) real copy for a link
- * - remove:  drop an identical real copy no agent you use needs
+ * - remove:  drop an identical (or, if you chose, a differing) real copy no agent you use needs
+ * `differs`: the copy's content isn't the kept one's (a `keep` choice), so the step says so.
  * Real copies that go away are stashed in ~/.skilllib/tidy-backup, restorable from Health.
  */
 export type TidyStep =
   | { kind: "link"; path: string; target: string }
   | { kind: "unlink"; path: string }
-  | { kind: "replace"; path: string; target: string }
-  | { kind: "remove"; path: string };
+  | { kind: "replace"; path: string; target: string; differs?: true }
+  | { kind: "remove"; path: string; differs?: true };
 
 /** What tidy would do for one skill. `root` is null for the global folders. */
 export type TidyPlan = { name: string; root: string | null; primary: string; steps: TidyStep[] };
@@ -122,7 +124,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     if (dep) {
       primary = reals.find((r) => rel(r.dir) === (dep.dir ?? PROJECT_SKILLS_DIR));
       if (!primary) continue; // folder missing: sync's job
-    } else if (chosen) {
+    } else if (chosen && reals.some((r) => r.dir === chosen)) {
       primary = reals.find((r) => r.dir === chosen);
     } else {
       // The copy teammates get (committed); then, for a skill `npx skills` installed, its own
@@ -152,7 +154,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
           if (!needed) steps.push({ kind: "unlink", path: e.path });
         } else steps.push(needed ? { kind: "link", path: e.path, target: primary.path } : { kind: "unlink", path: e.path });
       } else {
-        steps.push(needed ? { kind: "replace", path: e.path, target: primary.path } : { kind: "remove", path: e.path });
+        const differs = e.hash !== primary.hash ? { differs: true as const } : {};
+        steps.push(needed ? { kind: "replace", path: e.path, target: primary.path, ...differs } : { kind: "remove", path: e.path, ...differs });
       }
     }
     if (steps.length) report.plans.push({ name, root, primary: primary.path, steps });
@@ -162,7 +165,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
 
 /** The global folders an agent reads. */
 function globalReadsOf(id: HarnessId): string[] {
-  return HARNESSES.find((h) => h.id === id)!.globalDirs();
+  return HARNESSES.find((h) => h.id === id)!.globalDirs().map(globalDirAs);
 }
 
 /** A "skills-directory plugin": a folder in a skills dir that is really a Claude Code plugin. Never touched. */
@@ -187,15 +190,20 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
       report.skipped.push({ name, reason: "a Claude Code plugin kept in a skills folder" });
       continue;
     }
-    const reals = entries.filter((e) => !e.link);
+    // Never two "copies" of one real folder: tidying those would replace a skill with a link to itself (#54).
+    const reals = entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && realpathOrNull(o.path) === realpathOrNull(e.path)) === i);
     if (reals.length < 2) continue;
     hashReals(reals);
-    const primary = reals.find((r) => r.dir === keep[name]) ?? reals.find((r) => r.dir === agents) ?? reals[0]!;
-    if (!keep[name] && reals.some((r) => r.hash !== primary.hash)) {
+    // A `keep` folder with no copy picks nothing: differing copies stay a conflict.
+    const kept = reals.find((r) => r.dir === keep[name]);
+    const primary = kept ?? reals.find((r) => r.dir === agents) ?? reals[0]!;
+    if (!kept && reals.some((r) => r.hash !== primary.hash)) {
       report.conflicts.push(conflictOf(name, null, reals, enabled, globalReadsOf));
       continue;
     }
-    const steps = reals.filter((r) => r !== primary).map((r): TidyStep => ({ kind: "replace", path: r.path, target: primary.path }));
+    const steps = reals
+      .filter((r) => r !== primary)
+      .map((r): TidyStep => ({ kind: "replace", path: r.path, target: primary.path, ...(r.hash !== primary.hash ? { differs: true as const } : {}) }));
     report.plans.push({ name, root: null, primary: primary.path, steps });
   }
   return report;
@@ -253,21 +261,35 @@ export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep"
 
 /** Short label for a step, e.g. "link .agents/skills/x" or "~/.claude/skills/x → link". */
 export function describeStep(step: TidyStep, root: string | null): string {
-  const shown = root ? relativeTo(root, step.path) : step.path.replace(userHome(), "~");
+  const shown = root ? relativeTo(root, step.path) : tildify(step.path);
   switch (step.kind) {
     case "link":
       return `link ${shown}`;
     case "unlink":
       return `remove extra link ${shown}`;
     case "replace":
-      return `${shown}: duplicate copy → link`;
+      return `${shown}: ${step.differs ? "differing" : "duplicate"} copy → link`;
     case "remove":
-      return `remove duplicate copy ${shown}`;
+      return `remove ${step.differs ? "differing" : "duplicate"} copy ${shown}`;
   }
 }
 
 /** Folder label for a conflict copy: ".claude/skills" in a repo, "~/.agents/skills" globally. */
 export function copyLabel(conflict: Conflict, dir: string): string {
-  return conflict.root ? relativeTo(conflict.root, dir) : dir.replace(userHome(), "~");
+  return folderLabel(conflict.root, dir);
+}
+
+/** ".claude/skills" in a repo, "~/.agents/skills" for a global folder. */
+export function folderLabel(root: string | null, dir: string): string {
+  return root ? relativeTo(root, dir) : tildify(dir);
+}
+
+/**
+ * Where a skill is, in a repo's skill folders (or the global ones when `root` is null):
+ * every folder holding it, and those holding a real copy (the ones `keep` can pick).
+ */
+export function foldersOf(root: string | null, name: string): { all: string[]; real: string[] } {
+  const entries = entriesOf(root ? ALL_PROJECT_DIRS.map((d) => join(root, d)) : globalSkillDirs(), name);
+  return { all: entries.map((e) => e.dir), real: entries.filter((e) => !e.link).map((e) => e.dir) };
 }
 

@@ -7,6 +7,7 @@ import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
+import { tildify } from "./output.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
 export type LibrarySkill = { name: string; description: string; dir: string };
@@ -259,26 +260,60 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
   return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
-export type LinkResult = { created: string[]; blocked: string[] };
+/**
+ * Whether teammates get a skill's real copy through git: it's committed, or new
+ * in a folder the repo commits (so it goes in with that folder). A copy in a
+ * folder git doesn't track, or a gitignored one, stays on this machine.
+ */
+export function sharedByGit(root: string, location: string, name: string): boolean {
+  const copy = `${location}/${name}`;
+  if (isGitTracked(root, copy)) return true;
+  if (!isGitTracked(root, location)) return false;
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--no-index", "--", copy], { cwd: root, stdio: "ignore" });
+    return false; // exit 0: ignored
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * created: folders that got a link · blocked: folders git tracks, skipped without
+ * your consent · uncommitted: folders git tracks, skipped because git doesn't share
+ * the real copy (a committed link to it would be broken for teammates).
+ */
+export type LinkResult = { created: string[]; blocked: string[]; uncommitted: string[] };
 
 /**
  * Adds relative symlinks so every enabled harness loads a skill whose real
- * copy lives at `location`. Folders git tracks are skipped unless `allowTracked`.
+ * copy lives at `location`. Folders git tracks are skipped unless `allowTracked`,
+ * and always when git doesn't share the real copy. `dryRun`: what it would do, changing nothing.
  */
-export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false } = {}): LinkResult {
+export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false, dryRun = false } = {}): LinkResult {
   const enabled = enabledHarnesses();
-  const result: LinkResult = { created: [], blocked: [] };
+  const result: LinkResult = { created: [], blocked: [], uncommitted: [] };
+  let shared: boolean | undefined;
   for (const id of enabled) {
     if (visibilityOf(root, name, [id])[0]!.paths > 0) continue;
     const dir = harness(id).projectDirs[0]!;
     const link = join(root, dir, name);
-    if (entryExists(link)) continue;
-    if (!allowTracked && isGitTracked(root, dir) && !readConfig().agentsDirOk?.includes(root)) {
-      result.blocked.push(dir);
-      continue;
+    // Agents can share a folder (Codex and Zed both read .agents/skills): one entry each.
+    if (entryExists(link) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
+    if (isGitTracked(root, dir)) {
+      if (!(shared ??= sharedByGit(root, location, name))) {
+        if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
+        continue;
+      }
+      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+        // Codex and Zed share .agents/skills: one folder, listed once.
+        if (!result.blocked.includes(dir)) result.blocked.push(dir);
+        continue;
+      }
     }
-    mkdirSync(join(root, dir), { recursive: true });
-    linkDir(join(root, location, name), link);
+    if (!dryRun) {
+      mkdirSync(join(root, dir), { recursive: true });
+      linkDir(join(root, location, name), link);
+    }
     result.created.push(dir);
   }
   return result;
@@ -298,7 +333,7 @@ export function unlinkEverywhere(root: string, name: string): string[] {
 export function relinkDependency(root: string, name: string, { allowTracked = false } = {}): LinkResult {
   const manifest = readManifest(root);
   const dep = manifest.skills[name];
-  if (!dep) return { created: [], blocked: [] };
+  if (!dep) return { created: [], blocked: [], uncommitted: [] };
   const result = linkEverywhere(root, name, dep.dir ?? PROJECT_SKILLS_DIR, { allowTracked });
   if (result.created.length) {
     manifest.skills[name] = { ...dep, links: [...new Set([...(dep.links ?? []), ...result.created])] };
@@ -310,34 +345,46 @@ export function relinkDependency(root: string, name: string, { allowTracked = fa
 /**
  * Makes every skill in the project usable by every enabled harness by adding
  * the missing links (the repo's own skills included; nothing is copied or moved).
+ * `uncommitted`: skills kept out of folders git tracks, since git doesn't share their real copy.
  */
-export function linkAll(root: string, { allowTracked = false } = {}): { linked: { name: string; into: string[] }[]; blocked: string[] } {
+export function linkAll(
+  root: string,
+  { allowTracked = false } = {},
+): { linked: { name: string; into: string[] }[]; blocked: string[]; uncommitted: string[] } {
   const linked: { name: string; into: string[] }[] = [];
   const blocked = new Set<string>();
+  const uncommitted: string[] = [];
   for (const skill of projectStatus(root)) {
     if (!skill.visibility.some((v) => v.paths === 0) || skill.state === "folder missing") continue;
     const res = skill.managed ? relinkDependency(root, skill.name, { allowTracked }) : linkEverywhere(root, skill.name, skill.location, { allowTracked });
     if (res.created.length) linked.push({ name: skill.name, into: res.created });
     for (const dir of res.blocked) blocked.add(dir);
+    if (res.uncommitted.length) uncommitted.push(skill.name);
   }
-  return { linked, blocked: [...blocked] };
+  return { linked, blocked: [...blocked], uncommitted };
 }
 
 export type Change = {
   name: string;
-  action: "installed" | "updated" | "removed" | "skipped";
+  /** reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`). */
+  action: "installed" | "updated" | "reset" | "removed" | "skipped";
   reason?: string;
   from?: number;
   to?: number;
   /** Harness folders a link couldn't be written to because git tracks them. */
   blocked?: string[];
+  /** Harness folders git tracks, left without a link because git doesn't share the real copy (teammates would get a broken link). */
+  uncommitted?: string[];
+  /** Where overwritten local edits went (~/.skilllib/edit-backup/…); `skilllib restore` puts them back. */
+  backedUp?: string;
 };
 
 /**
  * Installs a library skill version (default: the newest) into the project and
  * records it as a dependency. The real copy goes in the first folder your
  * harnesses need (see installDirs); the others get links. Existing installs
- * keep their recorded folders. Refuses to clobber local edits unless forced.
+ * keep their recorded folders. Refuses to clobber local edits unless forced;
+ * forced, content the library doesn't have goes to ~/.skilllib/edit-backup first.
  */
 export function addSkill(
   root: string,
@@ -364,14 +411,18 @@ export function addSkill(
     };
   }
 
+  let backedUp: string | undefined;
   if (local !== target.hash || isLink(to)) {
     mkdirSync(join(root, primary), { recursive: true });
     if (isLink(to)) unlinkSync(to);
+    else if (local !== null && !knownContent) backedUp = stash(to, "edit-backup");
     copySkill(versionDir(name, target.version), to);
   }
 
   const links: string[] = [];
   const blocked: string[] = [];
+  const uncommitted: string[] = [];
+  let shared: boolean | undefined;
   for (const dir of linkDirs) {
     const link = join(root, dir, name);
     if (isLink(link) && realpathOrNull(link) === realpathOrNull(to)) {
@@ -379,9 +430,16 @@ export function addSkill(
       continue;
     }
     if (entryExists(link)) continue;
-    if (!allowTracked && !recorded?.links?.includes(dir) && isGitTracked(root, dir) && !readConfig().agentsDirOk?.includes(root)) {
-      blocked.push(dir);
-      continue;
+    // A new link in a folder git tracks, as linkEverywhere: never when git doesn't share the real copy, else with your consent.
+    if (!recorded?.links?.includes(dir) && isGitTracked(root, dir)) {
+      if (!(shared ??= sharedByGit(root, primary, name))) {
+        uncommitted.push(dir);
+        continue;
+      }
+      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+        blocked.push(dir);
+        continue;
+      }
     }
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
@@ -397,10 +455,12 @@ export function addSkill(
   writeManifest(root, manifest);
   return {
     name,
-    action: recorded || local !== null ? "updated" : "installed",
+    action: !recorded && local === null ? "installed" : backedUp && recorded?.version === target.version ? "reset" : "updated",
     ...(recorded ? { from: recorded.version } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),
+    ...(uncommitted.length ? { uncommitted } : {}),
+    ...(backedUp ? { backedUp } : {}),
   };
 }
 
@@ -411,22 +471,24 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
 
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(dir);
-  if (local !== null && local !== recorded.hash && !versionForHash(name, local) && !force) {
-    return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
-  }
+  const edited = local !== null && local !== recorded.hash && !versionForHash(name, local);
+  if (edited && !force) return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
   for (const linkDir of recorded.links ?? []) {
     const link = join(root, linkDir, name);
     if (isLink(link)) unlinkSync(link);
   }
-  rmSync(dir, { recursive: true, force: true });
+  // Forced over local edits: the edited copy goes to ~/.skilllib/edit-backup, as update and sync do.
+  const backedUp = edited ? stash(dir, "edit-backup") : undefined;
+  if (!backedUp) rmSync(dir, { recursive: true, force: true });
   delete manifest.skills[name];
   writeManifest(root, manifest);
-  return { name, action: "removed" };
+  return { name, action: "removed", ...(backedUp ? { backedUp } : {}) };
 }
 
 /**
  * Installs exactly the versions skilllib.json records (like `npm ci`):
- * restores missing folders and reverts nothing that was edited.
+ * restores missing folders and reverts nothing that was edited (forced, it
+ * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
 export function syncProject(root: string, { force = false } = {}): Change[] {
   const { skills } = readManifest(root);
@@ -437,7 +499,9 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
     const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
     if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
     const change = addSkill(root, name, { force: true, version: pinned });
-    return change.action === "skipped" ? [change] : [{ ...change, action: local === null ? "installed" : "updated" }];
+    // Only skipped when the library has no version of it: a teammate's skill, or another machine's library.
+    if (change.action === "skipped") return [{ ...change, reason: `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it` }];
+    return [{ ...change, action: local === null ? "installed" : change.action }];
   });
 }
 
@@ -466,6 +530,8 @@ export function updateProject(root: string, names?: string[], { force = false } 
       const dep = skills[name]!;
       const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
       if (dep.hash === latest.hash && local === latest.hash) return [];
+      // Already on the newest version: local edits are `sync --force`'s business, not an update's.
+      if (dep.hash === latest.hash && local !== null && !force) return [];
       const change = addSkill(root, name, { force });
       return change.action === "skipped" || change.from !== change.to || local !== latest.hash ? [change] : [];
     });
@@ -607,7 +673,7 @@ export function createSkill(name: string, description: string): { ok: true; dir:
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description || "Describe when Claude should use this skill."}\n---\n\n# ${name}\n\nInstructions for Claude go here.\n`,
+    `---\nname: ${name}\ndescription: ${description || "Describe when an agent should use this skill."}\n---\n\n# ${name}\n\nInstructions for the agent go here.\n`,
   );
   forgetLatest(name);
   return { ok: true, dir };
@@ -636,7 +702,14 @@ export function listBackups(): Backup[] {
         return [{ name, kind, path: join(dir, entry), movedAt: `${match[2]} ${match[3]}:${match[4]}`, from }];
       });
     })
-    .sort((a, b) => b.movedAt.localeCompare(a.movedAt));
+    // By the entry's full timestamp (movedAt shows minutes only): `restore <name>` takes the newest.
+    .sort((a, b) => b.path.slice(-24).localeCompare(a.path.slice(-24)));
+}
+
+/** Where a backup came from, as lists show it: "library (deleted)", or the folder it was in (e.g. "~/Projects/web/.cursor/skills"). */
+export function backupFrom(backup: Backup): string {
+  if (backup.kind === "plugin") return "Claude Code plugin";
+  return backup.from === librarySkillDir(backup.name) ? "library (deleted)" : tildify(dirname(backup.from));
 }
 
 /**

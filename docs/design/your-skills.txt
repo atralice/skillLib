@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── Your skills ─────────────────────────────────────────────────────────────────────────╮
 │ ▌ ▤ Your skills     7    ││  All 7   Issues 1                                                                      │
-│   ◈ Global          14   ││     Skill              Ver  Used in            Uses  Issue / description               │
+│   ◈ Global          15   ││     Skill              Ver  Used in            Uses  Issue / description               │
 │   ✓ Health          19   ││   + New skill…                                                                         │
 │   Projects ───────────── ││ ▌ · sql-migrations     v1   0 repos               –  Used in no repo                   │
 │   ◆ web-app          ✕   ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │

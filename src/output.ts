@@ -1,5 +1,5 @@
-import { sep } from "node:path";
-import { homedir } from "node:os";
+import { resolve, sep } from "node:path";
+import { realPath, userHome } from "./paths.js";
 
 let jsonMode = false;
 
@@ -28,10 +28,12 @@ export const success = (msg: string) => out(`${green("✓")} ${msg}`);
 export const warn = (msg: string) => out(`${yellow("!")} ${msg}`);
 export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 
-/** Home-relative path for display. */
+/** Home-relative path for display, with "/" so it reads the same on every OS (`~/.claude/skills`, also on Windows). */
 export function tildify(path: string): string {
-  const home = homedir();
-  return path === home || path.startsWith(home + sep) ? "~" + path.slice(home.length) : path;
+  // $HOME normalized (a trailing or doubled slash), then without symlinks (the folder you're in comes back that way).
+  for (const home of new Set([resolve(userHome()), realPath(userHome())]))
+    if (path === home || path.startsWith(home + sep)) return ("~" + path.slice(home.length)).replace(/\\/g, "/");
+  return path;
 }
 
 export function truncate(s: string, max: number): string {

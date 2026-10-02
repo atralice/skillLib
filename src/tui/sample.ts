@@ -19,6 +19,8 @@ function localAgents(s: SampleSkill, enabled: HarnessId[]): HarnessId[] {
 
 function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   if (m.broken) return [];
+  // skilllib's own skill: in ~/.claude/skills with a link in ~/.agents/skills, so every agent.
+  if (m.source === "skilllib") return enabled;
   const reads: HarnessId[] =
     m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : m.where === "~/.codex/skills" ? ["codex", "cursor"] : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
   return enabled.filter((a) => reads.includes(a));
@@ -35,7 +37,7 @@ const machine = (name: string, source: MachineSkill["source"], where: string, ex
   name,
   source,
   where,
-  path: source === "global" ? `${where}/${name}` : where,
+  path: source === "global" || source === "skilllib" ? `${where}/${name}` : where,
   links: [],
   agents: [],
   ...extra,
@@ -159,6 +161,7 @@ export function sampleWorld(): World {
       machine("brand-voice", "claude.ai", "claude.ai account"),
       machine("pdf", "claude.ai", "claude.ai account"),
       machine("create-rule", "cursor", "Cursor built-in"),
+      machine("skilllib", "skilllib", "~/.claude/skills", { links: ["~/.agents/skills/skilllib"] }),
     ],
     library: [
       { name: "stripe-payments", latest: 2 },
@@ -176,6 +179,7 @@ export function sampleWorld(): World {
     roots: ["~/Projects"],
     hidden: [],
     agentsChosen: true,
+    agentSkill: "installed",
     ops: undefined as unknown as Ops,
   };
   w.ops = sampleOps(w, info);
@@ -213,6 +217,10 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
   const done = (message: string) => (seeAgents(w), message);
   return {
     add: (repo, name) => (add(repo, name), `Added ${name} to ${repo}`),
+    addTo: (repos, names) => {
+      for (const r of repos) for (const n of names) add(r, n);
+      return `Added ${names.length === 1 ? names[0] : `${names.length} skills`} to ${repos.join(", ")}`;
+    },
     remove: (repo, name) => {
       const p = w.projects.find((x) => x.name === repo)!;
       p.skills = p.skills.filter((s) => s.name !== name);
@@ -246,11 +254,13 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       x.agents = [...new Set([...x.agents, ...agents])];
       return `${m.name} now loads for ${agents.map((a) => harness(a).name).join(", ")} too`;
     },
-    moveGlobal: (m, repos) => {
-      lib(m.name) || toLibrary(m.name);
-      for (const r of repos) add(r, m.name);
-      drop(m);
-      return `${m.name} now loads only in ${repos.join(", ")} (original backed up)`;
+    moveGlobal: (skills, repos) => {
+      for (const m of skills) {
+        lib(m.name) || toLibrary(m.name);
+        for (const r of repos) add(r, m.name);
+        drop(m);
+      }
+      return `${skills.length === 1 ? `${skills[0]!.name} now loads` : `${skills.length} skills now load`} only in ${repos.join(", ")} (original${skills.length === 1 ? "" : "s"} backed up)`;
     },
     createSkill: (name) => {
       w.descriptions[name] = "New skill: say when an agent should use it.";
@@ -292,6 +302,16 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
     unhide: (path) => ((w.hidden = w.hidden.filter((h) => h !== path)), `${path} is back in the list`),
     openFolder: (path) => `Opened ${path} (not in the sample)`,
     copy: (_text, what) => `Copied ${what} (not in the sample)`,
+    installAgentSkill: () => {
+      w.agentSkill = "installed";
+      if (!w.machine.some((m) => m.source === "skilllib")) w.machine.push(machine("skilllib", "skilllib", "~/.claude/skills", { links: ["~/.agents/skills/skilllib"] }));
+      return done("Your agents can now use skilllib");
+    },
+    removeAgentSkill: () => {
+      w.agentSkill = "missing";
+      w.machine = w.machine.filter((m) => m.source !== "skilllib");
+      return "Removed the skilllib skill";
+    },
   };
 }
 
@@ -322,4 +342,5 @@ const DESCRIPTIONS: Record<string, string> = {
   "brand-voice": "Write in the company's brand voice.",
   pdf: "Read, create and edit PDF files.",
   "create-rule": "Create a Cursor rule from a conversation.",
+  skilllib: "Agent skills (SKILL.md) loaded in this repo and the user's skill library, via the skilllib CLI.",
 };

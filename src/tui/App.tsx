@@ -9,14 +9,12 @@ import { existsSync } from "node:fs";
 import { HARNESSES, type HarnessId } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
-import { userHome } from "../paths.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
 import * as W from "./world.js";
+import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
-function tildify(p: string): string {
-  return p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
-}
+const tildify = (p: string) => homeRelative(p);
 
 type Place = "projects" | "library" | "global" | "health" | "settings";
 const PLACES: [Place, string][] = [
@@ -72,14 +70,16 @@ type Item = {
   inFold?: string;
 };
 type Modal =
-  | { kind: "confirm"; fix: W.Fix }
+  /** `toast`: for a follow-up question, what the change before it said; shown again if you say no. */
+  | { kind: "confirm"; fix: W.Fix; toast?: string }
   | { kind: "repos"; fix: W.Fix; picked: Set<string>; cursor: number; only?: string[]; query: string }
   /** `target`: the repo to add to, or null for your library. */
   | { kind: "add"; cursor: number; query: string; target: string | null }
   | { kind: "fixall"; items: { label: string; fix: W.Fix; on: boolean }[]; cursor: number }
   | { kind: "help" }
   | { kind: "menu"; title: string; options: Option[]; cursor: number }
-  | { kind: "input"; title: string; value: string; submit: (value: string) => void }
+  /** `placeholder`: shown while the field is empty, and what enter submits then. */
+  | { kind: "input"; title: string; value: string; placeholder?: string; submit: (value: string) => void }
   /** Pick your agents; `then` runs after (the first run asks for your projects folder next). */
   | { kind: "agents"; selected: HarnessId[]; cursor: number; then?: () => void };
 
@@ -93,6 +93,7 @@ function tag(u: W.Usable, w: W.World): Seg {
   if (s) return [s.source, color.blue];
   if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
   if (u.source === "plugin") return [`⧉ ${u.where.split("@")[0]}`, color.magenta];
+  if (u.source === "skilllib") return ["◆ skilllib", color.accent];
   return [u.source, color.muted];
 }
 
@@ -165,7 +166,7 @@ const GIT_LABEL: Record<NonNullable<W.LocalSkill["git"]>, string> = { committed:
 // ─── Screens' data ──────────────────────────────────────
 
 /** Which copy a skill's row shows when it loads from several places: the repo's, then yours, then vendors'. */
-const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
+const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, skilllib: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
 
 /** Copies grouped by name, the copy to show first. */
 function byName(copies: W.Usable[]): W.Usable[][] {
@@ -250,7 +251,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       const b = builder(u.name);
       for (const l of wrap(w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
       b.line();
-      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
+      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" || u.source === "skilllib" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
       else b.issues(issues);
       b.actions(actions, width);
       b.line();
@@ -259,7 +260,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       b.line(["Loaded from", color.accent]);
       for (const c of copies) {
         const s = c.local;
-        const path = s ? `${s.dir}/${c.name}` : c.source === "global" ? `${c.where}/${c.name}` : c.where;
+        const path = s ? `${s.dir}/${c.name}` : c.source === "global" || c.source === "skilllib" ? `${c.where}/${c.name}` : c.where;
         const extra = s ? (s.missing ? "missing" : s.git ? GIT_LABEL[s.git] : "") : "";
         const [ct, cc] = c === u ? ["", undefined] : tag(c, w);
         b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
@@ -285,7 +286,10 @@ type Ui = {
   menu(title: string, options: Option[]): void;
 };
 
-const reviewOption = (w: W.World, name: string, ui: Ui): Option => ({ label: "Review prompt", action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}.`), `a review prompt for ${name}`) });
+const reviewOption = (w: W.World, name: string, ui: Ui, repo?: string): Option => ({
+  label: "Review prompt",
+  action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}${repo ? ` in ${repo}` : ""}.`, repo), `a review prompt for ${name}`),
+});
 
 /** Pick a library version to install in a repo (older ones too). */
 function versionsOption(w: W.World, repo: string, name: string, installed: number | undefined, ui: Ui): Option {
@@ -306,20 +310,34 @@ function versionsOption(w: W.World, repo: string, name: string, installed: numbe
 function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
   const s = u.local;
   const inLibrary = w.library.find((l) => l.name === u.name);
-  const remove: W.Fix = { label: "Remove from repo", preview: s?.source === "lib" ? `Delete ${s.dir}/${u.name} in ${p}. Your library keeps it.` : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`, run: (w) => w.ops.remove(p, u.name) };
+  const remove: W.Fix = {
+    // Its folder gone: all that's left to remove is the skilllib.json entry (the label Health offers too).
+    label: s?.missing ? "Remove it from skilllib.json" : "Remove from repo",
+    preview: s?.missing
+      ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
+      : s?.source === "lib"
+        ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
+        : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`,
+    run: (w) => w.ops.remove(p, u.name),
+  };
   if (s?.source === "lib")
     return [
-      ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
-      { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
-      versionsOption(w, p, u.name, s.version, ui),
+      // A tracked skill your library doesn't have: nothing to edit there, no versions to pick.
+      ...(inLibrary
+        ? [
+            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
+            { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
+            versionsOption(w, p, u.name, s.version, ui),
+          ]
+        : []),
       fixOption(remove),
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   if (s?.source === "repo")
     return [
       ...(inLibrary ? [] : [fixOption({ label: "Copy into library", preview: `Copy ${u.name} into your library, so other repos can add it. The repo's copy stays as it is.`, run: (w) => w.ops.copyToLibrary(p, u.name) })]),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   if (s)
     return [
@@ -328,7 +346,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
         : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library and track it here.`, run: (w) => w.ops.importLocal(p, u.name) }),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       fixOption(remove),
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   // Loads everywhere: what's left to do from a repo is turning a plugin off here, or going to Global.
   return [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)];
@@ -405,7 +423,7 @@ function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
   return [
     ...W.machineActions(m).map(fixOption),
     ...(m.source === "plugin" ? [fixOption(W.replacePluginFix(w, m.where))] : []),
-    ...(m.source === "global" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
+    ...(m.source === "global" || m.source === "skilllib" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
     ...(m.source === "global" && !m.broken ? [{ label: "Edit SKILL.md", action: () => ui.edit(`${m.path}/SKILL.md`) }] : []),
     reviewOption(w, m.name, ui),
   ];
@@ -414,8 +432,10 @@ function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
 function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return w.library.map((l): Item => {
     const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
+    // A repo's own copy (committed by the team) is never removed from here.
+    const removable = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source !== "repo"));
     const uses = W.totalUses(w, l.name);
-    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => rs.map((r) => said(w.ops.add(r, l.name))).join(" · ") };
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => w.ops.addTo(rs, [l.name]) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
@@ -444,14 +464,14 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
         b.issues(issues);
         b.actions([
           fixOption(addFix),
-          ...(repos.length
+          ...(removable.length
             ? [
                 fixOption({
                   label: "Remove from repos…",
                   preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
                   run: () => "",
-                  candidates: () => repos.map((p) => p.name),
-                  pickRepos: (w, rs) => rs.map((r) => said(w.ops.remove(r, l.name))).join(" · "),
+                  candidates: () => removable.map((p) => p.name),
+                  pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.remove(r, l.name))),
                 }),
               ]
             : []),
@@ -473,7 +493,35 @@ function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
     items
       .filter((i) => i.issues.length)
       .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
-  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui))];
+  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui)), ...agentSkillItems(w, nameW)];
+}
+
+/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's, unless Global already has its row. */
+function agentSkillItems(w: W.World, nameW: number): Item[] {
+  const issue = W.agentSkillIssue(w);
+  if (!issue || w.machine.some((m) => m.source === "skilllib")) return [];
+  const sev = SEV[issue.severity];
+  return [
+    {
+      key: "agent-skill",
+      name: "skilllib",
+      issues: [issue],
+      uses: 0,
+      cells: [
+        { text: sev.icon, width: 2, color: sev.color },
+        { text: clip("skilllib", nameW), width: nameW },
+        { text: clip("Your agents", 16), width: 16, color: color.muted },
+        { text: " " + issue.short, grow: true, color: sev.color },
+      ],
+      detail: (width) => {
+        const b = builder("skilllib");
+        for (const l of wrap("The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.", width - 4, 3)) b.line([l, color.muted]);
+        b.line();
+        b.issues([issue]);
+        return b.d;
+      },
+    },
+  ];
 }
 
 /** The picker's cursor, kept off group titles. */
@@ -485,9 +533,7 @@ function addCursor(rows: W.AddRow[], cursor: number): number {
 // ─── App ────────────────────────────────────────────────
 
 /** The message of a result; its follow-up (if any) is asked separately. */
-function said(r: W.Result): string {
-  return typeof r === "string" ? r : r.message;
-}
+const said = W.said;
 
 export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days">> }) {
   const { exit, suspendTerminal } = useApp();
@@ -544,6 +590,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const flagged = [
     ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
     ...world.machine.flatMap((m) => W.machineIssues(world, m).map((issue) => ({ key: `Global:${m.name}`, issue }))),
+    // The skilllib skill's issue is on its Global row when it has one (see agentSkillItems).
+    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "Global:skilllib", issue }] : [])),
   ];
   const healthCount = new Set(flagged.map((f) => f.key)).size;
   const healthWorst = W.worst(flagged.map((f) => f.issue));
@@ -590,16 +638,19 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
 
   // ── Actions ──
   /** Runs a change, reads the world again, and asks about any follow-up (e.g. git-tracked folders). */
-  function apply(run: (w: W.World) => W.Result) {
+  function apply(run: (w: W.World) => W.Result, w: W.World = world) {
     let result: W.Result;
     try {
-      result = run(world);
+      result = run(w);
     } catch (e) {
-      result = `Couldn't do it: ${(e as Error).message}`;
+      result = W.failed(`Couldn't do it: ${(e as Error).message}`);
     }
     setBase(reload());
-    setToast(`✓ ${said(result)}`);
-    if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then });
+    const then = W.followUp(result);
+    // A result waiting on a question isn't done yet: "!" until you answer it.
+    const toast = `${W.isFailure(result) ? "✗" : then ? "!" : "✓"} ${said(result)}`;
+    setToast(toast);
+    if (then) setModal({ kind: "confirm", fix: then, toast });
   }
   function choose(o: Option) {
     if (o.action) return o.action();
@@ -619,6 +670,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   function fixSelected() {
     const issue = current && W.worst(current.issues);
     if (!issue) return setToast("Nothing to fix · enter shows what you can do");
+    if (!issue.fixes.length) return setToast(`Nothing skilllib can do here: ${issue.short}`);
     if (issue.decision) {
       setFocus("detail");
       setDetailCursor(Math.max(0, detail?.options.findIndex((o) => o.issue === issue) ?? 0));
@@ -703,7 +755,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               preview: `Pick repos. These ${n(mine.length)} go into your library and those repos, and stop loading globally (originals backed up).`,
               run: () => "",
               preticked: usedIn,
-              pickRepos: (w, repos) => (mine.forEach((m) => w.ops.moveGlobal(m, repos, label)), `${n(mine.length)} now load only in ${repos.join(", ")}`),
+              pickRepos: (w, repos) => w.ops.moveGlobal(mine, repos, label),
             }),
             ...(mine.some((m) => !m.kept)
               ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `skilllib stops warning about these ${n(mine.length)}.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
@@ -718,7 +770,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               preview: `Install these ${n(libs.length)} into the repos you pick.`,
               run: () => "",
               preticked: () => [],
-              pickRepos: (w, repos) => (repos.forEach((r) => libs.forEach((l) => w.ops.add(r, l.name))), `Added ${n(libs.length)} to ${repos.join(", ")}`),
+              pickRepos: (w, repos) => w.ops.addTo(repos, libs.map((l) => l.name)),
             }),
           ]
         : []),
@@ -764,7 +816,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           ui.menu(repo, [
             { label: "Open its folder", action: () => setToast(said(world.ops.openFolder(W.project(world, repo).path))) },
             { label: "Hide it from the list", action: () => (apply((w) => w.ops.hide(repo)), setOpen(null), setFocus(sidebar ? "sidebar" : "list")) },
-            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`), `a review prompt for ${repo}`) }] : []),
+            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`, repo), `a review prompt for ${repo}`) }] : []),
           ]),
         ),
       ];
@@ -799,9 +851,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     setChip("all");
   }
   /** Jumps to Global, filtered to one skill. */
-  /** Opens a file in $EDITOR, handing it the terminal, then reads everything again. */
-  function edit(file: string) {
-    if (!existsSync(file)) return setToast(`${tildify(file)} doesn't exist`);
+  /** Opens a file in $EDITOR, handing it the terminal, then reads everything again (and runs `then`, if given). */
+  function edit(file: string, then?: (w: W.World) => W.Result) {
+    // (The prototype's skills have no files: what comes after editing still happens.)
+    if (!existsSync(file)) return then ? apply(then) : (setBase(reload()), setToast(`${tildify(file)} doesn't exist`));
     const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
     void suspendTerminal(() => {
       // $EDITOR may carry args ("code -w"), so it goes through the shell — but the path is
@@ -810,13 +863,17 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (process.platform === "win32") spawnSync(`${editor} "${file}"`, { shell: true, stdio: "inherit" });
       else spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
     }).then(() => {
-      setBase(reload());
+      // Read again first: the edit makes a new library version, and `then` must see it.
+      const fresh = reload();
+      if (then) return apply(then, fresh);
+      setBase(fresh);
       setToast(`Saved ${tildify(file)}`);
     });
   }
   /** Asks where your projects live, and starts scanning there. */
   function askForFolder(title: string) {
-    setModal({ kind: "input", title, value: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
+    // Empty, with ~/Projects as the placeholder: a prefilled value would have typing append to it.
+    setModal({ kind: "input", title, value: "", placeholder: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
   }
   // First run: pick your agents, then say where your projects live.
   useEffect(() => {
@@ -846,6 +903,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           const wasOn = world.agents.includes(h.id);
           apply((w) => (w.ops.setAgents(wasOn ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${wasOn ? "off" : "on"}`));
         }),
+      ),
+      // The skill that lets your agents use skilllib: installing adds a global skill, so it asks first.
+      row(
+        "agent-skill",
+        `${world.agentSkill === "installed" ? "[x]" : "[ ]"} ◆ skilllib skill`,
+        world.agentSkill === "installed" ? "your agents can use skilllib" : world.agentSkill === "outdated" ? "out of date · enter updates it" : "lets your agents use skilllib · enter installs it",
+        () => (world.agentSkill === "installed" ? setToast("Installed · `skilllib agent-skill remove` takes it out") : choose(fixOption(W.agentSkillFix(world)))),
       ),
       header("#roots", "Project folders"),
       ...world.roots.map((r) =>
@@ -972,7 +1036,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     }
     if (m.kind === "input") {
       if (key.escape) return setModal(null);
-      if (key.return) return setModal(null), m.submit(m.value.trim());
+      if (key.return) {
+        const value = m.value.trim() || m.placeholder;
+        setModal(null);
+        return value ? m.submit(value) : undefined;
+      }
       if (key.backspace || key.delete) return setModal({ ...m, value: m.value.slice(0, -1) });
       if (key.ctrl && input === "u") return setModal({ ...m, value: "" });
       if (input && !key.ctrl && !key.meta) return setModal({ ...m, value: m.value + input });
@@ -985,7 +1053,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.return && m.options[m.cursor]) return setModal(null), choose(m.options[m.cursor]!);
       return;
     }
-    if (key.escape) return setModal(null);
+    // Saying no to a follow-up keeps what the change said (e.g. which agents can't see a skill).
+    if (key.escape) return setModal(null), m.kind === "confirm" && m.toast && setToast(m.toast);
     if (m.kind === "confirm") {
       if (key.return || input === "y") {
         setModal(null);
@@ -1022,18 +1091,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.return) {
         setModal(null);
         const chosen = m.items.filter((it) => it.on);
-        apply((w) => {
-          let ok = 0;
-          for (const it of chosen) {
-            try {
-              it.fix.run(w);
-              ok++;
-            } catch {
-              // An earlier fix in the batch already resolved it.
-            }
-          }
-          return `Applied ${ok} fix${ok === 1 ? "" : "es"} (anything removed is in Settings › Backups)`;
-        });
+        apply((w) => W.runAll(w, chosen.map((it) => it.fix)));
       }
       return;
     }
@@ -1056,10 +1114,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         const row = rows[cursor]!;
         if (row.create && !/^[a-z0-9]/.test(m.query)) return setToast("Type the new skill's name first");
         setModal(null);
-        apply(row.run!);
-        // A new skill opens in your editor.
-        if (row.create) edit(world.ops.libraryFile(m.query));
-        return;
+        if (!row.create) return apply(row.run!);
+        // A new skill opens in your editor, and goes into the repo once you've written it. Nothing
+        // reads the library in between, so the template never becomes a version of its own.
+        row.run!(world);
+        return edit(world.ops.libraryFile(m.query), row.afterEdit);
       }
       if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
     }
@@ -1214,8 +1273,15 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   else if (modal?.kind === "input")
     body = (
       <Panel title={modal.title} focused width={columns} height={5}>
-        <Text color={color.text}>{modal.value + "▏"}</Text>
-        <Text color={color.faint}>{"enter to confirm · ctrl+u clears · esc cancels"}</Text>
+        {modal.value || !modal.placeholder ? (
+          <Text color={color.text}>{modal.value + "▏"}</Text>
+        ) : (
+          <Text>
+            {"▏"}
+            <Text color={color.faint}>{modal.placeholder}</Text>
+          </Text>
+        )}
+        <Text color={color.faint}>{modal.value || !modal.placeholder ? "enter to confirm · ctrl+u clears · esc cancels" : `type a path, or enter for ${modal.placeholder} · esc cancels`}</Text>
       </Panel>
     );
   else if (modal?.kind === "agents")
@@ -1392,7 +1458,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         </Box>
       </Box>
       <Box height={1} width={termCols} justifyContent="space-between">
-        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : color.muted} wrap="truncate-end">
+        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
         {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}

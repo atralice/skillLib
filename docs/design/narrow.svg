@@ -26,14 +26,14 @@
 <text x="18.0" y="130.0" fill="#4b5578" xml:space="preserve" textLength="657.5" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="18.0" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
 <text x="43.3" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> Skills </text>
-<text x="110.7" y="149.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs"> 4/21 </text>
+<text x="110.7" y="149.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs"> 4/22 </text>
 <text x="161.3" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="514.2" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────╮</text>
 <text x="18.0" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <rect x="34.9" y="154.0" width="67.4" height="19" fill="#8b9dff"/>
-<text x="34.9" y="168.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> All 21 </text>
+<text x="34.9" y="168.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> All 22 </text>
 <text x="110.7" y="168.0" fill="#f2c94c" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Issues 8 </text>
 <text x="203.5" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs"> Local 9 </text>
-<text x="287.8" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Global 6 </text>
+<text x="287.8" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Global 7 </text>
 <text x="380.5" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> Plugins 3 </text>
 <text x="481.6" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Vendor 3 </text>
 <text x="667.1" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
@@ -44,7 +44,7 @@
 <text x="51.7" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">+ Add a skill…                                                          </text>
 <text x="667.1" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">✦ Fix 7 issues automatically…                                           </text>
+<text x="51.7" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">✦ Fix 5 issues automatically…                                           </text>
 <text x="667.1" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">⋯ web-app…                                                              </text>

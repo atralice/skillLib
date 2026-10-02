@@ -2,8 +2,9 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, realPath, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
+import { tildify as homeRelative } from "./output.js";
 
 /**
  * Where a skill Claude Code can load comes from.
@@ -11,9 +12,11 @@ import { readSkillInfo, skillDirsIn } from "./skills.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
+ * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor)
  * - system: a machine-wide folder an admin manages (/etc/codex/skills)
+ * - skilllib: skilllib's own skill, which `skilllib agent-skill install` puts in your global folders
  */
-export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system";
+export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system" | "skilllib";
 
 export type SourcedSkill = {
   name: string;
@@ -39,8 +42,9 @@ function readJson<T>(path: string): T | null {
   }
 }
 
+/** `npx skills` keeps its lock file in ~/.agents, wherever CLAUDE_CONFIG_DIR points. */
 function skillsShLock(): Record<string, { source?: string }> {
-  return readJson<{ skills?: Record<string, { source?: string }> }>(join(resolve(claudeDir(), ".."), ".agents", ".skill-lock.json"))?.skills ?? {};
+  return readJson<{ skills?: Record<string, { source?: string }> }>(join(userHome(), ".agents", ".skill-lock.json"))?.skills ?? {};
 }
 
 /** Skills `npx skills add` installed into a project (not globally), by name. */
@@ -58,7 +62,9 @@ function realpathOrNull(path: string): string | null {
 
 /** Your enabled harnesses that read global folder `dir`. */
 function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
-  return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().includes(dir));
+  // By real path: two agents can reach the same folder by different paths (#54).
+  const real = realPath(dir);
+  return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().some((d) => realPath(d) === real));
 }
 
 /** Machine-wide folders an admin manages: read, never changed. */
@@ -66,7 +72,22 @@ const systemDirs = () => [codexSystemDir()];
 
 /** Your global skill folders that your harnesses read (~/.claude/skills or $CLAUDE_CONFIG_DIR/skills, ~/.agents/skills, …). */
 export function globalSkillDirs(): string[] {
-  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !systemDirs().includes(d));
+  // One entry per real folder: a symlinked $HOME with CLAUDE_CONFIG_DIR set to the real path (or CODEX_HOME
+  // written another way) reaches one folder by two paths, which is not two copies of its skills (#54).
+  const seen = new Set<string>();
+  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => {
+    if (systemDirs().includes(d)) return false;
+    const real = realPath(d);
+    if (seen.has(real)) return false;
+    seen.add(real);
+    return true;
+  });
+}
+
+/** The path globalSkillDirs uses for `dir` (the same real folder may be spelled another way). */
+export function globalDirAs(dir: string): string {
+  const real = realPath(dir);
+  return globalSkillDirs().find((d) => realPath(d) === real) ?? dir;
 }
 
 /** Skills in the system folders (/etc/codex/skills). */
@@ -123,7 +144,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
     const locked = lock[e.name]?.source;
     if (existsSync(join(e.path, OWN_SKILL_MARKER))) {
       // The skill that teaches agents to use skilllib: deliberately global, so not yours to clean up.
-      skills.push({ name: e.name, kind: "built-in", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
+      skills.push({ name: e.name, kind: "skilllib", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
       continue;
     }
     skills.push({
@@ -149,8 +170,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
 
 /** Home-relative path for labels, always with "/" so it reads the same on every OS. */
 function tildify(p: string): string {
-  const shown = p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
-  return shown.replace(/\\/g, "/");
+  return homeRelative(p).replace(/\\/g, "/");
 }
 
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */

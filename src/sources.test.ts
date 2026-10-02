@@ -85,6 +85,32 @@ test("a CLAUDE_CONFIG_DIR outside your home is still your global folder, not a s
   }
 });
 
+test("npx skills' lock file is read from ~/.agents, even when CLAUDE_CONFIG_DIR isn't directly in your home", () => {
+  const home = join(tmp, "lock-home");
+  const claude = join(home, "deep", "cfg", "claude");
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  process.env.CLAUDE_CONFIG_DIR = claude;
+  skill(join(home, ".agents", "skills", "vendored"));
+  skill(join(home, ".agents", "skills", "linked"));
+  mkdirSync(join(claude, "skills"), { recursive: true });
+  symlinkSync(join(home, ".agents", "skills", "linked"), join(claude, "skills", "linked"));
+  writeFileSync(
+    join(home, ".agents", ".skill-lock.json"),
+    JSON.stringify({ skills: { vendored: { source: "acme/skills" }, linked: { source: "acme/skills" } } }),
+  );
+  try {
+    setHarnesses(["claude-code", "codex"]);
+    expect(machineSkills().map((s) => [s.kind, s.name, s.origin, s.harnesses])).toEqual([
+      ["skills.sh", "linked", "acme/skills", ["claude-code", "codex"]],
+      ["skills.sh", "vendored", "acme/skills", ["codex"]],
+    ]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+  }
+});
+
 test("Cursor loads claude.ai skills and user-scope Claude Code plugins, not synced plugins", () => {
   const home = join(tmp, "cursor-home");
   const claude = join(home, ".claude");

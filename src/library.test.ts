@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, importSkill, nestedSkills, projectStatus, removeSkill, syncProject, updateProject } from "./library.js";
+import { addSkill, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
+import { tildify } from "./output.js";
 import { execFileSync } from "node:child_process";
 
 let tmp: string;
@@ -120,8 +121,65 @@ describe("library", () => {
 
     writeSkill(local("alpha"), "edited");
     expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
-    expect(removeSkill(project, "alpha", { force: true })).toEqual({ name: "alpha", action: "removed" });
+    expect(removeSkill(project, "alpha", { force: true })).toMatchObject({ name: "alpha", action: "removed", backedUp: expect.any(String) });
     expect(existsSync(local("alpha"))).toBe(false);
+  });
+
+  test("remove --force backs local edits up before removing the skill", () => {
+    addSkill(project, "alpha");
+    writeSkill(local("alpha"), "my edit");
+    expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: expect.stringContaining("local edits") });
+    const removed = removeSkill(project, "alpha", { force: true });
+    expect(removed.action).toBe("removed");
+    expect(readFileSync(join(removed.backedUp!, "SKILL.md"), "utf-8")).toContain("my edit");
+    expect(existsSync(local("alpha"))).toBe(false);
+    // An unedited copy has nothing to keep.
+    addSkill(project, "alpha");
+    expect(removeSkill(project, "alpha", { force: true })).toEqual({ name: "alpha", action: "removed" });
+  });
+
+  test("update --force and sync --force back local edits up before overwriting them", () => {
+    addSkill(project, "alpha");
+    writeSkill(lib("alpha"), "v2");
+    forgetLatest();
+    writeSkill(local("alpha"), "my edit");
+
+    const updated = updateProject(project, ["alpha"], { force: true })[0]!;
+    expect(updated).toMatchObject({ action: "updated", from: 1, to: 2 });
+    expect(readFileSync(join(updated.backedUp!, "SKILL.md"), "utf-8")).toContain("my edit");
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v2");
+
+    // Same version: sync puts it back, and says so ("reset", not "updated").
+    writeSkill(local("alpha"), "another edit");
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: expect.stringContaining("local edits") }]);
+    const [reset] = syncProject(project, { force: true });
+    expect(reset).toMatchObject({ action: "reset", from: 2, to: 2 });
+
+    // `skilllib restore` brings the edits back where they were.
+    const backups = listBackups().filter((b) => b.kind === "edit-backup");
+    expect(backups.map((b) => b.from)).toEqual([local("alpha"), local("alpha")]);
+    expect(backups[0]!.path).toBe(reset!.backedUp!); // newest first, even within the same minute
+    expect(restoreBackup(backups[0]!)).toMatchObject({ ok: true });
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("another edit");
+  });
+
+  test("forced installs back up only what the library doesn't have", () => {
+    addSkill(project, "alpha");
+    writeSkill(lib("alpha"), "v2");
+    forgetLatest();
+    // An older library version isn't an edit: nothing to back up.
+    expect(updateProject(project, ["alpha"], { force: true })[0]).not.toHaveProperty("backedUp");
+    rmSync(local("alpha"), { recursive: true });
+    expect(syncProject(project, { force: true })).toEqual([expect.objectContaining({ action: "installed" })]);
+    expect(listBackups()).toEqual([]);
+  });
+
+  test("sync says when the library doesn't have a pinned skill", () => {
+    addSkill(project, "alpha");
+    rmSync(local("alpha"), { recursive: true });
+    process.env.SKILLLIB_HOME = join(tmp, "other-home");
+    forgetLatest();
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: expect.stringContaining("not in your library") }]);
   });
 
   test("copies symlinked skills as real files so edits never reach the original", () => {
@@ -154,6 +212,15 @@ describe("moving skills out of the way", () => {
     expect(result.ok).toBe(true);
     expect(existsSync(lib("alpha"))).toBe(false);
     if (result.ok) expect(existsSync(join(result.movedTo, "SKILL.md"))).toBe(true);
+  });
+
+  test("backups say where they came from: the library, or the repo folder a copy was in", async () => {
+    const { backupFrom, deleteLibrarySkill, removeUntracked } = await import("./library.js");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "only here");
+    removeUntracked(project, "mine", join(project, ".cursor", "skills", "mine"));
+    expect(deleteLibrarySkill("alpha")).toMatchObject({ ok: true });
+    const from = Object.fromEntries(listBackups().map((b) => [b.name, backupFrom(b)]));
+    expect(from).toEqual({ mine: tildify(join(project, ".cursor", "skills")), alpha: "library (deleted)" });
   });
 
   test("unloading a global skill needs it in the library, keeps symlink targets intact, and moves its links too", async () => {
@@ -198,7 +265,7 @@ describe("harnesses", () => {
       ],
     });
 
-    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [] });
+    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
     expect(lstatSync(local("team-flow")).isSymbolicLink()).toBe(true);
     // One skill, reported once; Cursor now reaches it through two folders.
     expect(projectStatus(project).filter((s) => s.name === "team-flow")).toHaveLength(1);
@@ -230,6 +297,7 @@ describe("harnesses", () => {
   test("won't write links into a git-tracked folder without consent", () => {
     execFileSync("git", ["init", "-q"], { cwd: project });
     writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "other"), "o");
     execFileSync("git", ["add", "."], { cwd: project });
     setHarnesses(["claude-code", "codex"]);
 
@@ -237,6 +305,59 @@ describe("harnesses", () => {
     expect(existsSync(local("alpha"))).toBe(false);
     expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "updated" });
     expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
+  });
+
+  test("add never links a copy git doesn't share into a folder git tracks, even when allowed (as link does)", () => {
+    execFileSync("git", ["init", "-q"], { cwd: project });
+    writeSkill(local("team"), "t"); // .claude/skills is tracked; .agents/skills, where the real copy goes, isn't
+    execFileSync("git", ["add", "."], { cwd: project });
+    setHarnesses(["claude-code", "codex"]);
+
+    const c = addSkill(project, "alpha", { allowTracked: true });
+    expect(c).toMatchObject({ action: "installed", uncommitted: [".claude/skills"] });
+    expect(c.blocked).toBeUndefined();
+    expect(existsSync(local("alpha"))).toBe(false);
+    expect(readManifest(project).skills.alpha?.links).toBeUndefined();
+  });
+
+  test("Codex and Zed share .agents/skills: a folder held back is listed once", async () => {
+    const { linkEverywhere } = await import("./library.js");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    git("init", "-q");
+    writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "other"), "o");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "in a folder git doesn't track");
+    setHarnesses(["claude-code", "codex", "zed"]);
+
+    expect(linkEverywhere(project, "team", ".claude/skills")).toEqual({ created: [], blocked: [".agents/skills"], uncommitted: [] });
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
+  });
+
+  test("never links a skill git doesn't share into a folder git tracks, even when allowed", async () => {
+    const { linkAll, linkEverywhere } = await import("./library.js");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    git("init", "-q");
+    writeFileSync(join(project, ".gitignore"), ".codex/skills/\n");
+    writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "shared"), "s");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "only on this machine"); // folder git doesn't track
+    writeSkill(join(project, ".codex", "skills", "ignored"), "gitignored");
+    writeSkill(join(project, ".agents", "skills", "fresh"), "new in a committed folder");
+    setHarnesses(["claude-code", "cursor", "codex"]);
+
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
+    expect(linkEverywhere(project, "ignored", ".codex/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills"] });
+    // Not yet committed, but in a folder the repo commits: it goes in with the link.
+    expect(linkEverywhere(project, "fresh", ".agents/skills", { allowTracked: true })).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(existsSync(local("mine"))).toBe(false);
+
+    const res = linkAll(project, { allowTracked: true });
+    expect(res.linked.map((l) => l.name)).toEqual(["shared", "team"]);
+    expect(res.uncommitted).toEqual(["ignored", "mine"]);
   });
 
   test("without Claude Code, the one real copy goes in .agents/skills, which Cursor and Codex both read", () => {

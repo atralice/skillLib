@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── Move all 3 to repos: commit + 2 more · installed together 2026-09-20 ────────────────╮
 │   ▤ Your skills     7    ││ Pick repos. These 3 skills go into your library and those repos, and stop loading      │
-│ ▌ ◈ Global          14   ││ globally (originals backed up).                                                        │
+│ ▌ ◈ Global          15   ││ globally (originals backed up).                                                        │
 │   ✓ Health          19   ││ ticked: repos where it was used · type to filter                                       │
 │   Projects ───────────── ││ ▌ [x] web-app                                                                          │
 │   ◆ web-app          ✕   ││   [x] api-server                                                                       │

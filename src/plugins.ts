@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { importSkill, type Backup } from "./library.js";
 import { claudeDir, skilllibHome, userHome } from "./paths.js";
 import { skillDirsIn } from "./skills.js";
@@ -90,8 +90,7 @@ export function claudeBinary(): string | null {
 }
 
 /** Runs the Claude Code CLI; its own commands keep its settings and caches right. */
-function claude(args: string[], cwd?: string): { ok: true } | { ok: false; reason: string } {
-  const bin = claudeBinary();
+function claude(args: string[], cwd?: string, bin = claudeBinary()): { ok: true } | { ok: false; reason: string } {
   if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
   try {
     execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, encoding: "utf-8" });
@@ -122,16 +121,57 @@ function turnOffSynced(id: string): { ok: true } | { ok: false; reason: string }
 }
 
 /**
+ * .claude/settings.local.json holds your own overrides, never the team's. Claude Code makes git
+ * ignore it when it creates the file; when skilllib writes it, skilllib does: a line in the repo's
+ * .git/info/exclude, which is local too (never committed). Says how it stands, for the message.
+ */
+export function ignoreLocalSettings(root: string): string {
+  const file = ".claude/settings.local.json";
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  try {
+    git("rev-parse", "--git-dir");
+  } catch {
+    return ""; // not a git repo
+  }
+  try {
+    git("ls-files", "--error-unmatch", "--", file);
+    return "; git tracks that file, so this shows in git status";
+  } catch {
+    // not tracked
+  }
+  try {
+    git("check-ignore", "-q", "--", file);
+    return ", which git ignores";
+  } catch {
+    // not ignored yet
+  }
+  try {
+    const exclude = resolve(root, git("rev-parse", "--git-path", "info/exclude"));
+    const before = existsSync(exclude) ? readFileSync(exclude, "utf-8") : "";
+    mkdirSync(dirname(exclude), { recursive: true });
+    writeFileSync(exclude, `${before}${before && !before.endsWith("\n") ? "\n" : ""}/${git("rev-parse", "--show-prefix")}${file}\n`);
+    return ", which git now ignores via .git/info/exclude";
+  } catch {
+    return "; git doesn't ignore that file yet: it's local only, don't commit it";
+  }
+}
+
+/**
  * Turns a plugin off in one repo only; it stays on everywhere else. `claude
  * plugin disable --scope local`, run in the repo, writes "<id>": false to its
  * .claude/settings.local.json, which overrides the user and project settings
- * (checked with Claude Code 2.1.283). Synced plugins get the same line written directly.
+ * (checked with Claude Code 2.1.283). Synced plugins (which `claude plugin` can't
+ * touch), or any plugin when the CLI doesn't run, get the same line written directly.
  */
 export function turnOffIn(plugin: ClaudePlugin, root: string): { ok: boolean; message: string } {
-  const r = plugin.synced
-    ? setPluginIn(join(root, ".claude", "settings.local.json"), plugin.id, false)
-    : claude(["plugin", "disable", plugin.id, "--scope", "local"], root);
-  return r.ok ? { ok: true, message: `${plugin.id} turned off in ${basename(root)}; other repos keep it` } : { ok: false, message: `${plugin.id}: ${r.reason}` };
+  const done = `${plugin.id} turned off in ${basename(root)}; other repos keep it`;
+  const bin = plugin.synced ? null : claudeBinary();
+  if (!bin) {
+    const r = setPluginIn(join(root, ".claude", "settings.local.json"), plugin.id, false);
+    return r.ok ? { ok: true, message: `${done} (in .claude/settings.local.json${ignoreLocalSettings(root)})` } : { ok: false, message: `${plugin.id}: ${r.reason}` };
+  }
+  const r = claude(["plugin", "disable", plugin.id, "--scope", "local"], root, bin);
+  return r.ok ? { ok: true, message: done } : { ok: false, message: `${plugin.id}: ${r.reason}` };
 }
 
 function removedFile(): string {

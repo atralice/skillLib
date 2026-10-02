@@ -95,7 +95,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
-| **Settings** | Your agents, your project folders, hidden repos, and backups. |
+| **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
 
 ### Keys
@@ -130,8 +130,8 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global |
-| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`) |
+| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global. Your call: stopping a global skill changes every repo, so the fix names the repos that used it |
+| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`, a local-only file git ignores). Cursor ignores repo settings, so once the repo turns the plugin off, only replacing the plugin helps there |
 | **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
 | **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
 | ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
@@ -142,14 +142,14 @@ What skilllib flags:
 
 ### Adding and removing skills
 
-- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`) or copy a prompt for an agent to write it.
+- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`, and goes into the repo when you close it) or copy a prompt for an agent to write it.
 - **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link.
   - Claude Code (with or without Cursor): `.claude/skills/<name>`.
   - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`.
   - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
-- **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first.
+- **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first, and the edits go to Settings › Backups.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
-- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
+- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer. If you say no, it tells you which agents can't see the skill there. A skill whose copy git doesn't share (not committed, and not in a folder the repo commits) never gets a link in a committed folder: teammates would get a broken link.
 
 ### Versions
 
@@ -161,7 +161,7 @@ Every change to a library skill becomes a new version, kept in `~/.skilllib/stor
 
 | | Like | What it does |
 |---|---|---|
-| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits. |
+| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits (`--force` resets them, backing them up first). |
 | `skilllib outdated` | `npm outdated` | Lists skills with a newer version |
 | `skilllib update [name]` | `npm update` | Moves to the newest version |
 | *Other versions…* in a skill's actions | `npm i x@1` | Pins any version, including older ones |
@@ -174,7 +174,7 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 **Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
-- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally.
+- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally. If a repo commits a folder one of your agents needs a link in (often `.claude/skills`), skilllib asks before adding it there.
 - **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
 - **Delete it**: it goes to Settings › Backups.
 
@@ -207,7 +207,7 @@ Run this once:
 skilllib agent-skill install
 ```
 
-This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health offers the same install, and upgrading skilllib keeps the skill up to date.
+This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health and Settings offer the same install, and upgrading skilllib keeps the skill up to date.
 
 Then, in any repo, you can ask:
 
@@ -227,7 +227,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
 | **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
-| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
+| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there (in its `.claude/settings.local.json`, which skilllib makes git ignore; without the `claude` command, skilllib writes the file itself), or remove your copy from that repo. If the repo commits its copy, it's the team's: skilllib never offers to remove it. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. Cursor ignores repo settings: after a repo turns the plugin off, Cursor still lists both there, and only turning the plugin off or removing it changes that. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
 | A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
 | A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |
@@ -243,7 +243,7 @@ skilllib never really deletes anything you can't get back. What it removes goes 
 - removed library skills and untracked copies go to `~/.skilllib/trash`
 - removed global skills go to `~/.skilllib/global-backup`
 - copies replaced by a link go to `~/.skilllib/tidy-backup`
-- edits `skilllib doctor` discards go to `~/.skilllib/edit-backup`
+- local edits that `skilllib doctor` discards, or that `--force` overwrites (`add`, `update`, `sync`), go to `~/.skilllib/edit-backup`
 - removed plugins are listed too; restoring one reinstalls it
 
 ---
@@ -322,7 +322,7 @@ skilllib scan [folder...]       add project folders and scan them
 skilllib folders [add|remove]   show or change project folders
 skilllib harnesses [id...]      show or set your agents (claude-code cursor codex zed)
 
-skilllib status                 this repo's skills
+skilllib status                 this repo's skills, which agents load them, and issues
 skilllib add | remove <name>    change this repo's skills
 skilllib sync [--all]           install exactly the pinned versions
 skilllib outdated [--all]       skills with a newer version
@@ -342,13 +342,18 @@ skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+The repo commands (`status`, `add`, `remove`, `sync`, `outdated`, `update`, `link`, `tidy`) work in a git repo or a folder with `skilllib.json`, and never in your home folder: skills there would load in every repo. Elsewhere they stop with an error. `--all`, `tidy --global` and `status --json` work from any folder; outside a repo, `status --json` lists only the global skills.
+
+Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`), `--allow-tracked` (link into git-tracked folders; skills git doesn't share are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+
+A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder. What it did do is still done, and listed.
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 
 - **`status --json`** answers everything about the repo in one call:
   - the repo's skills, with their source, version, state and git state
-  - the global skills, grouped by where they come from
+  - skills in subfolders (`nested`, e.g. monorepo packages), with their folder
+  - the global skills, grouped by where they come from, with the plugins the repo's `.claude/settings.json` turns on or off
   - every problem skilllib found here, with its fix
   - how often Claude Code used each skill here
   - the repo's top-level files
@@ -405,7 +410,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.6.0 && git push --tags
+   git tag v1.7.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

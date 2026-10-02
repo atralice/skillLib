@@ -4,6 +4,7 @@ import { enabledHarnesses } from "./config.js";
 import { harness, type HarnessId } from "./harnesses.js";
 import { linkDir } from "./library.js";
 import { claudeDir, OWN_SKILL_MARKER, userHome } from "./paths.js";
+import { tildify } from "./output.js";
 
 /**
  * The `skilllib` skill: tells agents how to answer "which skills can you use
@@ -66,7 +67,7 @@ export function installAgentSkill(enabled: HarnessId[] = enabledHarnesses()): { 
   const [primary, ...links] = agentSkillDirs(enabled);
   if (!primary) return { ok: false, reason: "no agents chosen yet (skilllib harnesses <id>...)" };
   const foreign = [primary, ...links].find((d) => entryExists(d) && !isOurs(d) && !isDangling(d));
-  if (foreign) return { ok: false, reason: `${foreign} already exists and isn't skilllib's` };
+  if (foreign) return { ok: false, reason: `${tildify(foreign)} already exists and isn't skilllib's` };
   for (const d of [primary, ...links]) if (isDangling(d)) unlinkSync(d);
   mkdirSync(primary, { recursive: true });
   writeFileSync(join(primary, "SKILL.md"), shippedSkill());

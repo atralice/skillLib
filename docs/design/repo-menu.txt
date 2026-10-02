@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── web-app ─────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ ▌ Open its folder                                                                      │
-│   ◈ Global          14   ││   Hide it from the list                                                                │
+│   ◈ Global          15   ││   Hide it from the list                                                                │
 │   ✓ Health          19   ││   Review prompt for its 9 skills                                                       │
 │   Projects ───────────── ││                                                                                        │
 │ ▌ ◆ web-app          ✕   ││                                                                                        │

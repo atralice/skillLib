@@ -92,7 +92,7 @@ The dashboard for one repo: everything agents can use in it, one row per skill.
 
 - **Action rows:** `+ Add a skill…`, `✦ Fix N issues automatically…` (only when there are some), `⋯ <repo>…` (open its folder, hide it, a review prompt for its skills).
 - **Columns:** severity · Skill · Source · Uses (Claude Code, 30 days, this repo) · the worst issue in a few words.
-- **Source tags:** `lib v2` (from your library, `accent`) · `repo` (committed by the team) and `untracked` (only on this machine), both `blue` · `global` / `global ✓` (kept on purpose), `yellow` · `⧉ vercel` (a plugin, `magenta`) · `claude.ai`, `cursor` (`muted`).
+- **Source tags:** `lib v2` (from your library, `accent`) · `repo` (committed by the team) and `untracked` (only on this machine), both `blue` · `global` / `global ✓` (kept on purpose), `yellow` · `⧉ vercel` (a plugin, `magenta`) · `◆ skilllib` (skilllib's own skill, `accent`) · `claude.ai`, `cursor` (`muted`).
 - **One row per skill**, even when it loads from several places. The row shows the repo's copy first, then yours, then vendors' (`COPY_RANK`); the details list every copy under *Loaded from*.
 - **Tabs:** All · Issues · Local · Global · Plugins · Vendor, each with its count. The Issues count is yellow when it isn't zero.
 - **Order:** worst issue first, then most used, then name. The order is fixed when a view opens and doesn't change after a fix, so rows stay under the cursor. It's re-sorted once when usage arrives (usage loads after the first paint because reading transcripts is slow).
@@ -133,6 +133,7 @@ Everything that loads in every repo: your global folders, plugins, claude.ai ski
 - **Tabs:** as a repo's, without Local.
 - **Issues:** broken links, loaded twice (a global copy and a plugin, or two global copies), and *Not reviewed* for each of your global skills you haven't decided about.
 - **Vendor skills** can't be changed from here, except a Claude Code plugin, which can be replaced (below). Their actions say where to turn them off.
+- **The skilllib skill** (`◆ skilllib`, in the Global tab): out of date, its row offers the update; its action removes it (`skilllib agent-skill remove`).
 
 | | |
 |---|---|
@@ -141,13 +142,13 @@ Everything that loads in every repo: your global folders, plugins, claude.ai ski
 
 ### Health
 
-Every skill with something to fix, in every repo and in Global, worst first. The same rows and details as where they live, with a *Where* column instead of Source and Uses. The sidebar count is the number of skills flagged, colored by the worst.
+Every skill with something to fix, in every repo and in Global, worst first. The same rows and details as where they live, with a *Where* column instead of Source and Uses. When your agents don't have the skilllib skill, a `skilllib` row (Where: *Your agents*) offers to install it. The sidebar count is the number of skills flagged, colored by the worst.
 
 ![Health](design/health.svg)
 
 ### Settings
 
-Agents (`[x]` toggles which ones skilllib makes skills visible to), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
+Agents (`[x]` toggles which ones skilllib makes skills visible to) and the skilllib skill for them (`enter` installs it), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
 
 ![Settings](design/settings.svg)
 
@@ -182,22 +183,25 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Where | Short | Severity | Your call | Fixes |
 |---|---|---|---|---|
 | Repo | Folder missing | ✕ | | Restore it (sync) |
+| Repo | Pinned, not in your library (folder missing, and your library has no copy: import it, or set SKILLLIB_HOME) | ✕ | yes | Remove it from skilllib.json |
 | Repo | Not in your library | ✕ | | Copy it back into your library |
-| Repo | Loaded twice (also global) | ✕ | | Keep this repo's copy, stop loading it globally · Keep it global, remove it from this repo |
+| Repo | Loaded twice (also global) | ✕ | yes | Keep this repo's copy, stop loading it globally (names the other repos that used it) · Keep it global, remove it from this repo |
 | Repo | Extra: you keep it global | ⚠ | yes | Remove this repo's copy, keep it global · Stop loading it globally after all |
 | Repo | Same name as a plugin/claude.ai/cursor skill | ✕ | yes | Remove this repo's copy · Turn the plugin off |
+| Repo | Cursor also lists a plugin's copy (the repo turned the plugin off for Claude Code; Cursor ignores repo settings) | ⚠ | yes | Replace *plugin* with library skills… |
 | Repo | Extra copies (identical copies, or links no agent needs) | ⚠ | | Keep one copy, plus the links your agents need |
 | Repo | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy that can win) |
 | Repo | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
 | Repo | Edited here | ⚠ | yes | Save as vN+1 in your library · Discard the edits |
 | Repo | Update to vN | ⚠ | | Update to vN |
 | Repo | *Agent* can't see it | ⚠ | | Link it for every agent |
+| Repo | *Agent* can't see it: commit it first (only links into folders git tracks would help, and the copy isn't committed) | ⚠ | yes | none (reported only) |
 | Repo | Differs from library | · | yes | Update your library from this copy · Replace it with the library version |
-| Repo | Not tracked | · | | Track it |
-| Repo | Only in this repo | · | | Import it into your library |
+| Repo | Not tracked | · | yes | Track it |
+| Repo | Only in this repo | · | yes | Import it into your library |
 | Repo | Unused 30 days | · | yes | Remove it from this repo |
 | Global | Broken link | ✕ | | Remove the link |
-| Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | | Keep that copy, stop loading yours globally |
+| Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | yes | Keep that copy, stop loading yours globally |
 | Global | Extra copies (identical copies in several global folders) | ⚠ | | Keep one copy, plus the links your agents need |
 | Global | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy) |
 | Global | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
@@ -223,7 +227,9 @@ All replace the content area (Places stays visible), except confirm, which opens
 
 Also: **menu** (a list of options, e.g. `⋯ repo…`), **input** (one line, e.g. a project folder), and **agents** (the first run: which agents you use, then where your projects are).
 
-After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line. A result can carry a follow-up question (`then`), such as allowing links in a git-tracked folder, which opens as another confirm.
+After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line: `✓` (`green`) when it worked, `✗` (`red`) when it failed (`failed` results, and errors), `!` (`yellow`) when it waits on a follow-up question (`then`). A result can carry such a question, such as allowing links in a git-tracked folder, which opens as another confirm. `esc` on it keeps the result on the bottom line, so you still see what the change left undone (e.g. which agents can't see a skill). **Fix all** doesn't ask follow-ups: its result counts what it applied, and names each fix it held back and why (e.g. git tracks the folder), and each one that failed.
+
+Changing what every repo loads (stopping a global skill, or swapping yours for a plugin's copy) is always a decision, never in **Fix all**.
 
 ---
 
@@ -240,7 +246,7 @@ After a change, the app reads everything from disk again (`reload`) and shows th
 | `faint` | `#5A6275` | Column titles, hints, *your call*, empty values |
 | `green` | `#6BCB77` | `✓`, `★`, `[x]`, success messages, Health with nothing to fix |
 | `yellow` | `#F2C94C` | Warnings, `global`, repos behind, the Issues tab count |
-| `red` | `#EF6B6B` | Problems |
+| `red` | `#EF6B6B` | Problems, `✗` failed actions |
 | `magenta` | `#C792EA` | Plugins (`⧉ name`) |
 | `blue` | `#5EB8F7` | Hints, `repo` and `untracked`, remotes |
 | `selection` | `#2A3350` | The selected row's and option's background (focused pane only) |

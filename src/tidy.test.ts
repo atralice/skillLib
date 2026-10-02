@@ -6,7 +6,7 @@ import { join, relative } from "node:path";
 import { setHarnesses } from "./config.js";
 import { addSkill, importSkill, linkEverywhere, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
-import { applyTidy, gitVisibleSteps, planGlobalTidy, planProjectTidy } from "./tidy.js";
+import { applyTidy, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy } from "./tidy.js";
 import { forgetLatest } from "./versions.js";
 
 let tmp: string;
@@ -101,7 +101,11 @@ describe("project tidy", () => {
       },
     ]);
 
+    // A folder without a copy picks nothing: still a conflict.
+    expect(planProjectTidy(project, { keep: { deploy: join(project, ".nope", "skills") } }).conflicts.map((c) => c.name)).toEqual(["deploy"]);
     const [plan] = planProjectTidy(project, { keep: { deploy: join(project, ".agents", "skills") } }).plans;
+    // The copy it replaces isn't a duplicate: the step says so.
+    expect(plan!.steps.map((s) => describeStep(s, project))).toEqual([".claude/skills/deploy: differing copy → link"]);
     applyTidy(plan!, { git: "go" });
     expect(isLink(at(".claude", "deploy"))).toBe(true);
     expect(readFileSync(join(at(".claude", "deploy"), "SKILL.md"), "utf-8")).toContain("agents version");
@@ -207,6 +211,11 @@ describe("global tidy", () => {
     const report = planGlobalTidy();
     expect(report.plans).toEqual([]);
     expect(report.conflicts.map((c) => [c.name, c.copies.map((x) => x.runs)])).toEqual([["web", [["claude-code"], ["codex"]]]]);
+    // Keeping a folder with no copy of it never replaces one differing copy with another.
+    const unknown = planGlobalTidy({ keep: { web: join(tmp, ".nope", "skills") } });
+    expect([unknown.plans, unknown.conflicts.map((c) => c.name)]).toEqual([[], ["web"]]);
+    const kept = planGlobalTidy({ keep: { web: join(tmp, ".agents", "skills") } });
+    expect(kept.plans.flatMap((p) => p.steps.map((s) => describeStep(s, null)))).toEqual([`${g(".claude", "web").replace(tmp, "~").replace(/\\/g, "/")}: differing copy → link`]);
     expect(report.skipped.map((s) => s.name)).toEqual(["tool"]);
   });
 });
