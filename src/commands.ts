@@ -15,6 +15,7 @@ import {
   syncProject,
   updateProject,
   type Change,
+  type ProjectSkill,
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir, MANIFEST_FILE, userHome } from "./paths.js";
@@ -31,7 +32,7 @@ import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandH
 import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues, runFix, usageIssues, type Choice } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
-import type { AgentSkillJson, AllChangesJson, ChangeJson, ChangesJson, DoctorJson, ImportJson, ListJson, OutdatedJson, ProjectsJson, ShowJson, StatusJson, UsageJson } from "./json.js";
+import type { AllChangesJson, ChangeJson, DoctorJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
 import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
@@ -80,7 +81,7 @@ function colorState(state: SkillState): string {
 /** For agents: where each installed or updated skill now is, so they needn't look. */
 function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
-  return changes.map((c) => {
+  return changes.map((c): ChangeJson => {
     const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" ? skills[c.name] : undefined;
     return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
   });
@@ -92,7 +93,7 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
  */
 function printChanges(root: string, changes: Change[], args: Args) {
   if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
-  if (args.json) return json(withDirs(root, changes) satisfies ChangesJson);
+  if (args.json) return json("changes", withDirs(root, changes));
   for (const c of changes) {
     if (c.blocked?.length) {
       warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
@@ -165,7 +166,7 @@ export async function status(args: Args) {
     // The skilllib skill runs this wherever an agent is: outside a repo it lists the global skills.
     const root = findProjectRoot();
     const usage = await usageBySkill(args.days, root);
-    json(usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))) satisfies StatusJson);
+    json("status", usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
     if (projectHere()) rememberProjects([root]);
     return;
   }
@@ -247,7 +248,7 @@ export async function overview(args: Args) {
 /** Everything in the library, where each skill is installed, and how much it's used. */
 export async function list(args: Args) {
   if (args.json) {
-    return json(libraryFor(projectHere()) satisfies ListJson);
+    return json("list", libraryFor(projectHere()));
   }
   const skills = librarySkills();
   if (skills.length === 0) {
@@ -295,11 +296,16 @@ export function projects(args: Args) {
   const roots = visibleProjects();
   if (args.json) {
     return json(
-      roots.map((root) => ({
-        name: basename(root),
-        path: root,
-        skills: projectStatus(root).map((s) => ({ name: s.name, managed: s.managed, state: s.state, version: s.version, latest: s.latest })),
-      })) satisfies ProjectsJson,
+      "projects",
+      roots.map(
+        (root): ProjectsJson[number] => ({
+          name: basename(root),
+          path: root,
+          skills: projectStatus(root).map(
+            (s): ProjectsJson[number]["skills"][number] => ({ name: s.name, managed: s.managed, state: s.state, version: s.version, latest: s.latest }),
+          ),
+        }),
+      ),
     );
   }
   if (roots.length === 0) {
@@ -345,7 +351,7 @@ export function remove(args: Args) {
 /** Installs exactly the versions in skilllib.json (--all: every project). */
 export function sync(args: Args) {
   const roots = args.all ? visibleProjects() : [requireProject()];
-  const results = roots.map((root) => {
+  const results = roots.map((root): AllChangesJson[number] => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = syncProject(root, { force: args.force });
     if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
@@ -359,14 +365,14 @@ export function sync(args: Args) {
     }
     return { project: basename(root), path: root, changes: withDirs(root, changes) };
   });
-  if (args.json) json(args.all ? (results satisfies AllChangesJson) : (results[0]!.changes satisfies ChangesJson));
+  if (args.json) args.all ? json("changes --all", results) : json("changes", results[0]!.changes);
   if (!args.all) rememberProjects(roots);
 }
 
 /** Moves skills to their newest library version (all, or the ones named). */
 export function update(args: Args) {
   const roots = args.all ? visibleProjects() : [requireProject()];
-  const results = roots.map((root) => {
+  const results = roots.map((root): AllChangesJson[number] => {
     if (args.allowTracked) allowTrackedLinks(root);
     const names = args.positional.length ? args.positional : undefined;
     const changes = updateProject(root, names, { force: args.force });
@@ -383,7 +389,7 @@ export function update(args: Args) {
     }
     return { project: basename(root), path: root, changes: withDirs(root, changes) };
   });
-  if (args.json) json(args.all ? (results satisfies AllChangesJson) : (results[0]!.changes satisfies ChangesJson));
+  if (args.json) args.all ? json("changes --all", results) : json("changes", results[0]!.changes);
 }
 
 /** Skills with a newer library version, per project. */
@@ -391,10 +397,10 @@ export function outdated(args: Args) {
   const roots = args.all ? visibleProjects() : [requireProject()];
   const behind = roots.flatMap((root) =>
     projectStatus(root)
-      .filter((s) => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
-      .map((s) => ({ project: basename(root), path: root, skill: s.name, installed: s.version!, latest: s.latest!, state: s.state })),
+      .filter((s): s is ProjectSkill & { version: number; latest: number } => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
+      .map((s): OutdatedJson[number] => ({ project: basename(root), path: root, skill: s.name, installed: s.version, latest: s.latest, state: s.state })),
   );
-  if (args.json) return json(behind satisfies OutdatedJson);
+  if (args.json) return json("outdated", behind);
   const rows = behind.map((b) => ({ Project: b.project, Skill: b.skill, Installed: `v${b.installed}`, Latest: `v${b.latest}`, Status: colorState(b.state) }));
   if (rows.length === 0) return success("Everything is on the latest version");
   table(rows);
@@ -437,7 +443,7 @@ export function importSkills(args: Args) {
       rememberProjects([root]);
     }
   }
-  if (args.json) json(results);
+  if (args.json) json("import", results);
 }
 
 /** Adds folders (default: the configured ones) and scans them for projects. */
@@ -572,12 +578,18 @@ export async function doctor(args: Args) {
   };
   if (args.json) {
     return json(
-      issues.map(({ fix, choices, ...issue }) => ({
-        ...issue,
-        ...(fix && { fix: fix.label }),
-        ...(choices && { choices: choices.map((c) => c.label) }),
-        ...(args.fix && fix && { fixed: fixed(fix) }),
-      })) satisfies DoctorJson,
+      "doctor",
+      issues.map(
+        ({ id, severity, title, detail, fix, choices }): DoctorJson[number] => ({
+          id,
+          severity,
+          title,
+          detail,
+          fix: fix?.label,
+          choices: choices?.map((c) => c.label),
+          fixed: args.fix && fix ? fixed(fix) : undefined,
+        }),
+      ),
     );
   }
   if (issues.length === 0) return success("Everything looks good");
@@ -598,12 +610,12 @@ export async function usage(args: Args) {
   const summaries = summarize(await scanUsage(args.days), projectOfFactory(knownProjects()));
   if (args.json) {
     const library = new Set(librarySkills().map((s) => s.name));
-    return json({
+    return json("usage", {
       usageDays: args.days,
       source: "Claude Code transcripts",
-      skills: summaries.map((s) => ({ skill: s.skill, uses: s.uses, lastUsed: s.lastUsed, projects: [...s.projects].map((p) => basename(p)), inLibrary: library.has(s.skill) })),
+      skills: summaries.map((s): UsageJson["skills"][number] => ({ skill: s.skill, uses: s.uses, lastUsed: s.lastUsed, projects: [...s.projects].map((p) => basename(p)), inLibrary: library.has(s.skill) })),
       unusedLibrarySkills: librarySkills().filter((l) => !summaries.some((u) => u.skill === l.name)).map((l) => l.name),
-    } satisfies UsageJson);
+    });
   }
   if (summaries.length === 0) {
     info(`No skill usage in Claude Code transcripts from the last ${args.days} days.`);
@@ -637,7 +649,7 @@ export function show(args: Args) {
   }
   const { description } = readSkillInfo(dir);
   if (args.json) {
-    return json({
+    return json("show", {
       name,
       description,
       path: dir,
@@ -645,7 +657,7 @@ export function show(args: Args) {
       origin: libraryOrigins()[name] ?? "",
       projects: knownProjects().filter((p) => name in readManifest(p).skills).map((p) => basename(p)),
       skillMd: readFileSync(join(dir, "SKILL.md"), "utf-8"),
-    } satisfies ShowJson);
+    });
   }
   info(`${name} ${dim(tildify(dir))}`);
   if (description) info(`\n${description}`);
@@ -796,7 +808,7 @@ export function agentSkill(args: Args) {
       error(`Can't install the skilllib skill: ${r.reason}`);
       process.exit(1);
     }
-    if (args.json) return json({ state: agentSkillState(), dirs: r.dirs } satisfies AgentSkillJson);
+    if (args.json) return json("agent-skill", { state: agentSkillState(), dirs: r.dirs });
     success(`Installed in ${r.dirs.map((d) => tildify(d)).join(" and ")}`);
     if (!onPath("skilllib")) warn("`skilllib` isn't on your PATH, so agents can't run it. Install it: npm install -g skilllib");
     info(dim("New agent sessions can now answer questions like “which skills can you use here?”"));
@@ -804,11 +816,11 @@ export function agentSkill(args: Args) {
   }
   if (action === "remove" || action === "rm") {
     const removed = removeAgentSkill();
-    if (args.json) return json({ state: agentSkillState(), removed } satisfies AgentSkillJson);
+    if (args.json) return json("agent-skill", { state: agentSkillState(), removed });
     return removed.length ? success(`Removed from ${removed.map((d) => tildify(d)).join(" and ")}`) : info("The skilllib skill isn't installed.");
   }
   const state = agentSkillState();
-  if (args.json) return json({ state, dirs: agentSkillDirs() } satisfies AgentSkillJson);
+  if (args.json) return json("agent-skill", { state, dirs: agentSkillDirs() });
   if (state === "installed") success(`Your agents can use skilllib ${dim(`(${agentSkillDirs().map((d) => tildify(d)).join(", ")})`)}`);
   else if (state === "outdated") warn("The skilllib skill is out of date. Run `skilllib agent-skill install` to update it.");
   else info("Your agents don't know about skilllib yet. Run `skilllib agent-skill install` so you can ask them about your skills.");

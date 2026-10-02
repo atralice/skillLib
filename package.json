@@ -33,7 +33,12 @@
   "types": "./dist/json.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/json.d.ts"
+      "import": {
+        "types": "./dist/json.d.ts"
+      },
+      "require": {
+        "types": "./dist/json.d.cts"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -44,7 +49,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target node22 --clean && tsup src/json.ts --dts-only --format esm",
+    "build": "tsup src/index.ts --format esm --target node22 --clean && tsup src/json.ts --dts-only --format esm,cjs",
     "dev": "tsx src/index.ts",
     "design": "tsx src/tui/design.ts",
     "type-check": "tsc --noEmit",
