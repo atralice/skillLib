@@ -471,17 +471,18 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
 
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(dir);
-  if (local !== null && local !== recorded.hash && !versionForHash(name, local) && !force) {
-    return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
-  }
+  const edited = local !== null && local !== recorded.hash && !versionForHash(name, local);
+  if (edited && !force) return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
   for (const linkDir of recorded.links ?? []) {
     const link = join(root, linkDir, name);
     if (isLink(link)) unlinkSync(link);
   }
-  rmSync(dir, { recursive: true, force: true });
+  // Forced over local edits: the edited copy goes to ~/.skilllib/edit-backup, as update and sync do.
+  const backedUp = edited ? stash(dir, "edit-backup") : undefined;
+  if (!backedUp) rmSync(dir, { recursive: true, force: true });
   delete manifest.skills[name];
   writeManifest(root, manifest);
-  return { name, action: "removed" };
+  return { name, action: "removed", ...(backedUp ? { backedUp } : {}) };
 }
 
 /**

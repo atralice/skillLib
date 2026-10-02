@@ -121,8 +121,21 @@ describe("library", () => {
 
     writeSkill(local("alpha"), "edited");
     expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
-    expect(removeSkill(project, "alpha", { force: true })).toEqual({ name: "alpha", action: "removed" });
+    expect(removeSkill(project, "alpha", { force: true })).toMatchObject({ name: "alpha", action: "removed", backedUp: expect.any(String) });
     expect(existsSync(local("alpha"))).toBe(false);
+  });
+
+  test("remove --force backs local edits up before removing the skill", () => {
+    addSkill(project, "alpha");
+    writeSkill(local("alpha"), "my edit");
+    expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: expect.stringContaining("local edits") });
+    const removed = removeSkill(project, "alpha", { force: true });
+    expect(removed.action).toBe("removed");
+    expect(readFileSync(join(removed.backedUp!, "SKILL.md"), "utf-8")).toContain("my edit");
+    expect(existsSync(local("alpha"))).toBe(false);
+    // An unedited copy has nothing to keep.
+    addSkill(project, "alpha");
+    expect(removeSkill(project, "alpha", { force: true })).toEqual({ name: "alpha", action: "removed" });
   });
 
   test("update --force and sync --force back local edits up before overwriting them", () => {

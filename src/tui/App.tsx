@@ -645,9 +645,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       result = W.failed(`Couldn't do it: ${(e as Error).message}`);
     }
     setBase(reload());
-    const toast = `${W.isFailure(result) ? "✗" : "✓"} ${said(result)}`;
-    setToast(toast);
     const then = W.followUp(result);
+    // A result waiting on a question isn't done yet: "!" until you answer it.
+    const toast = `${W.isFailure(result) ? "✗" : then ? "!" : "✓"} ${said(result)}`;
+    setToast(toast);
     if (then) setModal({ kind: "confirm", fix: then, toast });
   }
   function choose(o: Option) {
@@ -1456,7 +1457,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         </Box>
       </Box>
       <Box height={1} width={termCols} justifyContent="space-between">
-        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : toast.startsWith("✗") ? color.red : color.muted} wrap="truncate-end">
+        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
         {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}
