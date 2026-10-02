@@ -241,6 +241,40 @@ test("identical global copies become one copy plus a link", () => {
   expect(w.machine.filter((m) => m.name === "beta").flatMap((m) => machineIssues(w, m).map((i) => i.id))).toEqual(["global:beta"]);
 });
 
+test("an agent that can't see a repo's skill is reported, and a link fixes it", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  let w = loadWorld();
+  expect(local(w, "notes").agents).toEqual(["codex"]);
+  const blind = issue(w, "blind:notes")!;
+  expect(blind.title).toBe("Claude Code can't see it");
+  expect(blind.fixes[0]!.run(w)).toBe("notes: linked in .claude/skills");
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  w = loadWorld();
+  expect(issue(w, "blind:notes")).toBeUndefined();
+});
+
+test("linking for every agent asks before linking into a folder git tracks", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  writeSkill(join(repo, ".claude", "skills", "other"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "skills");
+  let w = loadWorld();
+  const r = issue(w, "blind:notes")!.fixes[0]!.run(w);
+  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
+  expect(r.message).toBe("notes: nothing to link");
+  expect(r.then.preview).toContain(".claude/skills is committed in app");
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(false);
+  r.then.run(w);
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  w = loadWorld();
+  expect(issue(w, "blind:notes")).toBeUndefined();
+});
+
 test("a repo copy of a skill you keep global is the extra one", () => {
   writeSkill(join(tmp, ".claude", "skills", "beta"));
   writeSkill(join(repo, ".claude", "skills", "beta"));

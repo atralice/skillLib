@@ -83,7 +83,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     source: "lib",
     dir: s.location,
     path: s.path,
-    agents: s.visibility.map((v) => v.id),
+    // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
+    agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
     ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : other[s.state]),
     git: git ? git.of(relativeTo(root, s.path)) : null,
   };
