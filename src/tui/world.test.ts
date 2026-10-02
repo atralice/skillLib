@@ -134,4 +134,7 @@ test("the skilllib skill: Health offers it when your agents don't have it, and i
   w.agentSkill = "outdated";
   expect(agentSkillIssue(w)!.decision).toBe(false);
   expect(agentSkillIssue(w)!.fixes[0]!.label).toBe("Update the skilllib skill");
+  // No agents picked: nowhere to install it.
+  w.agents = [];
+  expect(agentSkillIssue(w)).toBeNull();
 });

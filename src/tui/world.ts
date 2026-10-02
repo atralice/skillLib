@@ -589,7 +589,8 @@ export function agentSkillFix(w: World): Fix {
 
 /** Your agents don't have the skilllib skill. Installing adds a global skill, so it's your call; refreshing it isn't. */
 export function agentSkillIssue(w: World): Issue | null {
-  if (w.agentSkill === "installed") return null;
+  // No agents picked yet: there's nowhere to put it.
+  if (w.agentSkill === "installed" || !w.agents.length) return null;
   const missing = w.agentSkill === "missing";
   return {
     id: "agent-skill",
