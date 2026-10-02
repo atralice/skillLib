@@ -218,15 +218,16 @@ function claudeAiSkills(enabled: HarnessId[]): SourcedSkill[] {
 type InstalledPlugins = { plugins?: Record<string, { scope?: string; installPath?: string }[]> };
 type PluginSettings = { enabledPlugins?: Record<string, boolean> };
 
-/** Turns a Claude Code plugin on or off for every repo (enabledPlugins in ~/.claude/settings.json). */
-export function setPluginEnabled(id: string, on: boolean) {
-  const file = join(claudeDir(), "settings.json");
-  // A file we can't parse holds settings we'd wipe by rewriting it: leave it alone.
-  const settings = existsSync(file) ? readJson<{ enabledPlugins?: Record<string, boolean> }>(file) : {};
-  if (!settings) throw new Error(`${file} isn't valid JSON, so skilllib won't rewrite it`);
-  settings.enabledPlugins = { ...settings.enabledPlugins, [id]: on };
-  mkdirSync(claudeDir(), { recursive: true });
-  writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+/** Where Claude Code may find a marketplace plugin's files: its install paths, then its marketplace's copy. */
+export function pluginDirCandidates(id: string, installPaths: string[]): string[] {
+  const [name = "", marketplace = ""] = id.split("@");
+  const plugins = join(claudeDir(), "plugins");
+  return [
+    ...installPaths,
+    join(plugins, "marketplaces", marketplace, "plugins", name),
+    join(plugins, "marketplaces", marketplace, "external_plugins", name),
+    join(plugins, "marketplaces", marketplace),
+  ];
 }
 
 function repoSettingsFiles(root: string): string[] {
@@ -261,13 +262,7 @@ function pluginSkills(harnesses: HarnessId[], root?: string): SourcedSkill[] {
   const fromMarketplaces = [...new Set([...Object.keys(enabled), ...Object.keys(user)])]
     .filter((id) => (claude && enabled[id]) || (cursor && user[id]))
     .flatMap((id) => {
-      const [name = "", marketplace = ""] = id.split("@");
-      const candidates = [
-        ...(installed[id] ?? []).flatMap((i) => (i.installPath ? [i.installPath] : [])),
-        join(plugins, "marketplaces", marketplace, "plugins", name),
-        join(plugins, "marketplaces", marketplace, "external_plugins", name),
-        join(plugins, "marketplaces", marketplace),
-      ];
+      const candidates = pluginDirCandidates(id, (installed[id] ?? []).flatMap((i) => (i.installPath ? [i.installPath] : [])));
       const dir = candidates.find((c) => existsSync(join(c, "skills")));
       if (!dir) return [];
       const inCursor = cursor && user[id] && (installed[id] ?? []).some((i) => i.scope === "user" && i.installPath === dir);

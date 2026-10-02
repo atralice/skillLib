@@ -93,6 +93,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 |---|---|
 | **Your skills** | Your library: master copies, versioned. Nothing here loads anywhere until you add it to a repo. |
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
+| **Plugins** | Every plugin installed, on or off: what it brings, where it's installed, and how much its skills get used. Turn it on or off, update it, uninstall it, or replace it with library skills. |
 | **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
 | **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
@@ -180,9 +181,33 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 When some of your agents can't see a global skill, the flag says so (**Not reviewed · Claude Code can't see it**). This happens, for example, with a Codex skill in `~/.agents/skills` or `~/.codex/skills`, which Claude Code doesn't read. Then a fourth choice appears: **Link it for Claude Code** adds a link in `~/.claude/skills`, and nothing is copied or moved. Moving it to repos works for every agent too. For a skill you keep global on purpose, the link is the ★ fix.
 
-Vendor skills (plugins, claude.ai, Cursor built-ins) are managed at their source: `/plugin` in Claude Code, or claude.ai's settings.
+Vendor skills (claude.ai, Cursor built-ins) are managed at their source: claude.ai's settings, or Cursor. A plugin's skills offer **Open *plugin* in Plugins**.
 
-**Replacing a plugin with library skills:** on a plugin's skill or group, **Replace *plugin* with library skills…** copies all its skills into your library (grouped under the plugin), adds them to the repos you tick, and uninstalls the plugin (`claude plugin uninstall`, keeping its saved data; Settings › Backups reinstalls it). A plugin can't be half removed, so it's all its skills at once; the confirmation says what else it brings (commands, agents, hooks, MCP servers) that goes too. If the `claude` command isn't available, skilllib turns the plugin off instead and tells you to finish with `/plugin uninstall`. Plugins synced from claude.ai can't be removed from here: skilllib copies their skills and tells you to remove the plugin on claude.ai.
+### Plugins
+
+Plugins are a big part of what agents load (one plugin can bring dozens of skills), so they get their own place: one row per plugin, not per skill.
+
+| Column | Meaning |
+|---|---|
+| Plugin | Its name; the details show `name@marketplace` |
+| ✻ ⬡ | Claude Code or Cursor |
+| Scope | `user` (every repo) · `project` / `local` and the repo it's installed in · `claude.ai` (synced from your account) |
+| Brings | Its skills, and `+N` for the other kinds of things it brings: commands, agents, hooks, MCP servers |
+| On | `on` · `off` · `?` for Cursor, which keeps that in its own database |
+| Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart; two installs of one plugin share a count |
+| Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** · **Update to vN** |
+
+Every plugin issue is *your call*: turning plugins on or off, or updating them, changes code that runs in your sessions, so **Fix automatically** never does it.
+
+The details list its skills with their uses, what else it brings, where it's installed and its version. Its actions:
+
+- **Turn it on / off**: `claude plugin enable|disable --scope <scope>`, run in its repo for a project or local install. A plugin synced from claude.ai is switched by its `"<name>@synced"` line in `~/.claude/settings.json`; so is any plugin when the `claude` command isn't available.
+- **Update to vN**, when its marketplace (as Claude Code last fetched it) declares a newer version or commit: `claude plugin update`. If the marketplace asks to run a command, skilllib doesn't confirm it for you: it tells you to run the update yourself.
+- **Uninstall**: `claude plugin uninstall --keep-data`, where it's installed. Settings › Backups reinstalls it, in the same repo for a project install.
+- **Replace *plugin* with library skills…** copies all its skills into your library (grouped under the plugin), adds them to the repos you tick, and uninstalls the plugin. A plugin can't be half removed, so it's all its skills at once; the confirmation says what else it brings that goes too. If the `claude` command isn't available, skilllib turns the plugin off instead and tells you to finish with `/plugin uninstall`. Plugins synced from claude.ai can't be removed from here: skilllib copies their skills, turns the plugin off, and tells you to remove it on claude.ai.
+- **Review prompt** for the plugin's skills, and **Open its folder**.
+
+Cursor's plugins are listed read-only: Cursor doesn't record which plugins are on in a file skilllib can read, so turn them off in Cursor (Settings › Plugins). A repo's overview shows which plugins load there.
 
 ### Ask an agent to review your skills
 
@@ -244,7 +269,7 @@ skilllib never really deletes anything you can't get back. What it removes goes 
 - removed global skills go to `~/.skilllib/global-backup`
 - copies replaced by a link go to `~/.skilllib/tidy-backup`
 - local edits that `skilllib doctor` discards, or that `--force` overwrites (`add`, `update`, `sync`), go to `~/.skilllib/edit-backup`
-- removed plugins are listed too; restoring one reinstalls it
+- uninstalled plugins are listed too; restoring one reinstalls it, in its repo for a project install
 
 ---
 
@@ -373,7 +398,7 @@ The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so a
 | `~/.skilllib/store/` | Every version of every skill, immutable |
 | `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
 | `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/`, `edit-backup/` | Everything skilllib removed, restorable from Settings › Backups |
-| `~/.skilllib/plugin-backup.json` | Plugins skilllib uninstalled, so Settings › Backups can reinstall them |
+| `~/.skilllib/plugin-backup.json` | Plugins skilllib uninstalled (with their scope and repo), so Settings › Backups can reinstall them |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 | `~/.claude/skills/skilllib/` | The skill that lets your agents use skilllib (`agent-skill install`) |
 
@@ -388,7 +413,8 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 **Why does usage only count Claude Code?** It's the only agent here with local transcripts to read. Cursor doesn't keep them locally, and Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 
 **What's not supported yet?**
-- Turning off Cursor marketplace plugins: skilllib reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
+- Turning off Cursor marketplace plugins: skilllib lists them and reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
+- Installing plugins from a marketplace: use `/plugin` in Claude Code. Plugins a repo's own `.claude/settings.json` turns on without installing them aren't listed in Plugins yet.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
 - Installing new skills straight from GitHub is coming. For now, `skilllib import <folder>` or copy one from a repo.
 
@@ -410,7 +436,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.7.0 && git push --tags
+   git tag v1.8.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

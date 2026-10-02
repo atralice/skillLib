@@ -1,28 +1,28 @@
 ╭── ◆ skilllib ────────────╮╭── Skills ──────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3     ⌕ re▏               │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          19   ││ ▌ ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
-│   Projects ───────────── ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
-│ ▌ ◆ web-app          ✕   ││     pr-review          global ✓          4                                             │
-│     api-server       ✕   ││     release-notes      repo              2                                             │
-│     docs-site        ·   ││     create-rule        cursor            –                                             │
+│   ⧉ Plugins         7    ││ ▌ ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
+│   ✓ Health          19   ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
+│   Projects ───────────── ││     pr-review          global ✓          4                                             │
+│ ▌ ◆ web-app          ✕   ││     release-notes      repo              2                                             │
+│     api-server       ✕   ││     create-rule        cursor            –                                             │
+│     docs-site        ·   ││                                                                                        │
 │     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
 │     blog                 ││                                                                                        │
 │     cli-tools            ││                                                                                        │
-│     dotfiles             ││                                                                                        │
-│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     e2e-tests            │╭── react-patterns ──────────────────────────────────────────────────────────────────────╮
-│     infra                ││ Component patterns for React 19: composition, server components, suspense boundaries.  │
-│     landing              ││                                                                                        │
-│     marketing-site       ││ ⚠ Also in the Cursor plugin react-kit: Cursor lists both while it's on  · your call    │
-│     playground           ││       Turn the plugin off in Cursor (Settings › Plugins)                               │
-│     scripts              ││ ⚠ Update available: v1 → v2                                                            │
-│     status-page          ││     ★ Update to v2                                                                     │
-│    ───────────────────── ││                                                                                        │
-│   ⚙ Settings             ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
-│   ? Help                 ││                                                                                        │
-│                          ││ Usage here   last used yesterday                                                       │
+│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     design-system        │╭── react-patterns ──────────────────────────────────────────────────────────────────────╮
+│     e2e-tests            ││ Component patterns for React 19: composition, server components, suspense boundaries.  │
+│     infra                ││                                                                                        │
+│     landing              ││ ⚠ Also in the Cursor plugin react-kit: Cursor lists both while it's on  · your call    │
+│     marketing-site       ││       Turn the plugin off in Cursor (Settings › Plugins)                               │
+│     playground           ││ ⚠ Update available: v1 → v2                                                            │
+│     scripts              ││     ★ Update to v2                                                                     │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││ Usage here   last used yesterday                                                       │
 │                          ││   █                                                                                    │
 │                          ││   █   ▄ ▄   ▄           ▄ ▄                           ▄   ▄                            │
 │                          ││   █   █ █   █           █ █                           █   █                            │

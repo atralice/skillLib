@@ -1,0 +1,30 @@
+╭── ◆ skilllib ────────────╮╭── Plugins ─────────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 7   Issues 4                                                                      │
+│   ◈ Global          15   ││     Plugin              Scope              Brings       On   Uses  Issue               │
+│ ▌ ⧉ Plugins         7    ││   ⚠ frontend-design  ✻  user               1 skill      on      –  Repeats 1 of yours  │
+│   ✓ Health          19   ││   ⚠ react-kit        ⬡  –                  2 skills     ?       –  Repeats 1 of yours  │
+│   Projects ───────────── ││ ▌ ⚠ stripe-tools     ✻  project api-server 2 skills +1  on      –  Repeats 1 of yours  │
+│   ◆ web-app          ✕   ││   · vercel           ✻  user               3 skills +4  on      5  Update to 0.51.0    │
+│     api-server       ✕   ││     railway          ✻  user               1 skill +1   on      2                      │
+│     docs-site        ·   ││     railway          ✻  claude.ai          1 skill      off     2                      │
+│     mobile-app       ⚠   ││     ponytail         ✻  user               1 skill      off     –                      │
+│     billing              ││                                                                                        │
+│     blog                 ││                                                                                        │
+│     cli-tools            ││                                                                                        │
+│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     design-system        │╭── stripe-tools@acme ───────────────────────────────────────────────────────────────────╮
+│     e2e-tests            ││ Stripe helpers for the API team                                                        │
+│     infra                ││                                                                                        │
+│     landing              ││ ⚠ Repeats your stripe-payments  · your call                                            │
+│     marketing-site       ││   ▸   Replace stripe-tools with library skills…                                        │
+│     playground           ││       Turn it off                                                                      │
+│     scripts              ││ · Its skills weren't used in 30 days (Claude Code); it also brings MCP servers  · you… │
+│     status-page          ││       Turn it off                                                                      │
+│    ───────────────────── ││       Uninstall                                                                        │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││ Actions  Open its folder · Review prompt                                               │
+│                          ││                                                                                        │
+│                          ││ Skills      stripe-payments (unused) · stripe-webhooks (unused)                        │
+│                          ││ Also brings MCP servers                                                                │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                ↑↓ ←→ choose · enter apply · esc back

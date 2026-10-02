@@ -1,28 +1,28 @@
 ╭── ◆ skilllib ────────────╮╭── Loads everywhere  3/15 ──────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 15   Issues 7   Global 8   Plugins 4   Vendor 3                                   │
 │ ▌ ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          19   ││   ✦ Fix 3 issues automatically…                                                        │
-│   Projects ───────────── ││   ⧉ Review prompt for your 6 global skills…                                            │
-│   ◆ web-app          ✕   ││ ▌ ✕ ▾ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
-│     api-server       ✕   ││   ✕   commit-style     global           14  Copies differ                              │
-│     docs-site        ·   ││   ✕   frontend-design  global            –  Loaded twice                               │
-│     mobile-app       ⚠   ││   ⚠   stripe-payments  global           14  Not reviewed · Codex can't see it          │
-│     billing              ││   ✕ old-helper         global            –  Broken link                                │
-│     blog                 ││   ⚠ pr-review          global ✓          4  Codex can't see it                         │
-│     cli-tools            ││   ⚠ security-audit     global            –  Not reviewed · Claude Code can't see it    │
-│     dotfiles             ││   ⚠ tailwind-tips      global            –  Extra copies                               │
-│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     e2e-tests            │╭── commit + 2 more · installed together 2026-09-20 ─────────────────────────────────────╮
-│     infra                ││ commit-style, frontend-design, stripe-payments                                         │
-│     landing              ││                                                                                        │
-│     marketing-site       ││ 3 of them have issues   open the group to fix them one by one                          │
-│     playground           ││                                                                                        │
-│     scripts              ││ Actions  Move all 3 to repos… · Keep all 3 global on purpose · Delete all 3            │
-│     status-page          ││          Review prompt                                                                 │
+│   ⧉ Plugins         7    ││   ✦ Fix 3 issues automatically…                                                        │
+│   ✓ Health          19   ││   ⧉ Review prompt for your 6 global skills…                                            │
+│   Projects ───────────── ││ ▌ ✕ ▾ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
+│   ◆ web-app          ✕   ││   ✕   commit-style     global           14  Copies differ                              │
+│     api-server       ✕   ││   ✕   frontend-design  global            –  Loaded twice                               │
+│     docs-site        ·   ││   ⚠   stripe-payments  global           14  Not reviewed · Codex can't see it          │
+│     mobile-app       ⚠   ││   ✕ old-helper         global            –  Broken link                                │
+│     billing              ││   ⚠ pr-review          global ✓          4  Codex can't see it                         │
+│     blog                 ││   ⚠ security-audit     global            –  Not reviewed · Claude Code can't see it    │
+│     cli-tools            ││   ⚠ tailwind-tips      global            –  Extra copies                               │
+│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     design-system        │╭── commit + 2 more · installed together 2026-09-20 ─────────────────────────────────────╮
+│     e2e-tests            ││ commit-style, frontend-design, stripe-payments                                         │
+│     infra                ││                                                                                        │
+│     landing              ││ 3 of them have issues   open the group to fix them one by one                          │
+│     marketing-site       ││                                                                                        │
+│     playground           ││ Actions  Move all 3 to repos… · Keep all 3 global on purpose · Delete all 3            │
+│     scripts              ││          Review prompt                                                                 │
+│     status-page          ││                                                                                        │
 │    ───────────────────── ││                                                                                        │
 │   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││                                                                                        │
-│                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │

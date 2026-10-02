@@ -23,118 +23,120 @@
 <text x="372.1" y="92.0" fill="#e5e7eb" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">move</text>
 <text x="1004.3" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="111.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">19  </text>
+<text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">⧉ Plugins         </text>
+<text x="203.5" y="111.0" fill="#f2c94c" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">7   </text>
 <text x="245.6" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">enter  →    </text>
 <text x="372.1" y="111.0" fill="#e5e7eb" xml:space="preserve" textLength="581.7" lengthAdjust="spacingAndGlyphs">one pane deeper: Places → list → details (and applies the chosen fix)</text>
 <text x="1004.3" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="34.9" y="130.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">  Projects </text>
-<text x="127.6" y="130.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">─────────────</text>
+<text x="51.7" y="130.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
+<text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">19  </text>
 <text x="245.6" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">space       </text>
 <text x="372.1" y="130.0" fill="#e5e7eb" xml:space="preserve" textLength="581.7" lengthAdjust="spacingAndGlyphs">apply the ★ recommended fix (or show the choices when it's your call)</text>
 <text x="1004.3" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<rect x="34.9" y="135.0" width="16.9" height="19" fill="#2a3350"/>
-<text x="34.9" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
-<rect x="51.7" y="135.0" width="160.2" height="19" fill="#2a3350"/>
-<text x="51.7" y="149.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">◆ web-app          </text>
-<rect x="211.9" y="135.0" width="25.3" height="19" fill="#2a3350"/>
-<text x="211.9" y="149.0" fill="#ef6b6b" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✕  </text>
+<text x="34.9" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">  Projects </text>
+<text x="127.6" y="149.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">─────────────</text>
 <text x="245.6" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">tab  ⇧tab   </text>
 <text x="372.1" y="149.0" fill="#e5e7eb" xml:space="preserve" textLength="581.7" lengthAdjust="spacingAndGlyphs">next / previous tab: All · Issues · Local · Global · Plugins · Vendor</text>
 <text x="1004.3" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  api-server       </text>
+<rect x="34.9" y="154.0" width="16.9" height="19" fill="#2a3350"/>
+<text x="34.9" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
+<rect x="51.7" y="154.0" width="160.2" height="19" fill="#2a3350"/>
+<text x="51.7" y="168.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">◆ web-app          </text>
+<rect x="211.9" y="154.0" width="25.3" height="19" fill="#2a3350"/>
 <text x="211.9" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✕  </text>
 <text x="245.6" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="372.1" y="168.0" fill="#e5e7eb" xml:space="preserve" textLength="556.4" lengthAdjust="spacingAndGlyphs">under 80 columns there's no Places pane: ← → switch places instead</text>
 <text x="1004.3" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  docs-site        </text>
-<text x="211.9" y="187.0" fill="#5eb8f7" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">·  </text>
+<text x="51.7" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  api-server       </text>
+<text x="211.9" y="187.0" fill="#ef6b6b" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✕  </text>
 <text x="245.6" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">esc  ←      </text>
 <text x="372.1" y="187.0" fill="#e5e7eb" xml:space="preserve" textLength="345.6" lengthAdjust="spacingAndGlyphs">one pane back (esc clears a filter first)</text>
 <text x="1004.3" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
-<text x="211.9" y="206.0" fill="#f2c94c" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⚠  </text>
+<text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  docs-site        </text>
+<text x="211.9" y="206.0" fill="#5eb8f7" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">·  </text>
 <text x="245.6" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">ctrl+r      </text>
 <text x="372.1" y="206.0" fill="#e5e7eb" xml:space="preserve" textLength="261.3" lengthAdjust="spacingAndGlyphs">read everything again from disk</text>
 <text x="1004.3" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  billing              </text>
+<text x="51.7" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
+<text x="211.9" y="225.0" fill="#f2c94c" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⚠  </text>
 <text x="245.6" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">ctrl+c      </text>
 <text x="372.1" y="225.0" fill="#e5e7eb" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">quit</text>
 <text x="1004.3" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  blog                 </text>
+<text x="51.7" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  billing              </text>
 <text x="245.6" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>
+<text x="51.7" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  blog                 </text>
 <text x="245.6" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="263.0" fill="#8a93a6" xml:space="preserve" textLength="716.5" lengthAdjust="spacingAndGlyphs">✕ problem · ⚠ warning · · hint · ★ recommended fix · "your call" = a decision, never </text>
 <text x="1004.3" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  dotfiles             </text>
+<text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>
 <text x="245.6" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="282.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">auto-fixed</text>
 <text x="1004.3" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="301.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="301.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  design-system        </text>
+<text x="51.7" y="301.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  dotfiles             </text>
 <text x="245.6" y="301.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="301.0" fill="#8a93a6" xml:space="preserve" textLength="716.5" lengthAdjust="spacingAndGlyphs">Source: lib = from your library · repo = committed by the team · untracked = only on </text>
 <text x="1004.3" y="301.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="320.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  e2e-tests            </text>
+<text x="51.7" y="320.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  design-system        </text>
 <text x="245.6" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="320.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">this machine</text>
 <text x="1004.3" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="339.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  infra                </text>
+<text x="51.7" y="339.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  e2e-tests            </text>
 <text x="245.6" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="640.7" lengthAdjust="spacingAndGlyphs">Usage counts Claude Code sessions only: other agents don't record skill use.</text>
 <text x="1004.3" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="358.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  landing              </text>
+<text x="51.7" y="358.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  infra                </text>
 <text x="245.6" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="377.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  marketing-site       </text>
+<text x="51.7" y="377.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  landing              </text>
 <text x="245.6" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="396.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  playground           </text>
+<text x="51.7" y="396.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  marketing-site       </text>
 <text x="245.6" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="415.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  scripts              </text>
+<text x="51.7" y="415.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  playground           </text>
 <text x="245.6" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="434.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
+<text x="51.7" y="434.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  scripts              </text>
 <text x="245.6" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="60.1" y="453.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
+<text x="51.7" y="453.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
 <text x="245.6" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="472.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
+<text x="60.1" y="472.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
 <text x="245.6" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
+<text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
 <text x="245.6" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="51.7" y="510.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
 <text x="245.6" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>

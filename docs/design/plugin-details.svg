@@ -5,202 +5,208 @@
 <text x="18.0" y="54.0" fill="#4b5578" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
 <text x="43.3" y="54.0" fill="#8a93a6" font-weight="bold" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs"> ◆ skilllib </text>
 <text x="144.4" y="54.0" fill="#4b5578" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">────────────╮╭──</text>
-<text x="279.3" y="54.0" fill="#8a93a6" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> Skills </text>
-<text x="346.8" y="54.0" fill="#5a6275" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs"> 4/22 </text>
-<text x="397.3" y="54.0" fill="#4b5578" xml:space="preserve" textLength="615.4" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────╮</text>
+<text x="279.3" y="54.0" fill="#8a93a6" font-weight="bold" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs"> Plugins </text>
+<text x="355.2" y="54.0" fill="#4b5578" xml:space="preserve" textLength="657.5" lengthAdjust="spacingAndGlyphs">─────────────────────────────────────────────────────────────────────────────╮</text>
 <text x="18.0" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="73.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">▤ Your skills     </text>
 <text x="203.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">7   </text>
 <text x="245.6" y="73.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<rect x="270.9" y="59.0" width="67.4" height="19" fill="#8b9dff"/>
-<text x="270.9" y="73.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs"> All 22 </text>
-<text x="346.8" y="73.0" fill="#f2c94c" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Issues 8 </text>
-<text x="439.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs"> Local 9 </text>
-<text x="523.8" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Global 7 </text>
-<text x="616.5" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> Plugins 3 </text>
-<text x="717.7" y="73.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Vendor 3 </text>
+<rect x="270.9" y="59.0" width="59.0" height="19" fill="#8b9dff"/>
+<text x="270.9" y="73.0" fill="#0b1020" font-weight="bold" xml:space="preserve" textLength="59.0" lengthAdjust="spacingAndGlyphs"> All 7 </text>
+<text x="338.3" y="73.0" fill="#f2c94c" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs"> Issues 4 </text>
 <text x="1004.3" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="92.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">◈ Global          </text>
 <text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">15  </text>
 <text x="245.6" y="92.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Skill              Source         Uses  Issue                                     </text>
+<text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Plugin              Scope              Brings       On   Uses  Issue              </text>
 <text x="1004.3" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="34.9" y="111.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">⧉ Plugins         </text>
 <text x="203.5" y="111.0" fill="#f2c94c" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">7   </text>
 <text x="245.6" y="111.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="708.1" lengthAdjust="spacingAndGlyphs">+ Add a skill…                                                                      </text>
+<text x="287.8" y="111.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
+<text x="304.6" y="111.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">frontend-design  </text>
+<text x="447.9" y="111.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="111.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">user               1 skill      </text>
+<text x="743.0" y="111.0" fill="#6bcb77" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">on  </text>
+<text x="776.7" y="111.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    – </text>
+<text x="827.3" y="111.0" fill="#f2c94c" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs"> Repeats 1 of yours </text>
 <text x="1004.3" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="130.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
 <text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">19  </text>
 <text x="245.6" y="130.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="708.1" lengthAdjust="spacingAndGlyphs">✦ Fix 5 issues automatically…                                                       </text>
+<text x="287.8" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
+<text x="304.6" y="130.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">react-kit        </text>
+<text x="447.9" y="130.0" fill="#e8e8e8" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⬡  </text>
+<text x="473.2" y="130.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">–                  2 skills     </text>
+<text x="743.0" y="130.0" fill="#5a6275" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">?   </text>
+<text x="776.7" y="130.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    – </text>
+<text x="827.3" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs"> Repeats 1 of yours </text>
 <text x="1004.3" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="149.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="34.9" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">  Projects </text>
 <text x="127.6" y="149.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">─────────────</text>
 <text x="245.6" y="149.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="708.1" lengthAdjust="spacingAndGlyphs">⋯ web-app…                                                                          </text>
+<text x="270.9" y="149.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
+<text x="287.8" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
+<text x="304.6" y="149.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">stripe-tools     </text>
+<text x="447.9" y="149.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="149.0" fill="#5eb8f7" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">project api-server </text>
+<text x="633.4" y="149.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">2 skills +1  </text>
+<text x="743.0" y="149.0" fill="#6bcb77" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">on  </text>
+<text x="776.7" y="149.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    – </text>
+<text x="827.3" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs"> Repeats 1 of yours </text>
 <text x="1004.3" y="149.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="168.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="34.9" y="168.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <text x="51.7" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">◆ web-app          </text>
 <text x="211.9" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✕  </text>
 <text x="245.6" y="168.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="168.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
-<text x="287.8" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<text x="304.6" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">stripe-payments    </text>
-<text x="464.8" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">lib v2        </text>
-<text x="582.8" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">   11 </text>
-<text x="633.4" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="362.5" lengthAdjust="spacingAndGlyphs"> Loaded twice                              </text>
+<text x="287.8" y="168.0" fill="#5eb8f7" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">· </text>
+<text x="304.6" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">vercel           </text>
+<text x="447.9" y="168.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">user               3 skills +4  </text>
+<text x="743.0" y="168.0" fill="#6bcb77" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">on  </text>
+<text x="776.7" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    5 </text>
+<text x="827.3" y="168.0" fill="#5eb8f7" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs"> Update to 0.51.0   </text>
 <text x="1004.3" y="168.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="187.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  api-server       </text>
 <text x="211.9" y="187.0" fill="#ef6b6b" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✕  </text>
 <text x="245.6" y="187.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="187.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<text x="304.6" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">vercel-deploy      </text>
-<text x="464.8" y="187.0" fill="#5eb8f7" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">untracked     </text>
-<text x="582.8" y="187.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    3 </text>
-<text x="633.4" y="187.0" fill="#ef6b6b" xml:space="preserve" textLength="362.5" lengthAdjust="spacingAndGlyphs"> Same name as a plugin skill               </text>
+<text x="287.8" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  railway          </text>
+<text x="447.9" y="187.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="187.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">user               1 skill +1   </text>
+<text x="743.0" y="187.0" fill="#6bcb77" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">on  </text>
+<text x="776.7" y="187.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    2 </text>
 <text x="1004.3" y="187.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="206.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  docs-site        </text>
 <text x="211.9" y="206.0" fill="#5eb8f7" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">·  </text>
 <text x="245.6" y="206.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="206.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<text x="304.6" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">seo-meta           </text>
-<text x="464.8" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">lib v1        </text>
-<text x="582.8" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    – </text>
-<text x="633.4" y="206.0" fill="#ef6b6b" xml:space="preserve" textLength="362.5" lengthAdjust="spacingAndGlyphs"> Folder missing                            </text>
+<text x="304.6" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">railway          </text>
+<text x="447.9" y="206.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">claude.ai          1 skill      </text>
+<text x="743.0" y="206.0" fill="#5a6275" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">off </text>
+<text x="776.7" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    2 </text>
 <text x="1004.3" y="206.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="225.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
 <text x="211.9" y="225.0" fill="#f2c94c" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⚠  </text>
 <text x="245.6" y="225.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="225.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
-<text x="304.6" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">react-patterns     </text>
-<text x="464.8" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">lib v1        </text>
-<text x="582.8" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    9 </text>
-<text x="633.4" y="225.0" fill="#f2c94c" xml:space="preserve" textLength="362.5" lengthAdjust="spacingAndGlyphs"> Also in a Cursor plugin                   </text>
+<text x="304.6" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">ponytail         </text>
+<text x="447.9" y="225.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
+<text x="473.2" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="269.8" lengthAdjust="spacingAndGlyphs">user               1 skill      </text>
+<text x="743.0" y="225.0" fill="#5a6275" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">off </text>
+<text x="776.7" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    – </text>
 <text x="1004.3" y="225.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="244.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  billing              </text>
 <text x="245.6" y="244.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="287.8" y="244.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
-<text x="304.6" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">api-conventions    </text>
-<text x="464.8" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">lib v1        </text>
-<text x="582.8" y="244.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    6 </text>
-<text x="633.4" y="244.0" fill="#f2c94c" xml:space="preserve" textLength="362.5" lengthAdjust="spacingAndGlyphs"> Edited here                               </text>
 <text x="1004.3" y="244.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="263.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  blog                 </text>
-<text x="245.6" y="263.0" fill="#4b5578" xml:space="preserve" textLength="767.1" lengthAdjust="spacingAndGlyphs">│╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
+<text x="245.6" y="263.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="1004.3" y="263.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>
-<text x="245.6" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="254.0" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
-<text x="279.3" y="282.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs"> stripe-payments </text>
-<text x="422.6" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="590.1" lengthAdjust="spacingAndGlyphs">─────────────────────────────────────────────────────────────────────╮</text>
+<text x="245.6" y="282.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="1004.3" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="301.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="301.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  dotfiles             </text>
-<text x="245.6" y="301.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="254.0" y="301.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="301.0" fill="#8a93a6" xml:space="preserve" textLength="716.5" lengthAdjust="spacingAndGlyphs">Stripe Checkout, Payment Links, webhooks and subscriptions with trials and proration.</text>
-<text x="1004.3" y="301.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="245.6" y="301.0" fill="#4b5578" xml:space="preserve" textLength="767.1" lengthAdjust="spacingAndGlyphs">│╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="18.0" y="320.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="320.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  design-system        </text>
 <text x="245.6" y="320.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="254.0" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="1004.3" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="254.0" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
+<text x="279.3" y="320.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs"> stripe-tools@acme </text>
+<text x="439.5" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="573.2" lengthAdjust="spacingAndGlyphs">───────────────────────────────────────────────────────────────────╮</text>
 <text x="18.0" y="339.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="339.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  e2e-tests            </text>
 <text x="245.6" y="339.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="339.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<text x="287.8" y="339.0" fill="#e5e7eb" xml:space="preserve" textLength="379.3" lengthAdjust="spacingAndGlyphs">Loaded twice: also global in ~/.claude/skills</text>
-<text x="667.1" y="339.0" fill="#5a6275" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">  · your call</text>
+<text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="261.3" lengthAdjust="spacingAndGlyphs">Stripe helpers for the API team</text>
 <text x="1004.3" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="358.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="358.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  infra                </text>
 <text x="245.6" y="358.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">  ▸ </text>
-<rect x="321.5" y="344.0" width="396.2" height="19" fill="#2a3350"/>
-<text x="321.5" y="358.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="396.2" lengthAdjust="spacingAndGlyphs">Keep this repo's copy, stop loading it globally</text>
 <text x="1004.3" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="377.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="377.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  landing              </text>
 <text x="245.6" y="377.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="321.5" y="377.0" fill="#8a93a6" xml:space="preserve" textLength="337.2" lengthAdjust="spacingAndGlyphs">Keep it global, remove it from this repo</text>
+<text x="270.9" y="377.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
+<text x="287.8" y="377.0" fill="#e5e7eb" xml:space="preserve" textLength="236.0" lengthAdjust="spacingAndGlyphs">Repeats your stripe-payments</text>
+<text x="523.8" y="377.0" fill="#5a6275" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">  · your call</text>
 <text x="1004.3" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="396.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="396.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  marketing-site       </text>
 <text x="245.6" y="396.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="396.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
-<text x="287.8" y="396.0" fill="#e5e7eb" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">Codex can't see it</text>
+<text x="270.9" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">  ▸ </text>
+<rect x="321.5" y="382.0" width="345.6" height="19" fill="#2a3350"/>
+<text x="321.5" y="396.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="345.6" lengthAdjust="spacingAndGlyphs">Replace stripe-tools with library skills…</text>
 <text x="1004.3" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="415.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="415.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  playground           </text>
 <text x="245.6" y="415.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="304.6" y="415.0" fill="#6bcb77" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">★ </text>
-<text x="321.5" y="415.0" fill="#8a93a6" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">Link it for every agent</text>
+<text x="321.5" y="415.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
 <text x="1004.3" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="434.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="434.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  scripts              </text>
 <text x="245.6" y="434.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="270.9" y="434.0" fill="#5eb8f7" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">· </text>
+<text x="287.8" y="434.0" fill="#e5e7eb" xml:space="preserve" textLength="640.7" lengthAdjust="spacingAndGlyphs">Its skills weren't used in 30 days (Claude Code); it also brings MCP servers</text>
+<text x="928.4" y="434.0" fill="#5a6275" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs">  · you…</text>
 <text x="1004.3" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="453.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
 <text x="245.6" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
-<text x="346.8" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Edit in library</text>
-<text x="473.2" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="498.5" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Other versions…</text>
-<text x="625.0" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="650.3" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">Remove from repo</text>
-<text x="785.1" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="810.4" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
+<text x="321.5" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
 <text x="1004.3" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="60.1" y="472.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
 <text x="245.6" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="321.5" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Uninstall</text>
 <text x="1004.3" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
 <text x="245.6" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">Usage here</text>
-<text x="355.2" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">   last used yesterday</text>
 <text x="1004.3" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="510.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
 <text x="245.6" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="254.0" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="758.7" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
+<text x="254.0" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="270.9" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
+<text x="346.8" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Open its folder</text>
+<text x="473.2" y="510.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="498.5" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
+<text x="1004.3" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="254.0" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
-<text x="279.3" y="529.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="413.1" lengthAdjust="spacingAndGlyphs"> Keep this repo's copy, stop loading it globally </text>
-<text x="692.4" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="320.3" lengthAdjust="spacingAndGlyphs">─────────────────────────────────────╮</text>
+<text x="254.0" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="1004.3" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="548.0" fill="#e5e7eb" xml:space="preserve" textLength="497.4" lengthAdjust="spacingAndGlyphs">Copy stripe-payments into your library if needed, then move</text>
+<text x="270.9" y="548.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Skills      </text>
+<text x="372.1" y="548.0" fill="#e5e7eb" xml:space="preserve" textLength="429.9" lengthAdjust="spacingAndGlyphs">stripe-payments (unused) · stripe-webhooks (unused)</text>
 <text x="1004.3" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="567.0" fill="#e5e7eb" xml:space="preserve" textLength="691.3" lengthAdjust="spacingAndGlyphs">~/.claude/skills/stripe-payments to the backups. Every other repo stops seeing it.</text>
+<text x="270.9" y="567.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Also brings </text>
+<text x="372.1" y="567.0" fill="#e5e7eb" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">MCP servers</text>
 <text x="1004.3" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="586.0" fill="#4b5578" xml:space="preserve" textLength="236.0" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯</text>
 <text x="254.0" y="586.0" fill="#8b9dff" xml:space="preserve" textLength="758.7" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
-<text x="802.0" y="605.0" fill="#5a6275" xml:space="preserve" textLength="210.8" lengthAdjust="spacingAndGlyphs">enter apply · esc cancel </text>
+<text x="692.4" y="605.0" fill="#5a6275" xml:space="preserve" textLength="320.3" lengthAdjust="spacingAndGlyphs">↑↓ ←→ choose · enter apply · esc back </text>
 </svg>

@@ -1,10 +1,11 @@
 ╭── ◆ skilllib ────────────╮╭── Fix automatically (5 of 5) ──────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ Decisions are never listed here: they stay with you.                                   │
 │   ◈ Global          15   ││ ▌ [x] stripe-payments: Codex can't see it → Link it for every agent                    │
-│   ✓ Health          19   ││   [x] react-patterns: Update available: v1 → v2 → Update to v2                         │
-│   Projects ───────────── ││   [x] seo-meta: Listed in skilllib.json but the folder is missing → Restore it (sync)  │
-│ ▌ ◆ web-app          ✕   ││   [x] testing-guide: More copies or links in this repo than your agents need → Keep o… │
-│     api-server       ✕   ││   [x] deploy-preview: Claude Code can't see it → Link it for every agent               │
+│   ⧉ Plugins         7    ││   [x] react-patterns: Update available: v1 → v2 → Update to v2                         │
+│   ✓ Health          19   ││   [x] seo-meta: Listed in skilllib.json but the folder is missing → Restore it (sync)  │
+│   Projects ───────────── ││   [x] testing-guide: More copies or links in this repo than your agents need → Keep o… │
+│ ▌ ◆ web-app          ✕   ││   [x] deploy-preview: Claude Code can't see it → Link it for every agent               │
+│     api-server       ✕   ││                                                                                        │
 │     docs-site        ·   ││                                                                                        │
 │     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
@@ -22,7 +23,6 @@
 │    ───────────────────── ││                                                                                        │
 │   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││                                                                                        │
-│                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │

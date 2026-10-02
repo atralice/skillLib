@@ -1,28 +1,28 @@
 ╭── ◆ skilllib ────────────╮╭── Skills  4/11 ────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3                         │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          19   ││   + Add a skill…                                                                       │
-│   Projects ───────────── ││   ✦ Fix 5 issues automatically…                                                        │
-│ ▌ ◆ web-app          ✕   ││   ⋯ web-app…                                                                           │
-│     api-server       ✕   ││ ▌ ✕ stripe-payments    lib v2           11  Loaded twice                               │
-│     docs-site        ·   ││   ✕ vercel-deploy      untracked         3  Same name as a plugin skill                │
-│     mobile-app       ⚠   ││   ✕ seo-meta           lib v1            –  Folder missing                             │
-│     billing              ││   ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
-│     blog                 ││   ⚠ api-conventions    lib v1            6  Edited here                                │
-│     cli-tools            ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
-│     dotfiles             ││   ⚠ testing-guide      lib v3            –  Extra copies                               │
-│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     e2e-tests            │╭── stripe-payments ─────────────────────────────────────────────────────────────────────╮
-│     infra                ││ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and proration.  │
-│     landing              ││                                                                                        │
-│     marketing-site       ││ ✕ Loaded twice: also global in ~/.claude/skills  · your call                           │
-│     playground           ││       Keep this repo's copy, stop loading it globally                                  │
-│     scripts              ││       Keep it global, remove it from this repo                                         │
-│     status-page          ││ ⚠ Codex can't see it                                                                   │
-│    ───────────────────── ││     ★ Link it for every agent                                                          │
-│   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
-│                          ││                                                                                        │
+│   ⧉ Plugins         7    ││   + Add a skill…                                                                       │
+│   ✓ Health          19   ││   ✦ Fix 5 issues automatically…                                                        │
+│   Projects ───────────── ││   ⋯ web-app…                                                                           │
+│ ▌ ◆ web-app          ✕   ││ ▌ ✕ stripe-payments    lib v2           11  Loaded twice                               │
+│     api-server       ✕   ││   ✕ vercel-deploy      untracked         3  Same name as a plugin skill                │
+│     docs-site        ·   ││   ✕ seo-meta           lib v1            –  Folder missing                             │
+│     mobile-app       ⚠   ││   ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
+│     billing              ││   ⚠ api-conventions    lib v1            6  Edited here                                │
+│     blog                 ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
+│     cli-tools            ││   ⚠ testing-guide      lib v3            –  Extra copies                               │
+│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     design-system        │╭── stripe-payments ─────────────────────────────────────────────────────────────────────╮
+│     e2e-tests            ││ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and proration.  │
+│     infra                ││                                                                                        │
+│     landing              ││ ✕ Loaded twice: also global in ~/.claude/skills  · your call                           │
+│     marketing-site       ││       Keep this repo's copy, stop loading it globally                                  │
+│     playground           ││       Keep it global, remove it from this repo                                         │
+│     scripts              ││ ⚠ Codex can't see it                                                                   │
+│     status-page          ││     ★ Link it for every agent                                                          │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│   ? Help                 ││                                                                                        │
 │                          ││ Usage here   last used yesterday                                                       │
 │                          ││                                                         █                              │
 │                          ││     ▄         ▄   ▄           ▄ ▄       ▄ ▄           ▄ █ ▄                            │

@@ -1,10 +1,11 @@
 ╭── ◆ skilllib ────────────╮╭── Add a skill to web-app ──────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ ⌕ sq▏                                                                                  │
 │   ◈ Global          15   ││   Your library ─────────────────────────────────────────────────────────────────────── │
-│   ✓ Health          19   ││ ▌ sql-migrations        v1    Write reversible SQL migrations and backfills safely.    │
-│   Projects ───────────── ││   New ──────────────────────────────────────────────────────────────────────────────── │
-│ ▌ ◆ web-app          ✕   ││   + Create "sq" for web-app                                                            │
-│     api-server       ✕   ││   ✦ Write "sq" with an agent                                                           │
+│   ⧉ Plugins         7    ││ ▌ sql-migrations        v1    Write reversible SQL migrations and backfills safely.    │
+│   ✓ Health          19   ││   New ──────────────────────────────────────────────────────────────────────────────── │
+│   Projects ───────────── ││   + Create "sq" for web-app                                                            │
+│ ▌ ◆ web-app          ✕   ││   ✦ Write "sq" with an agent                                                           │
+│     api-server       ✕   ││                                                                                        │
 │     docs-site        ·   ││                                                                                        │
 │     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
@@ -22,7 +23,6 @@
 │    ───────────────────── ││                                                                                        │
 │   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││                                                                                        │
-│                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │

@@ -67,8 +67,6 @@ export type MachineSkill = {
   broken?: boolean;
   /** When its folder appeared ("2026-09-25 20:55"): skills copied in together share it. */
   installed?: string;
-  /** For plugin skills: what else the plugin brings, e.g. ["commands", "hooks"]. */
-  pluginParts?: string[];
   /** Global skills: copies in your other global folders. */
   dupes?: Dupes;
   cursorPlugin?: string;
@@ -91,6 +89,32 @@ export type Project = {
   skills: LocalSkill[];
   /** What loads here besides its own skills, when the repo's Claude Code settings turn a plugin on or off (else World.machine). */
   machine?: MachineSkill[];
+};
+
+/** An installed plugin, on or off: Claude Code's (one per install) or Cursor's (read only). */
+export type Plugin = {
+  /** Unique per install: id, scope and project. */
+  key: string;
+  /** name@marketplace, or name@synced for plugins synced from claude.ai. */
+  id: string;
+  agent: "claude-code" | "cursor";
+  /** user, project, local · claude.ai: synced from your account · cursor: Cursor's own. */
+  scope: string;
+  /** Project and local installs: the repo (its name, if skilllib lists it) and its path. */
+  repo?: string;
+  projectPath?: string;
+  /** null when it can't be read (Cursor). */
+  on: boolean | null;
+  version?: string;
+  /** A newer version in its marketplace ("newer" when only the commit differs). */
+  update?: string;
+  /** Turned on in your settings with no install record: it can't be uninstalled or updated, only turned off. */
+  settingsOnly?: true;
+  description: string;
+  path: string;
+  skills: { name: string; path: string }[];
+  /** What else it brings: "commands", "agents", "hooks", "MCP servers". */
+  parts: string[];
 };
 
 export type RepoInfo = { remote?: string; branch?: string; dirty: number };
@@ -154,7 +178,12 @@ export type Ops = {
   /** Turns a Claude Code plugin off in one repo only (its .claude/settings.local.json). */
   pluginOffHere(repo: string, id: string): Result;
   /** A plugin's skills into your library (and these repos), then the plugin uninstalled from Claude Code. */
-  replacePlugin(id: string, repos: string[]): Result;
+  replacePlugin(p: Plugin, repos: string[]): Result;
+  /** Turns a Claude Code plugin on or off where it's installed. */
+  setPlugin(p: Plugin, on: boolean): Result;
+  /** Uninstalls a Claude Code plugin, keeping its data; Settings › Backups reinstalls it. */
+  uninstallPlugin(p: Plugin): Result;
+  updatePlugin(p: Plugin): Result;
   /** Deletes a library skill, first removing it from every repo that tracks it (each copy backed up). */
   deleteLibrary(name: string): Result;
   restoreBackup(index: number): Result;
@@ -186,6 +215,8 @@ export type World = {
   cwd: string | null;
   projects: Project[];
   machine: MachineSkill[];
+  /** Every plugin installed, on or off. */
+  plugins: Plugin[];
   library: LibrarySkill[];
   /** Uses in the last 30 days, per repo, per skill. */
   usage: Record<string, Record<string, number>>;
@@ -527,7 +558,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       title: `Same name as a skill in plugin ${vendor.where}: Claude Code has it off in ${projectName}, but Cursor ignores repo settings and lists both`,
       short: "Cursor also lists a plugin's copy",
       decision: true,
-      fixes: [replacePluginFix(w, vendor.where)],
+      fixes: [pluginFixFor(w, vendor.where)],
     });
   else if (vendor)
     issues.push({
@@ -765,33 +796,156 @@ export function deleteLibraryFix(w: World, names: string[]): Fix {
   };
 }
 
+// ─── Plugins ────────────────────────────────────────────
+
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+/** A plugin's name without its marketplace. */
+export function pluginName(p: Plugin): string {
+  return p.id.split("@")[0]!;
+}
+
+/** Claude Code records a plugin's skill as "plugin:skill"; your own skill by that name is counted apart. */
+export function pluginSkillKey(p: Plugin, skill: string): string {
+  return `${pluginName(p)}:${skill}`;
+}
+
+/** Claude Code uses of a plugin's skills in the last 30 days, in one repo or everywhere. */
+export function pluginUses(w: World, p: Plugin, repo?: string): number {
+  return p.skills.reduce((n, s) => n + (repo ? (w.usage[repo]?.[pluginSkillKey(p, s.name)] ?? 0) : totalUses(w, pluginSkillKey(p, s.name))), 0);
+}
+
+/** Where a plugin is installed, in a few words: "user", "project web-app", "claude.ai". */
+export function pluginScope(p: Plugin): string {
+  return p.repo ? `${p.scope} ${p.repo}` : p.scope;
+}
+
 /**
  * A plugin can't be half removed: replacing it means copying all its skills into your library,
  * adding them where you pick, and uninstalling the whole plugin (with whatever else it brings).
  */
-export function replacePluginFix(w: World, id: string): Fix {
-  const skills = w.machine.filter((m) => m.source === "plugin" && m.where === id);
-  const names = skills.map((m) => m.name);
-  const parts = skills[0]?.pluginParts ?? [];
-  // Marketplace plugins can be uninstalled; ones synced from claude.ai ("name@synced") only turned off here.
-  const synced = id.endsWith("@synced");
+export function replacePluginFix(p: Plugin): Fix {
+  const names = p.skills.map((s) => s.name);
+  // Marketplace plugins can be uninstalled; ones synced from claude.ai ("name@synced"), or only turned on
+  // in your settings (not installed), are only turned off.
+  const synced = p.scope === "claude.ai";
+  const offOnly = synced || !!p.settingsOnly;
   return {
-    label: `Replace ${id.split("@")[0]} with library skills…`,
+    label: `Replace ${pluginName(p)} with library skills…`,
     preview: [
-      `Copies its ${skills.length} skill${skills.length === 1 ? "" : "s"} into your library and adds them to the repos you tick (or none),`,
+      `Copies its ${plural(names.length, "skill")} into your library and adds them to the repos you tick (or none),`,
       synced
-        ? `then turns ${id} off in Claude Code. It's synced from your claude.ai account: to delete it for good, remove it there.`
-        : `then uninstalls ${id} from Claude Code (its saved data is kept).`,
-      parts.length ? `It also brings ${parts.join(", ")}: those ${synced ? "stop" : "go"} too.` : "",
-      synced ? "Turn it back on with /plugin." : "Reinstall it anytime with /plugin.",
+        ? `then turns ${p.id} off in Claude Code. It's synced from your claude.ai account: to delete it for good, remove it there.`
+        : p.settingsOnly
+          ? `then turns ${p.id} off in ~/.claude/settings.json. It isn't installed, only turned on there, so there's nothing to uninstall.`
+          : `then uninstalls ${p.id}${p.repo ? ` from ${p.repo}` : ""} (its saved data is kept).`,
+      p.parts.length ? `It also brings ${p.parts.join(", ")}: those ${offOnly ? "stop" : "go"} too.` : "",
+      offOnly ? "Turn it back on from Plugins." : "Settings › Backups reinstalls it.",
     ]
       .filter(Boolean)
       .join(" "),
     run: () => "",
     allowNone: true,
-    preticked: (w) => w.projects.filter((p) => names.some((n) => (w.usage[p.name]?.[n] ?? 0) > 0)).map((p) => p.name),
-    pickRepos: (w, repos) => w.ops.replacePlugin(id, repos),
+    preticked: (w) => w.projects.filter((x) => pluginUses(w, p, x.name) > 0).map((x) => x.name),
+    pickRepos: (w, repos) => w.ops.replacePlugin(p, repos),
   };
+}
+
+/** Replacing a plugin seen through its skills: its install for you, or else any Claude Code install of it. */
+function pluginFixFor(w: World, id: string): Fix {
+  const ofId = w.plugins.filter((p) => p.agent === "claude-code" && p.id === id);
+  const p = ofId.find((x) => !x.repo) ?? ofId[0];
+  if (p) return replacePluginFix(p);
+  return { label: "Turn the plugin off with /plugin in Claude Code", preview: `skilllib can't tell where ${id} is installed.`, run: () => `Turn ${id} off with /plugin in Claude Code; skilllib picks it up next time` };
+}
+
+/** Turning a Claude Code plugin on or off where it's installed. */
+export function pluginSwitchFix(p: Plugin, on: boolean): Fix {
+  const where = p.repo ? ` in ${p.repo} (${p.scope} install)` : p.scope === "claude.ai" ? " on this machine" : " in every repo";
+  return {
+    label: on ? "Turn it on" : "Turn it off",
+    preview: `Turns ${p.id} ${on ? "on" : "off"}${where}${p.parts.length ? `, with its ${p.parts.join(", ")}` : ""}. ${
+      p.scope === "claude.ai" ? `Sets "${p.id}": ${on} in ~/.claude/settings.json.` : `Runs claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""}.`
+    } Claude Code picks it up in its next session.`,
+    run: (w) => w.ops.setPlugin(p, on),
+  };
+}
+
+export function uninstallPluginFix(p: Plugin): Fix {
+  return {
+    label: "Uninstall",
+    preview: `Runs claude plugin uninstall ${p.id} --keep-data --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""}: its ${[plural(p.skills.length, "skill"), ...p.parts].join(", ")} go, its saved data stays. Settings › Backups reinstalls it.`,
+    run: (w) => w.ops.uninstallPlugin(p),
+  };
+}
+
+export function updatePluginFix(p: Plugin): Fix {
+  return {
+    label: p.update === "newer" ? "Update it" : `Update to ${p.update}`,
+    preview: `Runs claude plugin update ${p.id}${p.repo ? ` in ${p.repo}` : ""}. Updates can bring new commands, hooks or MCP servers. If the marketplace asks to run a command, skilllib stops and you update it yourself. Claude Code uses the new version after a restart.`,
+    run: (w) => w.ops.updatePlugin(p),
+  };
+}
+
+/**
+ * A plugin's issues. Every one is your call: turning plugins on or off, or updating them, changes
+ * code that runs in your sessions, so "fix all" never does it.
+ */
+export function pluginIssues(w: World, p: Plugin): Issue[] {
+  const library = new Set(w.library.map((l) => l.name));
+  const global = new Set(w.machine.filter((m) => m.source === "global" && !m.broken).map((m) => m.name));
+  if (p.agent === "cursor") {
+    // Cursor's plugin state can't be read: say which skills it repeats, and leave it to you.
+    const dupes = p.skills.filter((s) => library.has(s.name) || global.has(s.name));
+    return dupes.length
+      ? [
+          {
+            id: `plugin-dupes:${p.key}`,
+            severity: "warning",
+            title: `Repeats your ${dupes.map((s) => s.name).join(", ")}: Cursor lists both while it's on`,
+            short: `Repeats ${dupes.length} of yours`,
+            decision: true,
+            fixes: [{ label: "Turn it off in Cursor (Settings › Plugins)", preview: "skilllib can't read or change Cursor's plugins.", run: () => `Turn ${p.id} off in Cursor; skilllib can't tell whether it's on` }],
+          },
+        ]
+      : [];
+  }
+  const issues: Issue[] = [];
+  if (p.on) {
+    // Installed for one repo, it only repeats what loads there: that repo's skills, or your global ones.
+    const repo = p.repo ? w.projects.find((x) => x.name === p.repo) : undefined;
+    const here = repo ? new Set(repo.skills.map((s) => s.name)) : undefined;
+    const yours = (n: string) => global.has(n) || (p.repo ? !!here?.has(n) : library.has(n));
+    const dupes = p.skills.filter((s) => yours(s.name));
+    if (dupes.length)
+      issues.push({
+        id: `plugin-dupes:${p.key}`,
+        severity: "warning",
+        title: `Repeats your ${dupes.map((s) => s.name).join(", ")}`,
+        short: `Repeats ${dupes.length} of yours`,
+        decision: true,
+        fixes: [replacePluginFix(p), pluginSwitchFix(p, false)],
+      });
+    if (w.days && p.skills.length && pluginUses(w, p) === 0)
+      issues.push({
+        id: `plugin-unused:${p.key}`,
+        severity: "hint",
+        title: `Its skills weren't used in 30 days (Claude Code)${p.parts.length ? `; it also brings ${p.parts.join(", ")}` : ""}`,
+        short: "Unused 30 days",
+        decision: true,
+        fixes: [pluginSwitchFix(p, false), ...(p.scope === "claude.ai" || p.settingsOnly ? [] : [uninstallPluginFix(p)])],
+      });
+  }
+  if (p.update)
+    issues.push({
+      id: `plugin-update:${p.key}`,
+      severity: "hint",
+      title: p.update === "newer" ? "Its marketplace has a newer commit" : `Update available: ${p.version ?? "?"} → ${p.update}`,
+      short: p.update === "newer" ? "Update available" : `Update to ${p.update}`,
+      decision: true,
+      fixes: [updatePluginFix(p)],
+    });
+  return issues;
 }
 
 // ─── Groups ─────────────────────────────────────────────
