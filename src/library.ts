@@ -260,23 +260,53 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
   return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
-export type LinkResult = { created: string[]; blocked: string[] };
+/**
+ * Whether teammates get a skill's real copy through git: it's committed, or new
+ * in a folder the repo commits (so it goes in with that folder). A copy in a
+ * folder git doesn't track, or a gitignored one, stays on this machine.
+ */
+export function sharedByGit(root: string, location: string, name: string): boolean {
+  const copy = `${location}/${name}`;
+  if (isGitTracked(root, copy)) return true;
+  if (!isGitTracked(root, location)) return false;
+  try {
+    execFileSync("git", ["check-ignore", "-q", "--no-index", "--", copy], { cwd: root, stdio: "ignore" });
+    return false; // exit 0: ignored
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * created: folders that got a link · blocked: folders git tracks, skipped without
+ * your consent · uncommitted: folders git tracks, skipped because git doesn't share
+ * the real copy (a committed link to it would be broken for teammates).
+ */
+export type LinkResult = { created: string[]; blocked: string[]; uncommitted: string[] };
 
 /**
  * Adds relative symlinks so every enabled harness loads a skill whose real
- * copy lives at `location`. Folders git tracks are skipped unless `allowTracked`.
+ * copy lives at `location`. Folders git tracks are skipped unless `allowTracked`,
+ * and always when git doesn't share the real copy.
  */
 export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false } = {}): LinkResult {
   const enabled = enabledHarnesses();
-  const result: LinkResult = { created: [], blocked: [] };
+  const result: LinkResult = { created: [], blocked: [], uncommitted: [] };
+  let shared: boolean | undefined;
   for (const id of enabled) {
     if (visibilityOf(root, name, [id])[0]!.paths > 0) continue;
     const dir = harness(id).projectDirs[0]!;
     const link = join(root, dir, name);
     if (entryExists(link)) continue;
-    if (!allowTracked && isGitTracked(root, dir) && !readConfig().agentsDirOk?.includes(root)) {
-      result.blocked.push(dir);
-      continue;
+    if (isGitTracked(root, dir)) {
+      if (!(shared ??= sharedByGit(root, location, name))) {
+        result.uncommitted.push(dir);
+        continue;
+      }
+      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+        result.blocked.push(dir);
+        continue;
+      }
     }
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(join(root, location, name), link);
@@ -299,7 +329,7 @@ export function unlinkEverywhere(root: string, name: string): string[] {
 export function relinkDependency(root: string, name: string, { allowTracked = false } = {}): LinkResult {
   const manifest = readManifest(root);
   const dep = manifest.skills[name];
-  if (!dep) return { created: [], blocked: [] };
+  if (!dep) return { created: [], blocked: [], uncommitted: [] };
   const result = linkEverywhere(root, name, dep.dir ?? PROJECT_SKILLS_DIR, { allowTracked });
   if (result.created.length) {
     manifest.skills[name] = { ...dep, links: [...new Set([...(dep.links ?? []), ...result.created])] };
@@ -311,17 +341,23 @@ export function relinkDependency(root: string, name: string, { allowTracked = fa
 /**
  * Makes every skill in the project usable by every enabled harness by adding
  * the missing links (the repo's own skills included; nothing is copied or moved).
+ * `uncommitted`: skills kept out of folders git tracks, since git doesn't share their real copy.
  */
-export function linkAll(root: string, { allowTracked = false } = {}): { linked: { name: string; into: string[] }[]; blocked: string[] } {
+export function linkAll(
+  root: string,
+  { allowTracked = false } = {},
+): { linked: { name: string; into: string[] }[]; blocked: string[]; uncommitted: string[] } {
   const linked: { name: string; into: string[] }[] = [];
   const blocked = new Set<string>();
+  const uncommitted: string[] = [];
   for (const skill of projectStatus(root)) {
     if (!skill.visibility.some((v) => v.paths === 0) || skill.state === "folder missing") continue;
     const res = skill.managed ? relinkDependency(root, skill.name, { allowTracked }) : linkEverywhere(root, skill.name, skill.location, { allowTracked });
     if (res.created.length) linked.push({ name: skill.name, into: res.created });
     for (const dir of res.blocked) blocked.add(dir);
+    if (res.uncommitted.length) uncommitted.push(skill.name);
   }
-  return { linked, blocked: [...blocked] };
+  return { linked, blocked: [...blocked], uncommitted };
 }
 
 export type Change = {

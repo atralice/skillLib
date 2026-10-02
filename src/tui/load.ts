@@ -28,13 +28,17 @@ import {
   restoreBackup,
   syncProject,
   unloadGlobal,
+  sharedByGit,
   updateProject,
+  visibilityOf,
   type Backup,
   type Change,
+  type LinkResult,
   type ProjectSkill,
 } from "../library.js";
-import { userHome } from "../paths.js";
-import { projectHere } from "../project.js";
+import { harness, type HarnessId } from "../harnesses.js";
+import { PROJECT_SKILLS_DIR, userHome } from "../paths.js";
+import { projectHere, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
 import { claudeBinary, claudePlugins, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin, turnOffIn } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, skillsLoadedIn, type SourcedSkill } from "../sources.js";
@@ -267,19 +271,51 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
   const info = new Map<string, RepoInfo>();
 
-  /** A change, asking before adding links in folders git tracks. */
+  /** The folder holding a tracked skill's real copy in a repo. */
+  const copyDir = (repo: string, name: string) => readManifest(rootOf(repo)).skills[name]?.dir ?? PROJECT_SKILLS_DIR;
+  /**
+   * A change, asking before adding links in folders git tracks. When git doesn't share the real copy,
+   * a link would break for teammates: it says so instead of asking.
+   */
   const withLinks = (c: Change, repo: string, name: string): Result => {
     if (!c.blocked?.length) return said(c, repo);
-    return { message: said(c, repo), then: allowTracked(repo, name, c.blocked) };
+    const copy = copyDir(repo, name);
+    if (!sharedByGit(rootOf(repo), copy, name))
+      return `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${c.blocked.length === 1 ? "it" : "them"} and ${copy}/${name} isn't committed, so teammates would get broken links`;
+    return { message: said(c, repo), then: allowTracked([{ repo, name, blocked: c.blocked }]) };
   };
-  const allowTracked = (repo: string, name: string, blocked: string[]): Fix => ({
-    label: `Also link it in ${blocked.join(", ")}`,
-    preview: `${blocked.join(", ")} is committed in ${repo}: the links will show in git status. skilllib remembers this for ${repo}.`,
-    run: (w) => {
-      allowTrackedLinks(rootOf(repo));
-      return w.ops.link(repo, name, true);
-    },
-  });
+  /** Asks to add the links git-tracked folders held back: skills by repo, with the folders each one missed. */
+  const allowTracked = (held: { repo: string; name: string; blocked: string[] }[]): Fix => {
+    const repos = [...new Set(held.map((h) => h.repo))];
+    const dirs = [...new Set(held.flatMap((h) => h.blocked))];
+    return {
+      label: `Also link ${new Set(held.map((h) => h.name)).size === 1 ? "it" : "them"} in ${dirs.join(", ")}`,
+      preview: `${dirs.join(", ")} ${dirs.length === 1 ? "is" : "are"} committed in ${repos.join(", ")}: the links will show in git status. skilllib remembers this for ${repos.join(", ")}.`,
+      run: (w) => {
+        for (const repo of repos) allowTrackedLinks(rootOf(repo));
+        if (held.length === 1) return w.ops.link(held[0]!.repo, held[0]!.name, true);
+        const results = held.map((h) => ({ ...h, r: linkIn(h.repo, h.name, true) }));
+        const linked = results.filter((x) => x.r.created.length);
+        const names = [...new Set(linked.map((x) => x.name))];
+        const summary = linked.length
+          ? `Linked ${names.length === 1 ? names[0] : `${names.length} skills`} in ${[...new Set(linked.flatMap((x) => x.r.created))].join(", ")} in ${[...new Set(linked.map((x) => x.repo))].join(", ")}`
+          : "";
+        const others = results.filter((x) => !x.r.created.length || x.r.uncommitted.length).map((x) => `${x.repo}: ${linkSaid(x.name, x.r)}`);
+        return [summary, ...others].join("; ");
+      },
+    };
+  };
+  const linkIn = (repo: string, name: string, allow: boolean): LinkResult => {
+    const s = find(repo, name)!;
+    return s.managed ? relinkDependency(rootOf(repo), name, { allowTracked: allow }) : linkEverywhere(rootOf(repo), name, s.location, { allowTracked: allow });
+  };
+  const linkSaid = (name: string, r: LinkResult): string => {
+    const linked = r.created.length ? `linked in ${r.created.join(", ")}` : "";
+    const notLinked = r.uncommitted.length
+      ? `not linked in ${r.uncommitted.join(", ")}: git tracks ${r.uncommitted.length === 1 ? "it" : "them"} and ${name} isn't committed, so teammates would get broken links`
+      : "";
+    return `${name}: ${[linked, notLinked].filter(Boolean).join("; ") || "nothing to link"}`;
+  };
   /** Local edits in the way: offer to go ahead anyway (`lost`: the edits aren't backed up). */
   const orForce = (c: Change, repo: string, label: string, force: () => Change, lost = true): Result =>
     c.action === "skipped" && c.reason?.includes("edits")
@@ -323,10 +359,9 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       return withLinks(addSkill(rootOf(repo), name, s.managed && s.version ? { version: s.version } : {}), repo, name);
     },
     link: (repo, name, allow = false) => {
-      const s = find(repo, name)!;
-      const r = s.managed ? relinkDependency(rootOf(repo), name, { allowTracked: allow }) : linkEverywhere(rootOf(repo), name, s.location, { allowTracked: allow });
-      const message = r.created.length ? `${name}: linked in ${r.created.join(", ")}` : `${name}: nothing to link`;
-      return r.blocked.length && !allow ? { message, then: allowTracked(repo, name, r.blocked) } : message;
+      const r = linkIn(repo, name, allow);
+      const message = linkSaid(name, r);
+      return r.blocked.length && !allow ? { message, then: allowTracked([{ repo, name, blocked: r.blocked }]) } : message;
     },
     track: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),
     importLocal: (repo, name) => {
@@ -370,19 +405,61 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       const skipped = r.skipped.length ? `; ${r.skipped.map(tildify).join(", ")} already holds a different skill` : "";
       return `${m.name}: ${linked ? `linked ${linked}` : "nothing linked"}${skipped}`;
     },
-    moveGlobal: (m, repos, group) => {
-      // Your library already has a different skill by that name: moving this one would swap in the other.
-      if (importSkill(m.path).status === "exists") return `${m.name}: your library has a different ${m.name}; nothing moved (update your library from this copy first)`;
-      if (group) recordOrigin(m.name, `group: ${group}`);
-      const results = repos.map((r) => [r, addSkill(rootOf(r), m.name)] as const);
-      const skipped = results.filter(([, c]) => c.action === "skipped");
-      // Only stop loading it globally once every repo you picked has it.
-      if (skipped.length)
-        return `${m.name}: not added to ${skipped.map(([r, c]) => `${r} (${c.reason})`).join(", ")}, so it still loads globally`;
-      const blocked = results.filter(([, c]) => c.blocked?.length).map(([r]) => r);
-      const r = unloadGlobal(m.path, m.links);
-      if (!r.ok) return `${m.name}: ${r.reason}`;
-      return `${m.name} now loads only in ${repos.join(", ")}${blocked.length ? ` (some agents can't see it in ${blocked.join(", ")}: git tracks the folder)` : ""}`;
+    moveGlobal: (skills, repos, group) => {
+      const moved: string[] = [];
+      const notes: string[] = [];
+      /**
+       * Links a git-tracked folder held back, where an agent you use now can't see the skill.
+       * `copy`: the real copy's folder; unless git shares it, a link would break for teammates, so none is offered.
+       */
+      const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
+      for (const m of skills) {
+        // Your library already has a different skill by that name: moving this one would swap in the other.
+        if (importSkill(m.path).status === "exists") {
+          notes.push(`${m.name}: your library has a different ${m.name}; nothing moved (update your library from this copy first)`);
+          continue;
+        }
+        if (group) recordOrigin(m.name, `group: ${group}`);
+        const results = repos.map((r) => [r, addSkill(rootOf(r), m.name)] as const);
+        const skipped = results.filter(([, c]) => c.action === "skipped");
+        // Only stop loading it globally once every repo you picked has it.
+        if (skipped.length) {
+          notes.push(`${m.name}: not added to ${skipped.map(([r, c]) => `${r} (${c.reason})`).join(", ")}, so it still loads globally`);
+          continue;
+        }
+        const r = unloadGlobal(m.path, m.links);
+        if (!r.ok) {
+          notes.push(`${m.name}: ${r.reason}`);
+          continue;
+        }
+        moved.push(m.name);
+        for (const [repo, c] of results) {
+          const blind = visibilityOf(rootOf(repo), m.name).flatMap((v) => (v.paths === 0 ? [v.id] : []));
+          if (!c.blocked?.length || !blind.length) continue;
+          const copy = copyDir(repo, m.name);
+          held.push({ repo, name: m.name, blocked: c.blocked, blind, copy, shared: sharedByGit(rootOf(repo), copy, m.name) });
+        }
+      }
+      // Never drop an agent silently: name who can't see it where, whether or not you then allow the links.
+      // One note per kind of gap, e.g. "Claude Code can't see them in repo-api, repo-web: git tracks .claude/skills".
+      const gaps = new Map<string, { who: string; why: string; repos: string[] }>();
+      for (const repo of new Set(held.map((h) => h.repo)))
+        for (const shared of [true, false]) {
+          const here = held.filter((h) => h.repo === repo && h.shared === shared);
+          if (!here.length) continue;
+          const agents = [...new Set(here.flatMap((h) => h.blind))].map((id) => harness(id).name).join(", ");
+          const what = skills.length === 1 ? "it" : here.length === moved.length ? "them" : here.map((h) => h.name).join(", ");
+          const dirs = [...new Set(here.flatMap((h) => h.blocked))].join(", ");
+          const why = shared ? `git tracks ${dirs}` : `${[...new Set(here.map((h) => h.copy))].join(", ")} isn't committed, so a link in ${dirs} would break for teammates`;
+          const key = `${agents}|${what}|${why}`;
+          if (!gaps.has(key)) gaps.set(key, { who: `${agents} can't see ${what}`, why, repos: [] });
+          gaps.get(key)!.repos.push(repo);
+        }
+      const blindNotes = [...gaps.values()].map((g) => `${g.who} in ${g.repos.join(", ")}: ${g.why}`);
+      const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
+      const text = [summary, ...blindNotes, ...notes].filter(Boolean).join("; ") || "Nothing moved";
+      const askable = held.filter((h) => h.shared);
+      return askable.length ? { message: text, then: allowTracked(askable) } : text;
     },
     createSkill: (name) => {
       const r = createSkill(name, "");

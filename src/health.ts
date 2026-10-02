@@ -363,7 +363,9 @@ export function findIssues(
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         const r = linkAll(root, { allowTracked });
-        return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks it)` : ""}`;
+        return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks it)` : ""}${
+          r.uncommitted.length ? `; ${r.uncommitted.join(", ")} not linked into folders git tracks (not committed, so teammates would get broken links)` : ""
+        }`;
       };
       issues.push({
         id: `usable:${root}`,

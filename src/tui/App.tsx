@@ -72,7 +72,8 @@ type Item = {
   inFold?: string;
 };
 type Modal =
-  | { kind: "confirm"; fix: W.Fix }
+  /** `toast`: for a follow-up question, what the change before it said; shown again if you say no. */
+  | { kind: "confirm"; fix: W.Fix; toast?: string }
   | { kind: "repos"; fix: W.Fix; picked: Set<string>; cursor: number; only?: string[]; query: string }
   /** `target`: the repo to add to, or null for your library. */
   | { kind: "add"; cursor: number; query: string; target: string | null }
@@ -601,8 +602,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       failed = true;
     }
     setBase(reload());
-    setToast(`${failed ? "✗" : "✓"} ${said(result)}`);
-    if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then });
+    const toast = `${failed ? "✗" : "✓"} ${said(result)}`;
+    setToast(toast);
+    if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then, toast });
   }
   function choose(o: Option) {
     if (o.action) return o.action();
@@ -706,7 +708,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               preview: `Pick repos. These ${n(mine.length)} go into your library and those repos, and stop loading globally (originals backed up).`,
               run: () => "",
               preticked: usedIn,
-              pickRepos: (w, repos) => (mine.forEach((m) => w.ops.moveGlobal(m, repos, label)), `${n(mine.length)} now load only in ${repos.join(", ")}`),
+              pickRepos: (w, repos) => w.ops.moveGlobal(mine, repos, label),
             }),
             ...(mine.some((m) => !m.kept)
               ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `skilllib stops warning about these ${n(mine.length)}.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
@@ -997,7 +999,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.return && m.options[m.cursor]) return setModal(null), choose(m.options[m.cursor]!);
       return;
     }
-    if (key.escape) return setModal(null);
+    // Saying no to a follow-up keeps what the change said (e.g. which agents can't see a skill).
+    if (key.escape) return setModal(null), m.kind === "confirm" && m.toast && setToast(m.toast);
     if (m.kind === "confirm") {
       if (key.return || input === "y") {
         setModal(null);

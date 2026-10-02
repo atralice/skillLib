@@ -639,12 +639,16 @@ export function link(args: Args) {
     const res = linkAll(root);
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
-    else if (!args.all && !res.blocked.length) success("Every skill here is already usable by all your agents");
+    else if (!args.all && !res.blocked.length && !res.uncommitted.length) success("Every skill here is already usable by all your agents");
     if (res.blocked.length) {
       // Some agents still can't see some skills: that's a failure for scripts and agents.
       process.exitCode = 1;
       error(`${label}git tracks ${res.blocked.join(", ")}, so ${res.linked.length ? "some skills weren't" : "nothing was"} linked there; re-run with --allow-tracked to link there too`);
     }
+    if (res.uncommitted.length)
+      warn(
+        `${label}${res.uncommitted.join(", ")} ${res.uncommitted.length === 1 ? "isn't" : "aren't"} committed, so not linked into folders git tracks (teammates would get broken links); commit ${res.uncommitted.length === 1 ? "it" : "them"} first`,
+      );
   }
 }
 

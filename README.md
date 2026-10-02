@@ -149,7 +149,7 @@ What skilllib flags:
   - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
 - **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
-- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
+- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer. If you say no, it tells you which agents can't see the skill there. A skill whose copy git doesn't share (not committed, and not in a folder the repo commits) never gets a link in a committed folder: teammates would get a broken link.
 
 ### Versions
 
@@ -174,7 +174,7 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 **Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
-- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally.
+- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally. If a repo commits a folder one of your agents needs a link in (often `.claude/skills`), skilllib asks before adding it there.
 - **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
 - **Delete it**: it goes to Settings › Backups.
 
@@ -344,7 +344,7 @@ skilllib --version
 
 The repo commands (`status`, `add`, `remove`, `sync`, `outdated`, `update`, `link`, `tidy`) work in a git repo or a folder with `skilllib.json`, and never in your home folder: skills there would load in every repo. Elsewhere they stop with an error. `--all`, `tidy --global` and `status --json` work from any folder; outside a repo, `status --json` lists only the global skills.
 
-Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`), `--allow-tracked` (link into git-tracked folders; skills git doesn't share are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
 A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder. What it did do is still done, and listed.
 

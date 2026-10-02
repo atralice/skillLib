@@ -246,11 +246,13 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       x.agents = [...new Set([...x.agents, ...agents])];
       return `${m.name} now loads for ${agents.map((a) => harness(a).name).join(", ")} too`;
     },
-    moveGlobal: (m, repos) => {
-      lib(m.name) || toLibrary(m.name);
-      for (const r of repos) add(r, m.name);
-      drop(m);
-      return `${m.name} now loads only in ${repos.join(", ")} (original backed up)`;
+    moveGlobal: (skills, repos) => {
+      for (const m of skills) {
+        lib(m.name) || toLibrary(m.name);
+        for (const r of repos) add(r, m.name);
+        drop(m);
+      }
+      return `${skills.length === 1 ? `${skills[0]!.name} now loads` : `${skills.length} skills now load`} only in ${repos.join(", ")} (original${skills.length === 1 ? "" : "s"} backed up)`;
     },
     createSkill: (name) => {
       w.descriptions[name] = "New skill: say when an agent should use it.";

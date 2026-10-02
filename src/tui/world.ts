@@ -118,8 +118,12 @@ export type Ops = {
   keepGlobal(name: string, keep: boolean): Result;
   /** Links a global skill into the global folders of agents that can't see it. */
   linkGlobal(m: MachineSkill, agents: HarnessId[]): Result;
-  /** `group`: the group it moved with, recorded as its origin so it stays grouped in your library. */
-  moveGlobal(m: MachineSkill, repos: string[], group?: string): Result;
+  /**
+   * Global skills into your library and these repos, no longer loading globally. One result for all of them,
+   * asking before linking into folders git tracks. `group`: the group they moved with, recorded as their
+   * origin so they stay grouped in your library.
+   */
+  moveGlobal(skills: MachineSkill[], repos: string[], group?: string): Result;
   createSkill(name: string): Result;
   /** Turns a Claude Code plugin off in one repo only (its .claude/settings.local.json). */
   pluginOffHere(repo: string, id: string): Result;
@@ -315,7 +319,7 @@ export function globalFixes(m: MachineSkill): Fix[] {
       label: "Move it to the repos that need it…",
       preview: `Pick repos. ${m.name} goes into your library and those repos, and stops loading globally (original backed up).`,
       run: () => "",
-      pickRepos: (w, repos) => w.ops.moveGlobal(m, repos),
+      pickRepos: (w, repos) => w.ops.moveGlobal([m], repos),
     },
     m.kept
       ? { label: "Stop marking it as global on purpose", preview: `skilllib warns about ${m.name} again, like any global skill.`, run: (w) => w.ops.keepGlobal(m.name, false) }
