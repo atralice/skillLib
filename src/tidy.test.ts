@@ -215,7 +215,7 @@ describe("global tidy", () => {
     const unknown = planGlobalTidy({ keep: { web: join(tmp, ".nope", "skills") } });
     expect([unknown.plans, unknown.conflicts.map((c) => c.name)]).toEqual([[], ["web"]]);
     const kept = planGlobalTidy({ keep: { web: join(tmp, ".agents", "skills") } });
-    expect(kept.plans.flatMap((p) => p.steps.map((s) => describeStep(s, null)))).toEqual([`${g(".claude", "web").replace(tmp, "~")}: differing copy → link`]);
+    expect(kept.plans.flatMap((p) => p.steps.map((s) => describeStep(s, null)))).toEqual([`${g(".claude", "web").replace(tmp, "~").replace(/\\/g, "/")}: differing copy → link`]);
     expect(report.skipped.map((s) => s.name)).toEqual(["tool"]);
   });
 });

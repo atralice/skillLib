@@ -106,7 +106,7 @@ describe("--json", () => {
     expect(JSON.parse(cli("add", "stripe", "--json"))).toEqual([{ name: "stripe", action: "installed", to: 1, dirs: [".claude/skills"] }]);
 
     const status = JSON.parse(cli("status", "--json"));
-    expect(status.project).toBe(project.replace(tmp, "~"));
+    expect(status.project).toBe(project.replace(tmp, "~").replace(/\\/g, "/"));
     expect(status.skills).toEqual([
       { source: "library", version: 1, git: "new", skills: ["stripe"] },
       { source: "repo", dir: ".agents/skills", git: "new", agents: [], skills: ["team"] },
@@ -149,7 +149,7 @@ describe("--json", () => {
 
   test("a skilllib.json above the git root belongs to another checkout", () => {
     writeFileSync(join(tmp, "skilllib.json"), JSON.stringify({ skills: {} }));
-    expect(JSON.parse(cli("status", "--json")).project).toBe(project.replace(tmp, "~"));
+    expect(JSON.parse(cli("status", "--json")).project).toBe(project.replace(tmp, "~").replace(/\\/g, "/"));
   });
 
   test("stdout is only JSON, even when a command warns", () => {

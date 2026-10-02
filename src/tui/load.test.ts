@@ -422,7 +422,7 @@ test("linking for every agent asks before linking into a folder git tracks", () 
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
   expect(issue(w, "blind:notes")).toBeUndefined();
-});
+}, 20_000); // several git commands: slow on Windows CI
 
 test("a skill the repo commits in .claude/skills is the team's: a plugin with its name is turned off, never the copy removed", () => {
   fakePlugin();
