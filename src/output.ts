@@ -1,4 +1,4 @@
-import { sep } from "node:path";
+import { resolve, sep } from "node:path";
 import { realPath, userHome } from "./paths.js";
 
 let jsonMode = false;
@@ -30,8 +30,8 @@ export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 
 /** Home-relative path for display. */
 export function tildify(path: string): string {
-  // $HOME as given, then without symlinks (the folder you're in comes back that way).
-  for (const home of new Set([userHome(), realPath(userHome())]))
+  // $HOME normalized (a trailing or doubled slash), then without symlinks (the folder you're in comes back that way).
+  for (const home of new Set([resolve(userHome()), realPath(userHome())]))
     if (path === home || path.startsWith(home + sep)) return "~" + path.slice(home.length);
   return path;
 }

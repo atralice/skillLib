@@ -235,3 +235,10 @@ describe("what the plain commands say", () => {
     expect(r.out).not.toContain("match skilllib.json");
   });
 });
+
+test("paths under $HOME show as ~ even when $HOME has a trailing slash (#51)", () => {
+  process.env.HOME = `${tmp}/`;
+  const repo = join(tmp, "Projects", "web");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  expect(cli(repo, "status").out).toContain("~/Projects/web");
+});
