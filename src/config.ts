@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { skilllibHome, MANIFEST_FILE } from "./paths.js";
 import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
+import { tildify } from "./output.js";
 
 /**
  * ~/.skilllib/config.json
@@ -39,8 +40,11 @@ export function expandHome(path: string): string {
   return resolve(path.replace(/^~(?=$|\/)/, homedir()));
 }
 
+/** Adds a folder to scan for projects; throws when it isn't an existing folder. */
 export function addRoot(path: string): string {
   const root = expandHome(path);
+  if (!existsSync(root)) throw new Error(`${tildify(root)} doesn't exist`);
+  if (!statSync(root).isDirectory()) throw new Error(`${tildify(root)} isn't a folder`);
   const config = readConfig();
   if (!config.roots.includes(root)) writeConfig({ ...config, roots: [...config.roots, root].sort() });
   return root;
@@ -54,10 +58,13 @@ export function removeRoot(path: string): boolean {
   return true;
 }
 
-export function setHidden(project: string, hidden: boolean) {
+/** Hides (or shows again) a project; false when it already was. */
+export function setHidden(project: string, hidden: boolean): boolean {
   const config = readConfig();
+  if (config.hidden.includes(project) === hidden) return false;
   const rest = config.hidden.filter((h) => h !== project);
   writeConfig({ ...config, hidden: hidden ? [...rest, project].sort() : rest });
+  return true;
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "vendor", "target", "Library", "Applications", "Pictures", "Music", "Movies"]);

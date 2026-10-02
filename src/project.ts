@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome, userHome } from "./paths.js";
 import { versionForHash } from "./versions.js";
 
 /**
@@ -34,6 +33,16 @@ export function findProjectRoot(from: string = process.cwd()): string {
     if (parent === dir) return resolve(from);
     dir = parent;
   }
+}
+
+/**
+ * The project you're in: the root findProjectRoot finds, but only a repo (or a
+ * folder with skilllib.json) that isn't your home folder. Null otherwise:
+ * outside a repo, the skill folders around you are the global ones.
+ */
+export function projectHere(from: string = process.cwd()): string | null {
+  const root = findProjectRoot(from);
+  return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE))) ? root : null;
 }
 
 export function projectSkillsDir(root: string): string {
@@ -98,7 +107,7 @@ export function knownProjects(): string[] {
  * like a project but isn't one; every session would otherwise count as "in" it.
  */
 export function isProjectCandidate(root: string): boolean {
-  return resolve(root) !== homedir();
+  return resolve(root) !== resolve(userHome());
 }
 
 export function rememberProjects(roots: string[]) {

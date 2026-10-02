@@ -342,6 +342,8 @@ skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
 
+The repo commands (`status`, `add`, `remove`, `sync`, `outdated`, `update`, `link`, `tidy`) work in a git repo or a folder with `skilllib.json`, and never in your home folder: skills there would load in every repo. Elsewhere they stop with an error. `--all`, `tidy --global` and `status --json` work from any folder; outside a repo, `status --json` lists only the global skills.
+
 Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:

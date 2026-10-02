@@ -34,7 +34,7 @@ import {
   type ProjectSkill,
 } from "../library.js";
 import { userHome } from "../paths.js";
-import { findProjectRoot, isProjectCandidate } from "../project.js";
+import { projectHere } from "../project.js";
 import { readSkillInfo } from "../skills.js";
 import { claudeBinary, claudePlugins, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin, turnOffIn } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, skillsLoadedIn, type SourcedSkill } from "../sources.js";
@@ -146,8 +146,7 @@ function dupesOf(r: TidyReport, root: string | null, git: GitInfo | null = null)
 export function loadWorld(): World {
   forgetLatest();
   const agents = enabledHarnesses();
-  const cwdRoot = findProjectRoot();
-  const here = isProjectCandidate(cwdRoot) && (existsSync(join(cwdRoot, ".git")) || existsSync(join(cwdRoot, "skilllib.json"))) ? cwdRoot : null;
+  const here = projectHere();
   // The same repo can come as two paths (a symlinked folder, /var vs /private/var): match by real path.
   const real = (p: string) => {
     try {

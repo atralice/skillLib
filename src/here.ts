@@ -1,11 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
-import { MANIFEST_FILE } from "./paths.js";
+import { readdirSync } from "node:fs";
+import { basename } from "node:path";
 import { librarySkills, projectStatus, type SkillState } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo, type GitState } from "./git.js";
 import type { HarnessId } from "./harnesses.js";
-import { isProjectCandidate, readManifest } from "./project.js";
+import { projectHere, readManifest } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, type SourceKind } from "./sources.js";
 import { findIssues } from "./health.js";
@@ -106,7 +105,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   const agents = enabledHarnesses();
   const git = gitInfo(root);
   // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills.
-  const inRepo = isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE)));
+  const inRepo = projectHere(root) === root;
   const project = inRepo ? projectStatus(root) : [];
   const skills = groupBy<HereGroup>(
     project.map((s) => {

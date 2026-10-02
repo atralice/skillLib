@@ -17,7 +17,7 @@ Set up:
   skilllib import --global       Copy ~/.claude/skills into the library
   skilllib global [keep|unkeep <name>...]  Your global skills; mark ones you keep global on purpose
 
-In a project:
+In a project (a git repo or a folder with skilllib.json; never your home folder):
   skilllib status                This project's skills and their status
   skilllib add <name>...         Install library skills where your harnesses look
   skilllib remove <name>...      Remove skills from this project
@@ -70,7 +70,7 @@ async function main() {
   switch (command) {
     case undefined:
       // Interactive when a person is at the terminal; plain status for scripts and pipes.
-      return process.stdin.isTTY && process.stdout.isTTY ? (await import("./tui/index.js")).tui() : commands.status(args);
+      return process.stdin.isTTY && process.stdout.isTTY ? (await import("./tui/index.js")).tui() : commands.overview(args);
     case "ui":
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("`skilllib ui` needs an interactive terminal. Agents and scripts: use `skilllib status --json`.");
       return (await import("./tui/index.js")).tui();
