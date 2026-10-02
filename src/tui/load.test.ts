@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { agentSkillIssue, deleteLibraryFix, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
+import { agentSkillIssue, deleteLibraryFix, failed, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -150,8 +150,38 @@ test("linking never puts an uncommitted skill in a folder git tracks, and doesn'
   writeSkill(join(repo, ".cursor", "skills", "mine"));
   setHarnesses(["claude-code", "cursor"]);
 
-  expect(loadWorld().ops.link("app", "mine")).toBe("mine: not linked in .claude/skills: git tracks it and mine isn't committed, so teammates would get broken links");
+  const w = loadWorld();
+  // Nothing linked: a failure (✗), and Health doesn't offer it as a fix, it says to commit first.
+  expect(w.ops.link("app", "mine")).toEqual(failed("mine: not linked in .claude/skills: git tracks it and mine isn't committed, so teammates would get broken links"));
   expect(isLink(join(repo, ".claude", "skills", "mine"))).toBe(false);
+  expect(local(w, "mine").local!.unshared).toEqual(["claude-code"]);
+  const blind = issue(w, "blind:mine")!;
+  expect(blind.short).toBe("Claude Code can't see it: commit it first");
+  expect(blind.decision).toBe(true);
+  expect(blind.fixes).toEqual([]);
+
+  // Committed, the link fix is back.
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "mine");
+  const after = loadWorld();
+  expect(local(after, "mine").local!.unshared).toBeUndefined();
+  expect(issue(after, "blind:mine")!.fixes.map((f) => f.label)).toEqual(["Link it for every agent"]);
+});
+
+test("a skill pinned in skilllib.json that your library doesn't have: no restore, no library actions, only removing the pin", () => {
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { "ghost-skill": { version: 1, hash: "abc" } } }));
+  let w = loadWorld();
+  const s = local(w, "ghost-skill").local!;
+  expect(s).toMatchObject({ missing: true, library: "missing" });
+  const ids = issuesOf(w, "app", local(w, "ghost-skill")).map((i) => i.id);
+  expect(ids).toEqual(["unavailable:ghost-skill"]);
+  const pinned = issue(w, "unavailable:ghost-skill")!;
+  expect(pinned.title).toContain("not in your library: import it, or set SKILLLIB_HOME");
+  expect(pinned.decision).toBe(true);
+  expect(pinned.fixes.map((f) => f.label)).toEqual(["Remove it from skilllib.json"]);
+  expect(said(pinned.fixes[0]!.run(w))).toBe("Removed ghost-skill from app");
+  w = loadWorld();
+  expect(usable(w, "app").some((u) => u.name === "ghost-skill")).toBe(false);
 });
 
 test("deleting a library skill removes it from every repo, edits backed up", () => {

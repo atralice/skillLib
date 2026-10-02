@@ -182,6 +182,7 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Where | Short | Severity | Your call | Fixes |
 |---|---|---|---|---|
 | Repo | Folder missing | ✕ | | Restore it (sync) |
+| Repo | Pinned, not in your library (folder missing, and your library has no copy: import it, or set SKILLLIB_HOME) | ✕ | yes | Remove it from skilllib.json |
 | Repo | Not in your library | ✕ | | Copy it back into your library |
 | Repo | Loaded twice (also global) | ✕ | yes | Keep this repo's copy, stop loading it globally (names the other repos that used it) · Keep it global, remove it from this repo |
 | Repo | Extra: you keep it global | ⚠ | yes | Remove this repo's copy, keep it global · Stop loading it globally after all |
@@ -193,6 +194,7 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Repo | Edited here | ⚠ | yes | Save as vN+1 in your library · Discard the edits |
 | Repo | Update to vN | ⚠ | | Update to vN |
 | Repo | *Agent* can't see it | ⚠ | | Link it for every agent |
+| Repo | *Agent* can't see it: commit it first (only links into folders git tracks would help, and the copy isn't committed) | ⚠ | yes | none (reported only) |
 | Repo | Differs from library | · | yes | Update your library from this copy · Replace it with the library version |
 | Repo | Not tracked | · | | Track it |
 | Repo | Only in this repo | · | | Import it into your library |

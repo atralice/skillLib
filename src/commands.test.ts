@@ -142,3 +142,19 @@ describe("paths are checked", () => {
     expect(readConfig().hidden).toEqual([]);
   });
 });
+
+describe("doctor", () => {
+  test("a pinned skill your library doesn't have: said so, with no fix that does nothing", () => {
+    const repo = join(tmp, "code", "web");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { "ghost-skill": { version: 1, hash: "abc" } } }));
+    expect(cli(repo, "status").out).toContain("isn't in your library");
+
+    const r = cli(repo, "doctor", "--fix");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("ghost-skill: pinned in web's skilllib.json, but not in your library");
+    expect(r.out).toContain("choose in skilllib → Health: Remove it from skilllib.json");
+    expect(r.out).not.toContain("out of date");
+    expect(r.out).not.toContain("updated");
+  });
+});
