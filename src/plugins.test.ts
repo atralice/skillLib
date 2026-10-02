@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -173,6 +174,46 @@ test("a synced plugin is turned off in one repo by its settings.local.json", () 
     permissions: { allow: [] },
     enabledPlugins: { "railway@synced": false },
   });
+});
+
+test.skipIf(process.platform === "win32")("without the claude CLI, a plugin is turned off in one repo by writing its settings.local.json, which git then ignores", () => {
+  const web = join(tmp, "web");
+  mkdirSync(web, { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: web });
+  skill(join(tmp, "p", "skills", "alpha"));
+  const plugin: ClaudePlugin = { id: "pt@mk", scope: "user", synced: false, skills: [join(tmp, "p", "skills", "alpha")], extras: [] };
+
+  const path = process.env.PATH;
+  process.env.PATH = "/usr/bin:/bin"; // git, but no claude
+  try {
+    expect(turnOffIn(plugin, web)).toEqual({ ok: true, message: "pt@mk turned off in web; other repos keep it (in .claude/settings.local.json, which git now ignores via .git/info/exclude)" });
+  } finally {
+    process.env.PATH = path;
+  }
+  expect(JSON.parse(readFileSync(join(web, ".claude", "settings.local.json"), "utf-8"))).toEqual({ enabledPlugins: { "pt@mk": false } });
+  expect(execFileSync("git", ["status", "--porcelain"], { cwd: web, encoding: "utf-8" })).toBe("");
+  // Once is enough.
+  expect(turnOffIn({ ...plugin, synced: true, id: "sy@synced" }, web).message).toEndWith("(in .claude/settings.local.json, which git ignores)");
+  expect(readFileSync(join(web, ".git", "info", "exclude"), "utf-8").match(/settings\.local\.json/g)).toHaveLength(1);
+});
+
+test("with Cursor, a plugin a repo turned off still collides there: Cursor lists both, and only plugin-wide choices are offered", () => {
+  setHarnesses(["claude-code", "cursor"]);
+  const dir = join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt");
+  skill(join(dir, "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "pt@mk": [{ scope: "user", installPath: dir }] } }));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  const web = join(tmp, "web");
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(web, "alpha");
+  writeFileSync(join(web, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "pt@mk": false } }));
+
+  const issue = findIssues([web], machineSkills(), new Set(["alpha"])).find((i) => i.id === "plugin:pt@mk")!;
+  expect(issue.severity).toBe("problem");
+  expect(issue.detail).not.toContain("Claude Code loads both");
+  expect(issue.detail).toContain("web turns it off for Claude Code, but Cursor ignores repo settings and lists both there");
+  expect(issue.choices?.map((c) => c.label)).toEqual(["Remove the plugin pt@mk", "Turn the plugin pt@mk off"]);
 });
 
 test("a nested .claude/skills copy of a plugin's skill counts, and is never offered for removal", () => {

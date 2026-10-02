@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
+import { deleteLibraryFix, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -220,11 +220,12 @@ test("tidying asks before changing what git tracks", () => {
   const fix = issue(w, "copies:notes")!.fixes[0]!;
   expect(fix.preview).toContain("Git would see");
   const r = fix.run(w);
-  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
-  expect(r.message).toBe("notes: nothing changed yet");
+  const then = followUp(r);
+  if (!then) throw new Error(`expected a question, got: ${said(r)}`);
+  expect(said(r)).toBe("notes: held back .claude/skills/notes: duplicate copy → link, because git tracks it");
   const links = () => [".claude", ".agents"].filter((d) => isLink(join(repo, d, "skills", "notes")));
   expect(links()).toEqual([]);
-  r.then.run(w);
+  then.run(w);
   expect(links()).toEqual([".claude"]);
 });
 
@@ -261,6 +262,30 @@ test("a skill also in a Cursor plugin is reported", () => {
   const found = issue(loadWorld(), "cursor-plugin:notes")!;
   expect(found.title).toBe("Also in the Cursor plugin kit: Cursor lists both while it's on");
   expect(found.decision).toBe(true);
+});
+
+test("a plugin the repo turned off for Claude Code still collides in Cursor: said so, with only the choices that change something", () => {
+  setHarnesses(["claude-code", "cursor"]);
+  const dir = join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt");
+  writeSkill(join(dir, "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "pt@mk": [{ scope: "user", installPath: dir }] } }));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  writeSkill(join(repo, ".claude", "skills", "alpha"));
+  const before = issue(loadWorld(), "twice-p:alpha")!;
+  expect(before.fixes.map((f) => f.label)).toContain("Turn the plugin off in app only");
+  expect(before.fixes.find((f) => f.label.includes("only"))!.preview).toContain("Cursor ignores repo settings, so it still lists both.");
+
+  writeFileSync(join(repo, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "pt@mk": false } }));
+  const found = issue(loadWorld(), "twice-p:alpha")!;
+  expect(found.title).toBe("Same name as a skill in plugin pt@mk: Claude Code has it off in app, but Cursor ignores repo settings and lists both");
+  expect(found.decision).toBe(true);
+  expect(found.fixes.map((f) => f.label)).toEqual(["Replace pt with library skills…"]);
+});
+
+test("a failed action is a failure, not a message", () => {
+  const w = loadWorld();
+  expect(w.ops.remove("app", "nope")).toEqual({ message: "nope isn't in app", failed: true });
+  expect(w.ops.pluginOffHere("app", "pt@mk")).toEqual({ message: "pt@mk isn't on in app", failed: true });
 });
 
 test("repo names stay unique however deep folders clash", () => {

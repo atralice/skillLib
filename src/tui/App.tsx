@@ -415,7 +415,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return w.library.map((l): Item => {
     const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
     const uses = W.totalUses(w, l.name);
-    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => rs.map((r) => said(w.ops.add(r, l.name))).join(" · ") };
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.add(r, l.name))) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
@@ -451,7 +451,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
                   preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
                   run: () => "",
                   candidates: () => repos.map((p) => p.name),
-                  pickRepos: (w, rs) => rs.map((r) => said(w.ops.remove(r, l.name))).join(" · "),
+                  pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.remove(r, l.name))),
                 }),
               ]
             : []),
@@ -485,9 +485,7 @@ function addCursor(rows: W.AddRow[], cursor: number): number {
 // ─── App ────────────────────────────────────────────────
 
 /** The message of a result; its follow-up (if any) is asked separately. */
-function said(r: W.Result): string {
-  return typeof r === "string" ? r : r.message;
-}
+const said = W.said;
 
 export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days">> }) {
   const { exit, suspendTerminal } = useApp();
@@ -595,11 +593,12 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     try {
       result = run(world);
     } catch (e) {
-      result = `Couldn't do it: ${(e as Error).message}`;
+      result = W.failed(`Couldn't do it: ${(e as Error).message}`);
     }
     setBase(reload());
-    setToast(`✓ ${said(result)}`);
-    if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then });
+    setToast(`${W.isFailure(result) ? "✗" : "✓"} ${said(result)}`);
+    const then = W.followUp(result);
+    if (then) setModal({ kind: "confirm", fix: then });
   }
   function choose(o: Option) {
     if (o.action) return o.action();
@@ -1022,18 +1021,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.return) {
         setModal(null);
         const chosen = m.items.filter((it) => it.on);
-        apply((w) => {
-          let ok = 0;
-          for (const it of chosen) {
-            try {
-              it.fix.run(w);
-              ok++;
-            } catch {
-              // An earlier fix in the batch already resolved it.
-            }
-          }
-          return `Applied ${ok} fix${ok === 1 ? "" : "es"} (anything removed is in Settings › Backups)`;
-        });
+        apply((w) => W.runAll(w, chosen.map((it) => it.fix)));
       }
       return;
     }
@@ -1392,7 +1380,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         </Box>
       </Box>
       <Box height={1} width={termCols} justifyContent="space-between">
-        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : color.muted} wrap="truncate-end">
+        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : toast.startsWith("✗") ? color.red : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
         {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}

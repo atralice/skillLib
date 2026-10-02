@@ -87,8 +87,23 @@ export type Project = {
 export type RepoInfo = { remote?: string; branch?: string; dirty: number };
 export type Backup = { name: string; from: string; at: string };
 
-/** What a fix did; `then` asks for one more confirmation (e.g. linking into a folder git tracks). */
-export type Result = string | { message: string; then: Fix };
+/**
+ * What a fix did. `then` asks for one more confirmation (e.g. linking into a folder git tracks);
+ * `failed` when it didn't do what it was for (the app shows ✗).
+ */
+export type Result = string | { message: string; then: Fix } | { message: string; failed: true };
+
+export const failed = (message: string): Result => ({ message, failed: true });
+export const isFailure = (r: Result): boolean => typeof r !== "string" && "failed" in r;
+/** The follow-up question a result asks, if any. */
+export const followUp = (r: Result): Fix | undefined => (typeof r !== "string" && "then" in r ? r.then : undefined);
+/** A result's message. */
+export const said = (r: Result): string => (typeof r === "string" ? r : r.message);
+/** Several results as one: their messages, failed if any failed. */
+export const joined = (results: Result[]): Result => {
+  const message = results.map(said).join(" · ");
+  return results.some(isFailure) ? failed(message) : message;
+};
 
 /** Everything that changes something, and a few lookups too slow to do for every repo up front. */
 export type Ops = {
@@ -252,6 +267,12 @@ function lib(w: World, name: string): LibrarySkill | undefined {
 
 const agentNames = (ids: HarnessId[]) => ids.map((a) => harness(a).name).join(", ");
 
+/** ", and repo-web used it in the last 30 days": the other repos that lose a global skill (no copy of their own) though they use it. */
+function usedElsewhere(w: World, except: string | null, name: string): string {
+  const repos = w.projects.filter((p) => p.name !== except && (w.usage[p.name]?.[name] ?? 0) > 0 && !p.skills.some((s) => s.name === name)).map((p) => p.name);
+  return repos.length ? `, and ${repos.join(", ")} used it in the last 30 days` : "";
+}
+
 /** Duplicate copies of a skill in a repo, or in your global folders (`repo` null). */
 function dupeIssues(repo: string | null, name: string, d: Dupes): Issue[] {
   const g = repo === null ? "-g" : "";
@@ -355,11 +376,12 @@ export function machineIssues(w: World, m: MachineSkill): Issue[] {
       severity: "problem",
       title: `Loaded twice: also in ${other.source} ${other.where}`,
       short: "Loaded twice",
-      decision: false,
+      // Every repo then runs the other copy instead of yours: a decision, never "fix all".
+      decision: true,
       fixes: [
         {
           label: `Keep the ${other.source}'s copy, stop loading yours globally`,
-          preview: `Copy ${m.name} into your library if needed, then move ${m.path} to the backups.`,
+          preview: `Copy ${m.name} into your library if needed, then move ${m.path} to the backups. Every repo then runs the ${other.source}'s copy instead of yours.`,
           run: (w) => w.ops.unloadGlobal(m),
         },
       ],
@@ -439,7 +461,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         ...(s.source !== "repo" ? [{ ...remove, label: "Remove this repo's copy, keep it global" }] : []),
         {
           label: "Stop loading it globally after all",
-          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Other repos stop seeing it.`,
+          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Every other repo stops seeing it${usedElsewhere(w, projectName, s.name)}.`,
           run: (w: World) => w.ops.unloadGlobal(g),
         },
       ],
@@ -450,17 +472,31 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "problem",
       title: `Loaded twice: also global in ${g.where}`,
       short: "Loaded twice",
-      decision: false,
+      // Unloading the global copy changes every repo: a decision, never "fix all".
+      decision: true,
       fixes: [
         {
           label: "Keep this repo's copy, stop loading it globally",
-          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Other repos stop seeing it.`,
+          preview: `Copy ${s.name} into your library if needed, then move ${g.path} to the backups. Every other repo stops seeing it${usedElsewhere(w, projectName, s.name)}.`,
           run: (w) => w.ops.unloadGlobal(g),
         },
         ...(s.source !== "repo" ? [{ ...remove, label: "Keep it global, remove it from this repo" }] : []),
       ],
     });
-  if (vendor)
+  // This repo's settings turned the plugin off for Claude Code, but Cursor ignores them and still lists both.
+  // Turning it off here again changes nothing, and removing this copy would leave Claude Code with neither:
+  // only taking the plugin off everywhere helps.
+  const cursorOnly = vendor?.source === "plugin" && w.agents.includes("claude-code") && !vendor.agents.includes("claude-code");
+  if (vendor && cursorOnly)
+    issues.push({
+      id: `twice-p:${s.name}`,
+      severity: "warning",
+      title: `Same name as a skill in plugin ${vendor.where}: Claude Code has it off in ${projectName}, but Cursor ignores repo settings and lists both`,
+      short: "Cursor also lists a plugin's copy",
+      decision: true,
+      fixes: [replacePluginFix(w, vendor.where)],
+    });
+  else if (vendor)
     issues.push({
       id: `twice-p:${s.name}`,
       severity: "problem",
@@ -472,7 +508,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         vendor.source === "plugin"
           ? {
               label: `Turn the plugin off in ${projectName} only`,
-              preview: `Sets "${vendor.where}": false in ${projectName}'s .claude/settings.local.json (claude plugin disable --scope local). Other repos keep it.`,
+              preview: `Sets "${vendor.where}": false in ${projectName}'s .claude/settings.local.json (claude plugin disable --scope local), a local-only file git ignores. Other repos keep it.${vendor.agents.includes("cursor") ? " Cursor ignores repo settings, so it still lists both." : ""}`,
               run: (w: World) => w.ops.pluginOffHere(projectName, vendor.where),
             }
           : {
@@ -573,6 +609,34 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
   return issues;
 }
 
+/**
+ * "Fix all": runs the fixes and says what happened. A fix whose result asks a follow-up was held back
+ * (it needs your OK, e.g. git tracks the folder); its message says what and why.
+ */
+export function runAll(w: World, fixes: Fix[]): Result {
+  const held: string[] = [];
+  const bad: string[] = [];
+  for (const fix of fixes) {
+    let r: Result;
+    try {
+      r = fix.run(w);
+    } catch (e) {
+      r = failed((e as Error).message);
+    }
+    if (isFailure(r)) bad.push(said(r));
+    else if (followUp(r)) held.push(said(r));
+  }
+  const ok = fixes.length - held.length - bad.length;
+  const message = [
+    `Applied ${ok}${ok === fixes.length ? "" : ` of ${fixes.length}`} fix${fixes.length === 1 ? "" : "es"}${ok ? " (anything removed is in Settings › Backups)" : ""}`,
+    held.length ? `${held.join("; ")} (fix ${held.length === 1 ? "it" : "them"} on ${held.length === 1 ? "its" : "their"} own to go ahead)` : "",
+    bad.length ? `couldn't: ${bad.join("; ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return bad.length ? failed(message) : message;
+}
+
 export function worst(issues: Issue[]): Issue | undefined {
   return [...issues].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])[0];
 }
@@ -613,11 +677,7 @@ export function deleteLibraryFix(w: World, names: string[]): Fix {
     ]
       .filter(Boolean)
       .join(" "),
-    run: (w) =>
-      names
-        .map((n) => w.ops.deleteLibrary(n))
-        .map((r) => (typeof r === "string" ? r : r.message))
-        .join(" · "),
+    run: (w) => joined(names.map((n) => w.ops.deleteLibrary(n))),
   };
 }
 

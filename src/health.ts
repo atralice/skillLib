@@ -130,9 +130,12 @@ export function findIssues(
 
   // Plugins that duplicate your skills: your skill wins, and the plugin goes, everywhere or only in the repos where both load.
   const loadedHere = new Map(projects.map((root) => [root, loadedIn(root)]));
-  // Skill names Claude Code loads in a repo (plugins are Claude Code only): its own and nested ones it can see.
-  const seenByClaude = (s: ProjectSkill) => s.visibility.some((v) => v.id === "claude-code" && v.paths > 0);
-  const namesIn = (root: string) => [...new Set([...statuses.get(root)!, ...nested.get(root)!].filter(seenByClaude).map((s) => s.name))];
+  // Skill names an agent (Claude Code unless said) loads in a repo: its own and nested ones it can see.
+  const namesIn = (root: string, agent: HarnessId = "claude-code") => [
+    ...new Set([...statuses.get(root)!, ...nested.get(root)!].filter((s) => s.visibility.some((v) => v.id === agent && v.paths > 0)).map((s) => s.name)),
+  ];
+  // Which of your agents load a plugin in a repo: its settings can turn it off for Claude Code, but Cursor ignores them.
+  const pluginAgentsIn = (plugin: ClaudePlugin, root: string) => new Set(loadedHere.get(root)!.filter((m) => plugin.skills.includes(m.path)).flatMap((m) => m.harnesses));
   const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
   const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
   const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
@@ -163,12 +166,21 @@ export function findIssues(
   const machinePlugins = claudePlugins(machine);
   for (const plugin of machinePlugins) {
     const names = plugin.skills.map((p) => basename(p));
-    // Repos where the plugin still loads (a repo can turn it off) and has a copy of one of its skills.
+    // Repos where Claude Code still loads the plugin (a repo can turn it off) and has a copy of one of its skills.
     const inRepos = projects
-      .filter((root) => loadedHere.get(root)!.some((m) => plugin.skills.includes(m.path)))
+      .filter((root) => pluginAgentsIn(plugin, root).has("claude-code"))
       .map((root) => [root, namesIn(root).filter((n) => names.includes(n))] as const)
       .filter(([, d]) => d.length);
-    const loadedYours = new Set([...globalYours, ...inRepos.flatMap(([, d]) => d)]);
+    // Repos that turned it off for Claude Code, where Cursor still lists both: turning it off there again, or removing
+    // the repo's copy (Claude Code would have neither), changes nothing useful. Only the plugin-wide choices help.
+    const cursorRepos = enabledHarnesses().includes("claude-code")
+      ? projects
+          .filter((root) => !pluginAgentsIn(plugin, root).has("claude-code") && pluginAgentsIn(plugin, root).has("cursor"))
+          .map((root) => [root, namesIn(root, "cursor").filter((n) => names.includes(n))] as const)
+          .filter(([, d]) => d.length)
+      : [];
+    const claudeYours = new Set([...globalYours, ...inRepos.flatMap(([, d]) => d)]);
+    const loadedYours = new Set([...claudeYours, ...cursorRepos.flatMap(([, d]) => d)]);
     const dupes = names.filter((n) => libraryNames.has(n) || loadedYours.has(n));
     if (!dupes.length) continue;
     const others = plugin.skills.length - dupes.length;
@@ -180,13 +192,18 @@ export function findIssues(
     };
     const off: Choice = { label: `Turn the plugin ${plugin.id} off`, hint: "stays installed", run: () => orThrow(removePlugin(plugin, "off")) };
     const bothLoad = dupes.filter((n) => loadedYours.has(n));
+    const claudeBoth = dupes.filter((n) => claudeYours.has(n));
+    const cursorWheres = cursorRepos.map(([root]) => basename(root));
     const notInstalled = dupes.filter((n) => !installedYours.has(n));
     issues.push({
       id: `plugin:${plugin.id}`,
       severity: bothLoad.length ? "problem" : "suggestion",
       title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}`,
       detail: [
-        bothLoad.length ? `Claude Code loads both (the plugin's as /${pluginName}:${bothLoad[0]}). Your skill wins.` : "",
+        claudeBoth.length ? `Claude Code loads both (the plugin's as /${pluginName}:${claudeBoth[0]}). Your skill wins.` : "",
+        cursorWheres.length
+          ? `${cursorWheres.join(", ")} ${cursorWheres.length === 1 ? "turns" : "turn"} it off for Claude Code, but Cursor ignores repo settings and lists both there: only turning the plugin off or removing it changes that.`
+          : "",
         notInstalled.length
           ? `Your ${notInstalled.join(", ")} ${notInstalled.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notInstalled.length === 1 ? "it" : "them"} where you need ${notInstalled.length === 1 ? "it" : "them"}.`
           : "",

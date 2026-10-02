@@ -183,9 +183,10 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 |---|---|---|---|---|
 | Repo | Folder missing | ✕ | | Restore it (sync) |
 | Repo | Not in your library | ✕ | | Copy it back into your library |
-| Repo | Loaded twice (also global) | ✕ | | Keep this repo's copy, stop loading it globally · Keep it global, remove it from this repo |
+| Repo | Loaded twice (also global) | ✕ | yes | Keep this repo's copy, stop loading it globally (names the other repos that used it) · Keep it global, remove it from this repo |
 | Repo | Extra: you keep it global | ⚠ | yes | Remove this repo's copy, keep it global · Stop loading it globally after all |
 | Repo | Same name as a plugin/claude.ai/cursor skill | ✕ | yes | Remove this repo's copy · Turn the plugin off |
+| Repo | Cursor also lists a plugin's copy (the repo turned the plugin off for Claude Code; Cursor ignores repo settings) | ⚠ | yes | Replace *plugin* with library skills… |
 | Repo | Extra copies (identical copies, or links no agent needs) | ⚠ | | Keep one copy, plus the links your agents need |
 | Repo | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy that can win) |
 | Repo | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
@@ -197,7 +198,7 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Repo | Only in this repo | · | | Import it into your library |
 | Repo | Unused 30 days | · | yes | Remove it from this repo |
 | Global | Broken link | ✕ | | Remove the link |
-| Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | | Keep that copy, stop loading yours globally |
+| Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | yes | Keep that copy, stop loading yours globally |
 | Global | Extra copies (identical copies in several global folders) | ⚠ | | Keep one copy, plus the links your agents need |
 | Global | Copies differ (which agent runs which) | ✕ | yes | Keep the … copy (one per copy) |
 | Global | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
@@ -223,7 +224,9 @@ All replace the content area (Places stays visible), except confirm, which opens
 
 Also: **menu** (a list of options, e.g. `⋯ repo…`), **input** (one line, e.g. a project folder), and **agents** (the first run: which agents you use, then where your projects are).
 
-After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line. A result can carry a follow-up question (`then`), such as allowing links in a git-tracked folder, which opens as another confirm.
+After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line: `✓` (`green`) when it worked, `✗` (`red`) when it failed (`failed` results, and errors). A result can carry a follow-up question (`then`), such as allowing links in a git-tracked folder, which opens as another confirm. **Fix all** doesn't ask follow-ups: its result counts what it applied, and names each fix it held back and why (e.g. git tracks the folder), and each one that failed.
+
+Changing what every repo loads (stopping a global skill, or swapping yours for a plugin's copy) is always a decision, never in **Fix all**.
 
 ---
 
@@ -240,7 +243,7 @@ After a change, the app reads everything from disk again (`reload`) and shows th
 | `faint` | `#5A6275` | Column titles, hints, *your call*, empty values |
 | `green` | `#6BCB77` | `✓`, `★`, `[x]`, success messages, Health with nothing to fix |
 | `yellow` | `#F2C94C` | Warnings, `global`, repos behind, the Issues tab count |
-| `red` | `#EF6B6B` | Problems |
+| `red` | `#EF6B6B` | Problems, `✗` failed actions |
 | `magenta` | `#C792EA` | Plugins (`⧉ name`) |
 | `blue` | `#5EB8F7` | Hints, `repo` and `untracked`, remotes |
 | `selection` | `#2A3350` | The selected row's and option's background (focused pane only) |
