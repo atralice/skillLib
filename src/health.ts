@@ -1,7 +1,7 @@
 import { lstatSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
-import { gitInfo } from "./git.js";
+import { gitInfo, relativeTo } from "./git.js";
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
@@ -285,7 +285,7 @@ export function findIssues(
       id: "review:global",
       severity: "suggestion",
       title: `${plural(unreviewed.length, "global skill")} of yours ${unreviewed.length === 1 ? "loads" : "load"} in every repo`,
-      detail: `${unreviewed.join(", ")}. Choose which repos keep each (Global → Clean up…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
+      detail: `${unreviewed.join(", ")}. Move each to the repos that need it (skilllib → Global → Move it to the repos that need it…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
     });
   }
 
@@ -471,12 +471,32 @@ export function findIssues(
     }
 
     const differing = new Set(tidy.conflicts.map((c) => c.name));
+    // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
+    const git = gitInfo(root);
+    const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
     for (const s of status) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
       // and copies that differ need a winner first (the conflict issue above).
       if (isLink(s.path) || differing.has(s.name)) continue;
       // Importing and tracking change the library and the repo's skilllib.json: choices, never run by `doctor --fix`.
-      if (s.state === "local only") {
+      if (s.state === "local only" && committed(s)) {
+        issues.push({
+          id: `local:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} isn't in your library`,
+          detail: "Copy it into the library to reuse it in other projects. The repo's copy stays as it is: it's the team's (committed).",
+          choices: [
+            {
+              label: "Copy into the library",
+              hint: `${where}'s copy stays as it is`,
+              run: () => {
+                importSkill(s.path);
+                return `${s.name} copied into your library; ${where}'s copy stays as it is`;
+              },
+            },
+          ],
+        });
+      } else if (s.state === "local only") {
         issues.push({
           id: `local:${root}:${s.name}`,
           severity: "suggestion",

@@ -485,3 +485,21 @@ test("linking a global skill replaces a broken link in the way, and leaves a dif
   expect(existsSync(join(tmp, ".claude", "skills", "x", "SKILL.md"))).toBe(true);
   expect(linkGlobal(join(tmp, ".agents", "skills", "y"), ["claude-code"])).toEqual({ linked: [], skipped: [join(tmp, ".claude", "skills", "y")] });
 });
+
+test("a committed skill that isn't in your library is copied into it, never tracked: it's the team's (#50)", () => {
+  const project = join(tmp, "team");
+  skill(join(project, ".claude", "skills", "house-style"));
+  skill(join(project, ".claude", "skills", "scratch"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: project, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".claude/skills/house-style");
+  git("commit", "-qm", "team skill");
+
+  const issues = findIssues([project], machineSkills(), new Set());
+  const team = issues.find((i) => i.id === `local:${project}:house-style`)!;
+  expect(team.choices!.map((c) => c.label)).toEqual(["Copy into the library"]);
+  expect(runFix(team.choices![0]!).ok).toBe(true);
+  expect(readManifest(project).skills["house-style"]).toBeUndefined();
+  // A copy only on this machine is still imported and tracked.
+  expect(issues.find((i) => i.id === `local:${project}:scratch`)!.choices!.map((c) => c.label)).toEqual(["Import into the library"]);
+});
