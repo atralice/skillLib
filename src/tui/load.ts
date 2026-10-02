@@ -29,7 +29,6 @@ import {
   restoreBackup,
   syncProject,
   unloadGlobal,
-  sharedByGit,
   updateProject,
   visibilityOf,
   type Backup,
@@ -288,11 +287,37 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
    * a link would break for teammates: it says so instead of asking.
    */
   const withLinks = (c: Change, repo: string, name: string): Result => {
+    const it = (dirs: string[]) => (dirs.length === 1 ? "it" : "them");
+    if (c.uncommitted?.length)
+      return `${said(c, repo)}; not linked in ${c.uncommitted.join(", ")}: git tracks ${it(c.uncommitted)} and ${copyDir(repo, name)}/${name} isn't committed, so teammates would get broken links`;
     if (!c.blocked?.length) return result(c, repo);
-    const copy = copyDir(repo, name);
-    if (!sharedByGit(rootOf(repo), copy, name))
-      return `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${c.blocked.length === 1 ? "it" : "them"} and ${copy}/${name} isn't committed, so teammates would get broken links`;
-    return { message: `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${c.blocked.length === 1 ? "it" : "them"}`, then: allowTracked([{ repo, name, blocked: c.blocked }]) };
+    return { message: `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${it(c.blocked)}`, then: allowTracked([{ repo, name, blocked: c.blocked }]) };
+  };
+  /** Library skills into repos; links git-tracked folders held back are asked about once, for all of them. */
+  const addTo = (repos: string[], names: string[]): Result => {
+    if (repos.length === 1 && names.length === 1) return withLinks(addSkill(rootOf(repos[0]!), names[0]!), repos[0]!, names[0]!);
+    const changes = repos.flatMap((repo) => names.map((name) => ({ repo, name, c: addSkill(rootOf(repo), name) })));
+    const done = changes.filter((x) => x.c.action !== "skipped");
+    const added = [...new Set(done.map((x) => x.name))];
+    const summary = done.length ? `Added ${added.length === 1 ? `${added[0]} v${done[0]!.c.to}` : `${added.length} skills`} to ${[...new Set(done.map((x) => x.repo))].join(", ")}` : "";
+    // Per repo, the links git held back: to ask about, or (git doesn't share the copy) only to say.
+    const notes: string[] = [];
+    for (const repo of repos)
+      for (const kind of ["blocked", "uncommitted"] as const) {
+        const here = done.filter((x) => x.repo === repo && x.c[kind]?.length);
+        if (!here.length) continue;
+        const dirs = [...new Set(here.flatMap((x) => x.c[kind]!))];
+        const who = here.length === names.length ? "" : `${here.map((x) => x.name).join(", ")}: `;
+        const copies = [...new Set(here.map((x) => copyDir(repo, x.name)))];
+        const why = kind === "blocked" ? `git tracks ${dirs.length === 1 ? "it" : "them"}` : `${copies.join(", ")} ${copies.length === 1 ? "isn't" : "aren't"} committed, so a link would break for teammates`;
+        notes.push(`${who}not linked in ${dirs.join(", ")} in ${repo}: ${why}`);
+      }
+    const skipped = changes.filter((x) => x.c.action === "skipped").map((x) => `${x.name} not added to ${x.repo}: ${x.c.reason}`);
+    const text = [summary, ...notes, ...skipped].filter(Boolean).join("; ");
+    const held = done.flatMap((x) => (x.c.blocked?.length ? [{ repo: x.repo, name: x.name, blocked: x.c.blocked }] : []));
+    if (!done.length) return failed(text);
+    if (held.length) return { message: text, then: allowTracked(held) };
+    return skipped.length ? failed(text) : text;
   };
   /** Asks to add the links git-tracked folders held back: skills by repo, with the folders each one missed. */
   const allowTracked = (held: { repo: string; name: string; blocked: string[] }[]): Fix => {
@@ -340,7 +365,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   };
 
   return {
-    add: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),
+    add: (repo, name) => addTo([repo], [name]),
+    addTo,
     remove: (repo, name) => {
       const s = find(repo, name);
       if (!s) return failed(`${name} isn't in ${repo}`);
@@ -447,9 +473,10 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
         moved.push(m.name);
         for (const [repo, c] of results) {
           const blind = visibilityOf(rootOf(repo), m.name).flatMap((v) => (v.paths === 0 ? [v.id] : []));
-          if (!c.blocked?.length || !blind.length) continue;
-          const copy = copyDir(repo, m.name);
-          held.push({ repo, name: m.name, blocked: c.blocked, blind, copy, shared: sharedByGit(rootOf(repo), copy, m.name) });
+          // addSkill holds back a link where git tracks the folder: `uncommitted` when git doesn't share the real copy.
+          const blocked = [...(c.blocked ?? []), ...(c.uncommitted ?? [])];
+          if (!blocked.length || !blind.length) continue;
+          held.push({ repo, name: m.name, blocked, blind, copy: copyDir(repo, m.name), shared: !c.uncommitted?.length });
         }
       }
       // Never drop an agent silently: name who can't see it where, whether or not you then allow the links.

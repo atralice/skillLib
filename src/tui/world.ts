@@ -108,6 +108,8 @@ export const joined = (results: Result[]): Result => {
 /** Everything that changes something, and a few lookups too slow to do for every repo up front. */
 export type Ops = {
   add(repo: string, name: string): Result;
+  /** Library skills into several repos; links git-tracked folders held back are one question for all of them. */
+  addTo(repos: string[], names: string[]): Result;
   remove(repo: string, name: string): Result;
   /** Reinstall a tracked skill whose folder is missing. */
   restore(repo: string, name: string): Result;

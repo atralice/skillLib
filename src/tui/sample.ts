@@ -214,6 +214,10 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
   const done = (message: string) => (seeAgents(w), message);
   return {
     add: (repo, name) => (add(repo, name), `Added ${name} to ${repo}`),
+    addTo: (repos, names) => {
+      for (const r of repos) for (const n of names) add(r, n);
+      return `Added ${names.length === 1 ? names[0] : `${names.length} skills`} to ${repos.join(", ")}`;
+    },
     remove: (repo, name) => {
       const p = w.projects.find((x) => x.name === repo)!;
       p.skills = p.skills.filter((s) => s.name !== name);

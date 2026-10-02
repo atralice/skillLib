@@ -419,7 +419,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
     // A repo's own copy (committed by the team) is never removed from here.
     const removable = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source !== "repo"));
     const uses = W.totalUses(w, l.name);
-    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.add(r, l.name))) };
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => w.ops.addTo(rs, [l.name]) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
@@ -751,7 +751,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               preview: `Install these ${n(libs.length)} into the repos you pick.`,
               run: () => "",
               preticked: () => [],
-              pickRepos: (w, repos) => (repos.forEach((r) => libs.forEach((l) => w.ops.add(r, l.name))), `Added ${n(libs.length)} to ${repos.join(", ")}`),
+              pickRepos: (w, repos) => w.ops.addTo(repos, libs.map((l) => l.name)),
             }),
           ]
         : []),

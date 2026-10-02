@@ -25,10 +25,11 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint), `projects 
 
 ## Changing (ask first unless the user asked for this exact change)
 
-`add <name>...` · `remove <name>...` · `update [name...]` · `sync` (pinned versions) · `import <dir>` (into the library) · `doctor --fix`. Pass several names in one call. Each prints `[{name, action, from, to, dirs, reason, blocked, backedUp}]`, which is the whole result: there's no need to check files afterwards.
+`add <name>...` · `remove <name>...` · `update [name...]` · `sync` (pinned versions) · `import <dir>` (into the library) · `doctor --fix`. Pass several names in one call. Each prints `[{name, action, from, to, dirs, reason, blocked, uncommitted, backedUp}]`, which is the whole result: there's no need to check files afterwards.
 
 - `skipped` + `reason`: nothing changed for that skill, and the command exits 1; tell the user. `--force` overwrites local edits (`backedUp` says where they went; `skilllib restore <name>` brings them back), but only use it with their OK.
 - `blocked`: git tracks that folder. Re-run with `--allow-tracked` only with their OK.
+- `uncommitted`: git tracks that folder but not the skill's real copy, so a link there would break for teammates; `--allow-tracked` doesn't change that. Once the copy is committed, `link --allow-tracked` adds it.
 - Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and `.claude/skills`.
 
 To move global skills into repos, tell the user to run `skilllib` and open Global → Clean up.
