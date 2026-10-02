@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
+import { agentSkillIssue, deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -301,6 +301,91 @@ test("identical global copies become one copy plus a link", () => {
   expect(isLink(join(tmp, ".claude", "skills", "beta"))).toBe(true);
   w = loadWorld();
   expect(w.machine.filter((m) => m.name === "beta").flatMap((m) => machineIssues(w, m).map((i) => i.id))).toEqual(["global:beta"]);
+});
+
+test("an agent that can't see a repo's skill is reported, and a link fixes it", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  let w = loadWorld();
+  expect(local(w, "notes").agents).toEqual(["codex"]);
+  const blind = issue(w, "blind:notes")!;
+  expect(blind.title).toBe("Claude Code can't see it");
+  expect(blind.fixes[0]!.run(w)).toBe("notes: linked in .claude/skills");
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  w = loadWorld();
+  expect(issue(w, "blind:notes")).toBeUndefined();
+});
+
+test("linking for every agent asks before linking into a folder git tracks", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".agents", "skills", "notes"));
+  writeSkill(join(repo, ".claude", "skills", "other"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "skills");
+  let w = loadWorld();
+  const r = issue(w, "blind:notes")!.fixes[0]!.run(w);
+  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
+  expect(r.message).toBe("notes: nothing to link");
+  expect(r.then.preview).toContain(".claude/skills is committed in app");
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(false);
+  r.then.run(w);
+  expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
+  w = loadWorld();
+  expect(issue(w, "blind:notes")).toBeUndefined();
+});
+
+test("a skill the repo commits in .claude/skills is the team's: a plugin with its name is turned off, never the copy removed", () => {
+  fakePlugin();
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".claude", "skills", "lint"));
+  writeSkill(join(repo, ".claude", "skills", "scratch"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".claude/skills/lint");
+  git("commit", "-qm", "lint");
+  const w = loadWorld();
+  expect(local(w, "lint").local!.source).toBe("repo");
+  expect(local(w, "scratch").local!.source).toBe("untracked");
+  expect(issue(w, "twice-p:lint")!.fixes.map((f) => f.label)).toEqual(["Turn the plugin off in app only"]);
+  expect(issue(w, "local:lint")).toBeUndefined();
+  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+  expect(existsSync(join(repo, ".claude", "skills", "lint", "SKILL.md"))).toBe(true);
+  // Only on this machine: removable, and backed up.
+  expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
+});
+
+test("a skill `npx skills add` put in the repo isn't a library skill; committed, it's the team's", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".agents", "skills", "lint"));
+  writeSkill(join(repo, ".agents", "skills", "fmt"));
+  writeFileSync(join(repo, "skills-lock.json"), JSON.stringify({ skills: { lint: { source: "acme/skills" }, fmt: { source: "acme/skills" } } }));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".agents/skills/lint", "skills-lock.json");
+  git("commit", "-qm", "lint");
+  const w = loadWorld();
+  expect(local(w, "lint").local!.source).toBe("repo");
+  expect(local(w, "fmt").local!.source).toBe("untracked");
+  expect(local(w, "lint").local!.version).toBeUndefined();
+  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+});
+
+test("the skilllib skill installs from Health for every agent you use", () => {
+  setHarnesses(["claude-code", "codex"]);
+  let w = loadWorld();
+  expect(w.agentSkill).toBe("missing");
+  expect(agentSkillIssue(w)!.fixes[0]!.run(w)).toBe("Your agents can now use skilllib (~/.claude/skills/skilllib, ~/.agents/skills/skilllib)");
+  w = loadWorld();
+  expect(w.agentSkill).toBe("installed");
+  expect(agentSkillIssue(w)).toBeNull();
+  // It's skilllib's own: not a global skill to review.
+  const own = w.machine.filter((m) => m.name === "skilllib");
+  expect(own.length).toBeGreaterThan(0);
+  expect(own.flatMap((m) => [m.source === "global" ? "global" : "", ...machineIssues(w, m).map((i) => i.id)]).filter(Boolean)).toEqual([]);
 });
 
 test("a repo copy of a skill you keep global is the extra one", () => {

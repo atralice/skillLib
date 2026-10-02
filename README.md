@@ -95,7 +95,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
-| **Settings** | Your agents, your project folders, hidden repos, and backups. |
+| **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
 
 ### Keys
@@ -207,7 +207,7 @@ Run this once:
 skilllib agent-skill install
 ```
 
-This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health offers the same install, and upgrading skilllib keeps the skill up to date.
+This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health and Settings offer the same install, and upgrading skilllib keeps the skill up to date.
 
 Then, in any repo, you can ask:
 
@@ -227,7 +227,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
 | **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
-| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
+| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. If the repo commits its copy, it's the team's: skilllib never offers to remove it. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
 | A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
 | A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |

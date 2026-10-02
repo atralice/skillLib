@@ -5,6 +5,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { agentSkillState, installAgentSkill } from "../agentSkill.js";
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
@@ -78,18 +79,24 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     "untracked copy of library skill": { source: "untracked", library: "same" },
     "untracked, differs from library": { source: "untracked", library: "differs" },
     "local only": { source: "untracked" },
+    // Installed with `npx skills add` (the repo's skills-lock.json): not skilllib's, so not a library skill.
+    "from npx skills": { source: "untracked" },
     "repo skill": { source: "repo" },
     "repo skill, in library": { source: "repo", library: "same" },
     "repo skill, differs from library": { source: "repo", library: "differs" },
   };
+  const state = git ? git.of(relativeTo(root, s.path)) : null;
+  // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
+  const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
   return {
     name: s.name,
     source: "lib",
     dir: s.location,
     path: s.path,
-    agents: s.visibility.map((v) => v.id),
-    ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : other[s.state]),
-    git: git ? git.of(relativeTo(root, s.path)) : null,
+    // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
+    agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
+    ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
+    git: state,
   };
 }
 
@@ -220,6 +227,7 @@ export function loadWorld(): World {
     roots: readConfig().roots,
     hidden: readConfig().hidden,
     agentsChosen: harnessesChosen(),
+    agentSkill: agentSkillState(agents),
     ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups),
   };
 }
@@ -334,7 +342,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     remove: (repo, name) => {
       const s = find(repo, name);
       if (!s) return `${name} isn't in ${repo}`;
-      if (s.state.startsWith("repo skill")) return `${name} is the repo's own (committed by your team): skilllib doesn't delete it`;
+      const committed = !s.managed && ["committed", "changed"].includes(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)) ?? "");
+      if (s.state.startsWith("repo skill") || committed) return `${name} is the repo's own (committed by your team): skilllib doesn't delete it`;
       if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
     },
@@ -551,6 +560,10 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     copy: (text, what) => {
       const r = copyText(text);
       return r.copied ? `Copied ${what}: paste it into Claude Code, Cursor or Codex` : `Couldn't reach the clipboard; ${what} is in ${tildify(r.savedTo)}`;
+    },
+    installAgentSkill: () => {
+      const r = installAgentSkill();
+      return r.ok ? `Your agents can now use skilllib (${r.dirs.map(tildify).join(", ")})` : `skilllib skill: ${r.reason}`;
     },
     repoInfo: (repo) => {
       if (!info.has(repo)) {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, assignGroups, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, usable, type World } from "./world.js";
+import { addRows, agentSkillIssue, assignGroups, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, usable, type World } from "./world.js";
 
 const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
@@ -124,4 +124,22 @@ test("a global skill only Codex loads: Claude Code can't see it, and a link fixe
   // A duplicate copy elsewhere is tidy's job first, not a missing link.
   const tailwind = w.machine.find((m) => m.name === "tailwind-tips")!;
   expect(machineIssues(w, tailwind).map((i) => i.short)).not.toContain("Not reviewed · Claude Code can't see it");
+});
+
+test("the skilllib skill: Health offers it when your agents don't have it, and it's your call", () => {
+  const w = sampleWorld();
+  expect(agentSkillIssue(w)).toBeNull();
+  w.agentSkill = "missing";
+  const issue = agentSkillIssue(w)!;
+  expect(issue.decision).toBe(true);
+  expect(issue.fixes.map((f) => f.label)).toEqual(["Install the skilllib skill for your agents"]);
+  issue.fixes[0]!.run(w);
+  expect(agentSkillIssue(w)).toBeNull();
+  // An old copy is only refreshed: fix all may do that.
+  w.agentSkill = "outdated";
+  expect(agentSkillIssue(w)!.decision).toBe(false);
+  expect(agentSkillIssue(w)!.fixes[0]!.label).toBe("Update the skilllib skill");
+  // No agents picked: nowhere to install it.
+  w.agents = [];
+  expect(agentSkillIssue(w)).toBeNull();
 });

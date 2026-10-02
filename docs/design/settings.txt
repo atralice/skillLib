@@ -4,12 +4,12 @@
 │   ✓ Health          19   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
 │   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
 │   ◆ web-app          ✕   ││   [ ] ℤ Zed                         .agents/skills                                     │
-│     api-server       ✕   ││   Project folders ──────────────────────────────────────────────────────────────────── │
-│     docs-site        ·   ││   ~/Projects                        scanned for git repos                              │
-│     mobile-app       ⚠   ││   + Add a folder…                                                                      │
-│     billing              ││   Backups ──────────────────────────────────────────────────────────────────────────── │
-│     blog                 ││   No backups yet                    anything skilllib removes lands here               │
-│     cli-tools            ││                                                                                        │
+│     api-server       ✕   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
+│     docs-site        ·   ││   Project folders ──────────────────────────────────────────────────────────────────── │
+│     mobile-app       ⚠   ││   ~/Projects                        scanned for git repos                              │
+│     billing              ││   + Add a folder…                                                                      │
+│     blog                 ││   Backups ──────────────────────────────────────────────────────────────────────────── │
+│     cli-tools            ││   No backups yet                    anything skilllib removes lands here               │
 │     dotfiles             ││                                                                                        │
 │     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     e2e-tests            │
