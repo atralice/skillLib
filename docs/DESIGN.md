@@ -223,7 +223,7 @@ All replace the content area (Places stays visible), except confirm, which opens
 
 Also: **menu** (a list of options, e.g. `⋯ repo…`), **input** (one line, e.g. a project folder), and **agents** (the first run: which agents you use, then where your projects are).
 
-After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line. A result can carry a follow-up question (`then`), such as allowing links in a git-tracked folder, which opens as another confirm.
+After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line. A result can carry a follow-up question (`then`), such as allowing links in a git-tracked folder, which opens as another confirm. `esc` on it keeps the result on the bottom line, so you still see what the change left undone (e.g. which agents can't see a skill).
 
 ---
 

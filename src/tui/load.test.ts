@@ -86,10 +86,56 @@ test("keeping a global skill on purpose clears its warning", () => {
 test("a group moved together stays grouped in your library", () => {
   for (const name of ["cf-one", "cf-two"]) writeSkill(join(tmp, ".claude", "skills", name));
   let w = loadWorld();
-  for (const m of w.machine) w.ops.moveGlobal(m, ["app"], "cloudflare set");
+  expect(w.ops.moveGlobal(w.machine, ["app"], "cloudflare set")).toBe("2 skills now load only in app");
   w = loadWorld();
   expect(w.machine).toEqual([]);
   expect(w.library.map((l) => l.origin)).toEqual(["group: cloudflare set", "group: cloudflare set"]);
+});
+
+test("moving to a repo that commits Claude Code's folder asks before linking, and names who can't see it", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  writeSkill(join(repo, ".claude", "skills", "team"));
+  writeSkill(join(repo, ".agents", "skills", "other"));
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  setHarnesses(["claude-code", "codex"]);
+  for (const name of ["tool-a", "tool-b"]) writeSkill(join(tmp, ".agents", "skills", name));
+
+  let w = loadWorld();
+  const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
+  if (typeof r === "string") throw new Error(`expected a follow-up: ${r}`);
+  expect(r.message).toBe("2 skills now load only in app; Claude Code can't see them in app: git tracks .claude/skills");
+  expect(r.then.label).toBe("Also link them in .claude/skills");
+  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(false);
+
+  w = loadWorld();
+  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app");
+  for (const name of ["tool-a", "tool-b"]) {
+    expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
+    expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills[name].links).toEqual([".claude/skills"]);
+  }
+
+  // Remembered for this repo: the next one links without asking.
+  writeSkill(join(tmp, ".agents", "skills", "tool-c"));
+  w = loadWorld();
+  expect(w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-c"), ["app"])).toBe("tool-c now loads only in app");
+  expect(isLink(join(repo, ".claude", "skills", "tool-c"))).toBe(true);
+});
+
+test("linking never puts an uncommitted skill in a folder git tracks, and doesn't ask to", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  writeSkill(join(repo, ".claude", "skills", "team"));
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  writeSkill(join(repo, ".cursor", "skills", "mine"));
+  setHarnesses(["claude-code", "cursor"]);
+
+  expect(loadWorld().ops.link("app", "mine")).toBe("mine: not linked in .claude/skills: git tracks it and mine isn't committed, so teammates would get broken links");
+  expect(isLink(join(repo, ".claude", "skills", "mine"))).toBe(false);
 });
 
 test("deleting a library skill removes it from every repo, edits backed up", () => {
