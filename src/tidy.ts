@@ -5,6 +5,7 @@ import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
 import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalSkillDirs, projectSkillsLock } from "./sources.js";
 import { treeHash } from "./skills.js";
@@ -259,7 +260,7 @@ export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep"
 
 /** Short label for a step, e.g. "link .agents/skills/x" or "~/.claude/skills/x → link". */
 export function describeStep(step: TidyStep, root: string | null): string {
-  const shown = root ? relativeTo(root, step.path) : step.path.replace(userHome(), "~");
+  const shown = root ? relativeTo(root, step.path) : tildify(step.path);
   switch (step.kind) {
     case "link":
       return `link ${shown}`;
@@ -279,7 +280,7 @@ export function copyLabel(conflict: Conflict, dir: string): string {
 
 /** ".claude/skills" in a repo, "~/.agents/skills" for a global folder. */
 export function folderLabel(root: string | null, dir: string): string {
-  return root ? relativeTo(root, dir) : dir.replace(userHome(), "~");
+  return root ? relativeTo(root, dir) : tildify(dir);
 }
 
 /**
