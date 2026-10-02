@@ -260,7 +260,7 @@ test("a pinned skill whose folder is missing: sync restores it from the library;
   expect(readManifest(project).skills["ghost-skill"]).toBeUndefined();
 });
 
-test("a newer library version is an update to choose, not a sync that does nothing", () => {
+test("a newer library version is an update fix (as in the TUI), not a sync that does nothing", () => {
   const project = join(tmp, "web");
   mkdirSync(join(project, ".git"), { recursive: true });
   skill(join(tmp, "src", "alpha"));
@@ -274,8 +274,8 @@ test("a newer library version is an update to choose, not a sync that does nothi
   const update = issues.find((i) => i.id === `update:${project}`)!;
   expect(update.title).toBe("web: 1 skill out of date");
   expect(update.detail).toBe("alpha (v1 → v2)");
-  expect(update.fix).toBeUndefined();
-  expect(runFix(update.choices![0]!)).toEqual({ ok: true, message: "web: updated 1 skill" });
+  expect(update.choices).toBeUndefined();
+  expect(runFix(update.fix!)).toEqual({ ok: true, message: "web: updated 1 skill" });
   expect(readManifest(project).skills.alpha?.version).toBe(2);
 });
 

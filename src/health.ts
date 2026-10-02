@@ -372,7 +372,7 @@ export function findIssues(
           },
         ],
       });
-    // A newer library version changes what skilllib.json pins: a choice (sync only reinstalls the pinned versions).
+    // A newer library version: moving to it is a fix, as in the TUI ("Update to vN"). Local edits are never overwritten.
     const behind = status.filter((s) => s.state === "update available");
     if (behind.length > 0)
       issues.push({
@@ -380,18 +380,16 @@ export function findIssues(
         severity: "suggestion",
         title: `${where}: ${plural(behind.length, "skill")} out of date`,
         detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
-        choices: [
-          {
-            label: "Update to the newest versions",
-            run: () => {
-              const changes = updateProject(root, behind.map((s) => s.name));
-              const done = changes.filter((c) => c.action !== "skipped");
-              const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
-              if (!done.length) throw new Error(`${where}: nothing updated${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
-              return `${where}: updated ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
-            },
+        fix: {
+          label: "Update to the newest versions",
+          run: () => {
+            const changes = updateProject(root, behind.map((s) => s.name));
+            const done = changes.filter((c) => c.action !== "skipped");
+            const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
+            if (!done.length) throw new Error(`${where}: nothing updated${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
+            return `${where}: updated ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
           },
-        ],
+        },
       });
 
     // One real copy per skill, plus only the links your agents need.
