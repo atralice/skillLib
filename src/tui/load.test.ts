@@ -295,6 +295,23 @@ test("a skill the repo commits in .claude/skills is the team's: a plugin with it
   expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
 });
 
+test("a skill `npx skills add` put in the repo isn't a library skill; committed, it's the team's", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".agents", "skills", "lint"));
+  writeSkill(join(repo, ".agents", "skills", "fmt"));
+  writeFileSync(join(repo, "skills-lock.json"), JSON.stringify({ skills: { lint: { source: "acme/skills" }, fmt: { source: "acme/skills" } } }));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".agents/skills/lint", "skills-lock.json");
+  git("commit", "-qm", "lint");
+  const w = loadWorld();
+  expect(local(w, "lint").local!.source).toBe("repo");
+  expect(local(w, "fmt").local!.source).toBe("untracked");
+  expect(local(w, "lint").local!.version).toBeUndefined();
+  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+});
+
 test("the skilllib skill installs from Health for every agent you use", () => {
   setHarnesses(["claude-code", "codex"]);
   let w = loadWorld();

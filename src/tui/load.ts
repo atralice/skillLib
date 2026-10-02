@@ -75,6 +75,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     "untracked copy of library skill": { source: "untracked", library: "same" },
     "untracked, differs from library": { source: "untracked", library: "differs" },
     "local only": { source: "untracked" },
+    // Installed with `npx skills add` (the repo's skills-lock.json): not skilllib's, so not a library skill.
+    "from npx skills": { source: "untracked" },
     "repo skill": { source: "repo" },
     "repo skill, in library": { source: "repo", library: "same" },
     "repo skill, differs from library": { source: "repo", library: "differs" },
