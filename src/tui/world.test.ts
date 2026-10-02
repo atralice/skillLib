@@ -26,8 +26,13 @@ test("add box: library skills not usable here yet, then create", () => {
   expect(names("")).toEqual(["mdx-tips", "sql-migrations"]);
   expect(names("sql")).toEqual(["sql-migrations"]);
   expect(addRows(w, "web-app", "stripe-payments").filter((r) => !r.header)).toEqual([]);
-  addRows(w, "web-app", "gql-schema").find((r) => r.create)!.run!(w);
+  // Created first; it goes into the repo only after you've edited it, so the repo never gets the template.
+  const create = addRows(w, "web-app", "gql-schema").find((r) => r.create)!;
+  create.run!(w);
+  expect(usable(w, "web-app").some((u) => u.name === "gql-schema")).toBe(false);
+  create.afterEdit!(w);
   expect(usable(w, "web-app").some((u) => u.name === "gql-schema" && u.source === "lib")).toBe(true);
+  expect(addRows(w, null, "brand-new").find((r) => r.create)!.afterEdit).toBeUndefined();
 });
 
 test("Global only offers fixes that act on global skills, never on a repo", () => {
