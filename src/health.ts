@@ -1,5 +1,5 @@
 import { lstatSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
 import { gitInfo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
@@ -7,6 +7,7 @@ import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, 
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
+import { tildify } from "./output.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
@@ -98,7 +99,7 @@ export function findIssues(
     issues.push({
       id: `broken:${skill.name}`,
       severity: "problem",
-      title: `${skill.name}: broken link in ${skill.path.replace(/\/[^/]+$/, "").replace(/^\/Users\/[^/]+/, "~")}`,
+      title: `${skill.name}: broken link in ${tildify(dirname(skill.path))}`,
       detail: "It points at a folder that no longer exists, so it loads nothing.",
       fix: {
         label: "Remove the link",
@@ -207,7 +208,7 @@ export function findIssues(
         notInstalled.length
           ? `Your ${notInstalled.join(", ")} ${notInstalled.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notInstalled.length === 1 ? "it" : "them"} where you need ${notInstalled.length === 1 ? "it" : "them"}.`
           : "",
-        others ? `The plugin's other ${plural(others, "skill")} are copied into Your skills first, so nothing is lost.` : "",
+        others ? `The plugin's other ${others === 1 ? "skill is" : `${others} skills are`} copied into Your skills first, so nothing is lost.` : "",
         plugin.extras.length
           ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
           : "",
@@ -264,7 +265,10 @@ export function findIssues(
       detail: `${global.plans.map((p) => p.name).join(", ")}: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable from Health.`,
       fix: {
         label: "Keep one copy of each",
-        run: () => `${plural(applyAll(global.plans, "go").skills, "global skill")} now have one copy`,
+        run: () => {
+          const n = applyAll(global.plans, "go").skills;
+          return `${plural(n, "global skill")} now ${n === 1 ? "has" : "have"} one copy`;
+        },
       },
     });
   }
@@ -414,7 +418,7 @@ export function findIssues(
         issues.push({
           id: `local:${root}:${s.name}`,
           severity: "suggestion",
-          title: `${s.name}: only exists in ${where}`,
+          title: `${s.name} in ${where} isn't in your library`,
           detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in skilllib.json.",
           choices: [
             {
@@ -564,7 +568,7 @@ export function findIssues(
 }
 
 /** When a skill folder appeared: creation time where the filesystem keeps it, else its inode change time (a copy can't carry an old one over). */
-function addedAt(path: string): number {
+export function addedAt(path: string): number {
   try {
     const st = lstatSync(path);
     return st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;

@@ -8,6 +8,8 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
+import { reviewPrompt } from "./prompts.js";
+import { usableHere } from "../here.js";
 import { agentSkillIssue, deleteLibraryFix, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
@@ -311,6 +313,7 @@ test("an agent that can't see a repo's skill is reported, and a link fixes it", 
   expect(local(w, "notes").agents).toEqual(["codex"]);
   const blind = issue(w, "blind:notes")!;
   expect(blind.title).toBe("Claude Code can't see it");
+  expect(blind.fixes[0]!.preview).toBe("Add links (nothing is copied or moved), so Claude Code loads it too.");
   expect(blind.fixes[0]!.run(w)).toBe("notes: linked in .claude/skills");
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
@@ -373,6 +376,35 @@ test("a skill `npx skills add` put in the repo isn't a library skill; committed,
   expect(local(w, "fmt").local!.source).toBe("untracked");
   expect(local(w, "lint").local!.version).toBeUndefined();
   expect(w.ops.remove("app", "lint")).toEqual({ message: "lint is the repo's own (committed by your team): skilllib doesn't delete it", failed: true });
+  // The review prompt says where it came from, and which agents load it in which repo.
+  const prompt = reviewPrompt(w, ["lint"], "Review lint.");
+  expect(prompt).toContain("- Installed via: npx skills: acme/skills");
+  expect(prompt).toContain("- Loaded by: Codex — in app");
+});
+
+test("status --json calls a copy git tracks the repo's, as the TUI does, wherever it lives", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".claude", "skills", "lint"));
+  writeSkill(join(repo, ".claude", "skills", "scratch"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".claude/skills/lint");
+  git("commit", "-qm", "lint");
+  expect(usableHere(repo).skills.map((g) => [g.source, g.skills])).toEqual([
+    ["repo", ["lint"]],
+    ["local", ["scratch"]],
+  ]);
+});
+
+test("picking an older version says so, not \"Updated\"", () => {
+  writeSkill(join(tmp, "src", "notes"), "v1");
+  importSkill(join(tmp, "src", "notes"));
+  writeSkill(join(tmp, "src", "notes"), "v2");
+  importSkill(join(tmp, "src", "notes"), { force: true });
+  const w = loadWorld();
+  expect(w.ops.add("app", "notes")).toBe("Added notes v2 in app");
+  expect(w.ops.installVersion("app", "notes", 1)).toBe("Pinned notes to v1 in app (was v2)");
+  expect(w.ops.installVersion("app", "notes", 2)).toBe("Updated notes v2 in app");
 });
 
 test("the skilllib skill installs from Health for every agent you use", () => {

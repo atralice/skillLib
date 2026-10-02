@@ -40,6 +40,10 @@ export type LocalSkill = {
   dupes?: Dupes;
   /** A Cursor plugin with the same skill (Cursor's plugin state can't be read: maybe off). */
   cursorPlugin?: string;
+  /** Where it was installed from, e.g. "npx skills: owner/repo" (the repo's skills-lock.json). */
+  origin?: string;
+  /** When its folder appeared here (ms): a skill added a minute ago isn't "unused". */
+  added?: number;
 };
 
 export type MachineSkill = {
@@ -560,7 +564,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       fixes: [
         {
           label: "Link it for every agent",
-          preview: `Add links (nothing is copied or moved), so ${blind.map((a) => harness(a).name).join(", ")} load it too.`,
+          preview: `Add links (nothing is copied or moved), so ${blind.map((a) => harness(a).name).join(", ")} ${blind.length === 1 ? "loads" : "load"} it too.`,
           run: (w) => w.ops.link(projectName, s.name),
         },
       ],
@@ -605,7 +609,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
         },
       ],
     });
-  if (s.source === "lib" && w.days && u.uses === 0 && !s.missing)
+  if (s.source === "lib" && w.days && u.uses === 0 && !s.missing && (s.added ?? 0) <= Date.now() - 30 * 24 * 60 * 60 * 1000)
     issues.push({
       id: `unused:${s.name}`,
       severity: "hint",

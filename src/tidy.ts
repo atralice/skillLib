@@ -14,14 +14,15 @@ import { treeHash } from "./skills.js";
  * - link:    point a wrong or broken link at the real copy
  * - unlink:  remove a link no agent you use needs
  * - replace: swap an identical (or, if you chose, a differing) real copy for a link
- * - remove:  drop an identical real copy no agent you use needs
+ * - remove:  drop an identical (or, if you chose, a differing) real copy no agent you use needs
+ * `differs`: the copy's content isn't the kept one's (a `keep` choice), so the step says so.
  * Real copies that go away are stashed in ~/.skilllib/tidy-backup, restorable from Health.
  */
 export type TidyStep =
   | { kind: "link"; path: string; target: string }
   | { kind: "unlink"; path: string }
-  | { kind: "replace"; path: string; target: string }
-  | { kind: "remove"; path: string };
+  | { kind: "replace"; path: string; target: string; differs?: true }
+  | { kind: "remove"; path: string; differs?: true };
 
 /** What tidy would do for one skill. `root` is null for the global folders. */
 export type TidyPlan = { name: string; root: string | null; primary: string; steps: TidyStep[] };
@@ -152,7 +153,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
           if (!needed) steps.push({ kind: "unlink", path: e.path });
         } else steps.push(needed ? { kind: "link", path: e.path, target: primary.path } : { kind: "unlink", path: e.path });
       } else {
-        steps.push(needed ? { kind: "replace", path: e.path, target: primary.path } : { kind: "remove", path: e.path });
+        const differs = e.hash !== primary.hash ? { differs: true as const } : {};
+        steps.push(needed ? { kind: "replace", path: e.path, target: primary.path, ...differs } : { kind: "remove", path: e.path, ...differs });
       }
     }
     if (steps.length) report.plans.push({ name, root, primary: primary.path, steps });
@@ -197,7 +199,9 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
       report.conflicts.push(conflictOf(name, null, reals, enabled, globalReadsOf));
       continue;
     }
-    const steps = reals.filter((r) => r !== primary).map((r): TidyStep => ({ kind: "replace", path: r.path, target: primary.path }));
+    const steps = reals
+      .filter((r) => r !== primary)
+      .map((r): TidyStep => ({ kind: "replace", path: r.path, target: primary.path, ...(r.hash !== primary.hash ? { differs: true as const } : {}) }));
     report.plans.push({ name, root: null, primary: primary.path, steps });
   }
   return report;
@@ -262,9 +266,9 @@ export function describeStep(step: TidyStep, root: string | null): string {
     case "unlink":
       return `remove extra link ${shown}`;
     case "replace":
-      return `${shown}: duplicate copy → link`;
+      return `${shown}: ${step.differs ? "differing" : "duplicate"} copy → link`;
     case "remove":
-      return `remove duplicate copy ${shown}`;
+      return `remove ${step.differs ? "differing" : "duplicate"} copy ${shown}`;
   }
 }
 

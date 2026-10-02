@@ -57,6 +57,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
 
   // doctor --fix only runs the fixes; importing is a choice.
   expect(issues.find((i) => i.id.startsWith("local:"))?.fix).toBeUndefined();
+  expect(issues.find((i) => i.id.startsWith("local:"))?.title).toBe("deploy in web isn't in your library");
   for (const issue of issues) issue.fix?.run();
   expect(existsSync(join(tmp, "home", "library", "deploy"))).toBe(false);
   for (const issue of issues) issue.choices?.[0]?.run();

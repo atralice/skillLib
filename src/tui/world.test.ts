@@ -11,6 +11,14 @@ test("sample data shows every kind of issue", () => {
     expect(found).toContain(kind);
 });
 
+test("a skill added a minute ago isn't called unused", () => {
+  const w = sampleWorld();
+  const p = w.projects.find((p) => ids(w, p.name).some((id) => id.startsWith("unused:")))!;
+  const id = ids(w, p.name).find((id) => id.startsWith("unused:"))!;
+  p.skills.find((s) => s.name === id.slice("unused:".length))!.added = Date.now() - 60_000;
+  expect(ids(w, p.name)).not.toContain(id);
+});
+
 test("keeping the repo copy unloads the global one and clears the duplicate", () => {
   const w = sampleWorld();
   const stripe = usable(w, "web-app").find((u) => u.local && u.name === "stripe-payments")!;
