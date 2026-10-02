@@ -144,6 +144,8 @@ export type Ops = {
   openFolder(path: string): Result;
   /** Copies text for an agent (and saves it); says where it went. */
   copy(text: string, what: string): Result;
+  /** Installs (or refreshes) the skilllib skill in the global folders your agents read. */
+  installAgentSkill(): Result;
 };
 
 export type World = {
@@ -164,6 +166,8 @@ export type World = {
   hidden: string[];
   /** You've picked your agents (otherwise the first run asks). */
   agentsChosen: boolean;
+  /** The skilllib skill, which lets your agents answer "which skills can I use here?" with skilllib. */
+  agentSkill: "installed" | "outdated" | "missing";
   ops: Ops;
 };
 
@@ -571,6 +575,30 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       fixes: [{ ...remove, label: "Remove it from this repo", preview: `Delete ${s.dir}/${s.name} in ${projectName}. Your library keeps it.` }],
     });
   return issues;
+}
+
+/** Installs or refreshes the skilllib skill for every agent you use. */
+export function agentSkillFix(w: World): Fix {
+  return {
+    label: w.agentSkill === "outdated" ? "Update the skilllib skill" : "Install the skilllib skill for your agents",
+    preview:
+      "One global skill, skilllib, where your agents look in every repo (~/.claude/skills, and ~/.agents/skills for Codex and Zed). Then ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add. `skilllib agent-skill remove` takes it out.",
+    run: (w) => w.ops.installAgentSkill(),
+  };
+}
+
+/** Your agents don't have the skilllib skill. Installing adds a global skill, so it's your call; refreshing it isn't. */
+export function agentSkillIssue(w: World): Issue | null {
+  if (w.agentSkill === "installed") return null;
+  const missing = w.agentSkill === "missing";
+  return {
+    id: "agent-skill",
+    severity: missing ? "hint" : "warning",
+    title: missing ? "Your agents don't know about skilllib" : "The skilllib skill for your agents is out of date",
+    short: missing ? "Your agents don't know about skilllib" : "Out of date",
+    decision: missing,
+    fixes: [agentSkillFix(w)],
+  };
 }
 
 export function worst(issues: Issue[]): Issue | undefined {

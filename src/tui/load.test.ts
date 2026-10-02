@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
+import { agentSkillIssue, deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -293,6 +293,20 @@ test("a skill the repo commits in .claude/skills is the team's: a plugin with it
   expect(existsSync(join(repo, ".claude", "skills", "lint", "SKILL.md"))).toBe(true);
   // Only on this machine: removable, and backed up.
   expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
+});
+
+test("the skilllib skill installs from Health for every agent you use", () => {
+  setHarnesses(["claude-code", "codex"]);
+  let w = loadWorld();
+  expect(w.agentSkill).toBe("missing");
+  expect(agentSkillIssue(w)!.fixes[0]!.run(w)).toBe("Your agents can now use skilllib (~/.claude/skills/skilllib, ~/.agents/skills/skilllib)");
+  w = loadWorld();
+  expect(w.agentSkill).toBe("installed");
+  expect(agentSkillIssue(w)).toBeNull();
+  // It's skilllib's own: not a global skill to review.
+  const own = w.machine.filter((m) => m.name === "skilllib");
+  expect(own.length).toBeGreaterThan(0);
+  expect(own.flatMap((m) => [m.source === "global" ? "global" : "", ...machineIssues(w, m).map((i) => i.id)]).filter(Boolean)).toEqual([]);
 });
 
 test("a repo copy of a skill you keep global is the extra one", () => {

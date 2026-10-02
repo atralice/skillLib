@@ -176,6 +176,7 @@ export function sampleWorld(): World {
     roots: ["~/Projects"],
     hidden: [],
     agentsChosen: true,
+    agentSkill: "installed",
     ops: undefined as unknown as Ops,
   };
   w.ops = sampleOps(w, info);
@@ -292,6 +293,7 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
     unhide: (path) => ((w.hidden = w.hidden.filter((h) => h !== path)), `${path} is back in the list`),
     openFolder: (path) => `Opened ${path} (not in the sample)`,
     copy: (_text, what) => `Copied ${what} (not in the sample)`,
+    installAgentSkill: () => ((w.agentSkill = "installed"), "Your agents can now use skilllib"),
   };
 }
 

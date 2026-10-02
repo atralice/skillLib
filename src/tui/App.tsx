@@ -475,7 +475,35 @@ function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
     items
       .filter((i) => i.issues.length)
       .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
-  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui))];
+  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui)), ...agentSkillItems(w, nameW)];
+}
+
+/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's. */
+function agentSkillItems(w: W.World, nameW: number): Item[] {
+  const issue = W.agentSkillIssue(w);
+  if (!issue) return [];
+  const sev = SEV[issue.severity];
+  return [
+    {
+      key: "agent-skill",
+      name: "skilllib",
+      issues: [issue],
+      uses: 0,
+      cells: [
+        { text: sev.icon, width: 2, color: sev.color },
+        { text: clip("skilllib", nameW), width: nameW },
+        { text: clip("Your agents", 16), width: 16, color: color.muted },
+        { text: " " + issue.short, grow: true, color: sev.color },
+      ],
+      detail: (width) => {
+        const b = builder("skilllib");
+        for (const l of wrap("The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.", width - 4, 3)) b.line([l, color.muted]);
+        b.line();
+        b.issues([issue]);
+        return b.d;
+      },
+    },
+  ];
 }
 
 /** The picker's cursor, kept off group titles. */
@@ -546,6 +574,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const flagged = [
     ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
     ...world.machine.flatMap((m) => W.machineIssues(world, m).map((issue) => ({ key: `Global:${m.name}`, issue }))),
+    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "agent-skill", issue }] : [])),
   ];
   const healthCount = new Set(flagged.map((f) => f.key)).size;
   const healthWorst = W.worst(flagged.map((f) => f.issue));
@@ -848,6 +877,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           const wasOn = world.agents.includes(h.id);
           apply((w) => (w.ops.setAgents(wasOn ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${wasOn ? "off" : "on"}`));
         }),
+      ),
+      // The skill that lets your agents use skilllib: installing adds a global skill, so it asks first.
+      row(
+        "agent-skill",
+        `${world.agentSkill === "installed" ? "[x]" : "[ ]"} ◆ skilllib skill`,
+        world.agentSkill === "installed" ? "your agents can use skilllib" : world.agentSkill === "outdated" ? "out of date · enter updates it" : "lets your agents use skilllib · enter installs it",
+        () => (world.agentSkill === "installed" ? setToast("Installed · `skilllib agent-skill remove` takes it out") : choose(fixOption(W.agentSkillFix(world)))),
       ),
       header("#roots", "Project folders"),
       ...world.roots.map((r) =>

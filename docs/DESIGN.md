@@ -141,13 +141,13 @@ Everything that loads in every repo: your global folders, plugins, claude.ai ski
 
 ### Health
 
-Every skill with something to fix, in every repo and in Global, worst first. The same rows and details as where they live, with a *Where* column instead of Source and Uses. The sidebar count is the number of skills flagged, colored by the worst.
+Every skill with something to fix, in every repo and in Global, worst first. The same rows and details as where they live, with a *Where* column instead of Source and Uses. When your agents don't have the skilllib skill, a `skilllib` row (Where: *Your agents*) offers to install it. The sidebar count is the number of skills flagged, colored by the worst.
 
 ![Health](design/health.svg)
 
 ### Settings
 
-Agents (`[x]` toggles which ones skilllib makes skills visible to), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
+Agents (`[x]` toggles which ones skilllib makes skills visible to) and the skilllib skill for them (`enter` installs it), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
 
 ![Settings](design/settings.svg)
 

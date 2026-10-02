@@ -5,6 +5,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { agentSkillState, installAgentSkill } from "../agentSkill.js";
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
@@ -221,6 +222,7 @@ export function loadWorld(): World {
     roots: readConfig().roots,
     hidden: readConfig().hidden,
     agentsChosen: harnessesChosen(),
+    agentSkill: agentSkillState(agents),
     ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups),
   };
 }
@@ -476,6 +478,10 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     copy: (text, what) => {
       const r = copyText(text);
       return r.copied ? `Copied ${what}: paste it into Claude Code, Cursor or Codex` : `Couldn't reach the clipboard; ${what} is in ${tildify(r.savedTo)}`;
+    },
+    installAgentSkill: () => {
+      const r = installAgentSkill();
+      return r.ok ? `Your agents can now use skilllib (${r.dirs.map(tildify).join(", ")})` : `skilllib skill: ${r.reason}`;
     },
     repoInfo: (repo) => {
       if (!info.has(repo)) {

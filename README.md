@@ -95,7 +95,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
-| **Settings** | Your agents, your project folders, hidden repos, and backups. |
+| **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
 
 ### Keys
@@ -207,7 +207,7 @@ Run this once:
 skilllib agent-skill install
 ```
 
-This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health offers the same install, and upgrading skilllib keeps the skill up to date.
+This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health and Settings offer the same install, and upgrading skilllib keeps the skill up to date.
 
 Then, in any repo, you can ask:
 
