@@ -2,7 +2,7 @@
  * The TUI's World from disk: your repos, library and global skills, with ops that call
  * library.ts and config.ts. Usage comes separately (loadUsage): reading transcripts is slow.
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
@@ -41,12 +41,26 @@ import { harness, type HarnessId } from "../harnesses.js";
 import { PROJECT_SKILLS_DIR } from "../paths.js";
 import { projectHere, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
-import { claudeBinary, claudePlugins, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin, turnOffIn } from "../plugins.js";
-import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, skillsLoadedIn, type SourcedSkill } from "../sources.js";
+import {
+  claudeBinary,
+  claudePlugins,
+  cursorPlugins,
+  cursorPluginSkills,
+  installedPlugins,
+  pluginBackups,
+  restorePlugin,
+  setPluginOn,
+  turnOffIn,
+  uninstallPlugin,
+  updatePlugin,
+  type InstalledPlugin,
+  type PluginRef,
+} from "../plugins.js";
+import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type SourcedSkill } from "../sources.js";
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import { failed, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Project, type RepoInfo, type Result, type World } from "./world.js";
+import { failed, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type RepoInfo, type Result, type World } from "./world.js";
 import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
@@ -108,22 +122,6 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
   };
 }
 
-/** What a plugin ships besides skills, which turning it off stops too. Read once per plugin. */
-const partsOf = new Map<string, string[]>();
-function pluginParts(root: string): string[] {
-  if (!partsOf.has(root))
-    partsOf.set(
-      root,
-      [
-        ["commands", "commands"],
-        ["agents", "agents"],
-        ["hooks", "hooks"],
-        [".mcp.json", "MCP servers"],
-      ].flatMap(([file, what]) => (existsSync(join(root, file!)) ? [what!] : [])),
-    );
-  return partsOf.get(root)!;
-}
-
 /** When a folder appeared, to the minute ("2026-09-25 20:55"). */
 function installedAt(path: string): string | undefined {
   try {
@@ -148,8 +146,32 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
     ...(global && kept.has(s.name) ? { kept: true } : {}),
     ...(s.broken ? { broken: true } : {}),
     ...(global && s.kind !== "skills.sh" ? { installed: installedAt(s.path) } : {}),
-    ...(s.kind === "plugin" ? { pluginParts: pluginParts(dirname(dirname(s.path))) } : {}),
   };
+}
+
+/** A plugin as the screens show it; `repoOf` names the repo a project or local install is in. */
+function pluginOf(p: InstalledPlugin, repoOf: (path: string) => string | undefined): Plugin {
+  const scope = p.agent === "cursor" ? "cursor" : p.synced ? "claude.ai" : (p.scope ?? "user");
+  const repo = p.projectPath ? (repoOf(p.projectPath) ?? basename(p.projectPath)) : undefined;
+  return {
+    key: [p.agent, p.id, scope, p.projectPath ?? ""].join("|"),
+    id: p.id,
+    agent: p.agent,
+    scope,
+    ...(repo ? { repo, projectPath: p.projectPath } : {}),
+    on: p.on,
+    ...(p.version ? { version: p.version } : {}),
+    ...(p.update ? { update: p.update } : {}),
+    description: p.description,
+    path: p.root,
+    skills: p.skills.map((path) => ({ name: basename(path), path })),
+    parts: p.extras,
+  };
+}
+
+/** What plugins.ts needs to act on a plugin. */
+function refOf(p: Plugin): PluginRef {
+  return { id: p.id, scope: p.scope === "claude.ai" ? null : p.scope, ...(p.projectPath ? { projectPath: p.projectPath } : {}), synced: p.scope === "claude.ai" };
 }
 
 /** tidy.ts's plans and conflicts, per skill; `root` null for your global folders. */
@@ -198,7 +220,7 @@ export function loadWorld(): World {
     return { ...m, ...(dupes ? { dupes } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
   });
   // A repo's Claude Code settings can turn a plugin on or off just there.
-  const plugins = (root: string): Pick<Project, "machine"> => {
+  const loadedHere = (root: string): Pick<Project, "machine"> => {
     const loaded = skillsLoadedIn(root, sourced, agents);
     if (loaded === sourced) return {};
     for (const s of loaded) descriptions[s.name] ??= s.description;
@@ -219,15 +241,18 @@ export function loadWorld(): World {
         const plugin = cursorPlugin.get(s.name);
         return { ...localSkill(root, s, git), ...(d ? { dupes: d } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
       }),
-      ...plugins(root),
+      ...loadedHere(root),
     };
   });
   const backups = [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt));
+  const repoOf = (path: string) => projects.find((p) => real(p.path) === real(path))?.name;
+  const plugins = [...installedPlugins(), ...(agents.includes("cursor") ? cursorPlugins() : [])].map((p) => pluginOf(p, repoOf));
   return {
     agents,
     cwd: cwd ? names.get(cwd)! : null,
     projects,
     machine,
+    plugins,
     library,
     usage: {},
     descriptions,
@@ -252,10 +277,12 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
   for (const use of await scanUsage(30)) {
     const root = projectOf(use.cwd);
     const repo = root ? repoOf.get(root) : undefined;
+    // A plugin's skill is recorded as "plugin:skill"; it counts for the skill, as in `skilllib usage`.
+    const skill = use.skill.split(":").pop()!;
     const day = 29 - Math.round((today - midnight(Date.parse(use.at))) / 86_400_000);
     if (!repo || day < 0 || day > 29) continue;
-    (usage[repo] ??= {})[use.skill] = (usage[repo][use.skill] ?? 0) + 1;
-    ((days[repo] ??= {})[use.skill] ??= new Array<number>(30).fill(0))[day]! += 1;
+    (usage[repo] ??= {})[skill] = (usage[repo][skill] ?? 0) + 1;
+    ((days[repo] ??= {})[skill] ??= new Array<number>(30).fill(0))[day]! += 1;
   }
   return { usage, days };
 }
@@ -525,44 +552,46 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       const r = turnOffIn(plugin, root);
       return r.ok ? r.message : failed(r.message);
     },
-    replacePlugin: (id, repos) => {
-      const skills = machineSkills().filter((s) => s.kind === "plugin" && s.origin === id && !s.broken);
-      // Copies in (recording "plugin: <id>" as their origin); a different library skill by the same name stops it.
-      const clashes = skills.filter((s) => importSkill(s.path).status === "exists").map((s) => s.name);
+    replacePlugin: (p, repos) => {
+      const id = p.id;
+      // Copies in, recording the plugin as their origin; a different library skill by the same name stops it.
+      const imported = p.skills.map((s) => ({ name: s.name, status: importSkill(s.path).status }));
+      const clashes = imported.filter((r) => r.status === "exists").map((r) => r.name);
       if (clashes.length) return failed(`${id} kept: your library has different ${clashes.join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
-      const skipped = repos.flatMap((r) => skills.flatMap((s) => {
+      // Skills you already had keep the origin they have.
+      for (const r of imported) if (r.status !== "unchanged") recordOrigin(r.name, `plugin: ${id}`);
+      const skipped = repos.flatMap((r) => p.skills.flatMap((s) => {
         const c = addSkill(rootOf(r), s.name);
         return c.action === "skipped" ? [`${s.name} in ${r} (${c.reason})`] : [];
       }));
       // Only remove the plugin once every repo you picked has its skills.
       if (skipped.length) return failed(`${id} kept: not added ${skipped.join(", ")}`);
-      const copied = `${skills.length} skill${skills.length === 1 ? " from " + id + " is" : "s from " + id + " are"} in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}`;
-      // Claude Code does the removing: uninstall (keeping its data, so a reinstall brings it back as it was),
-      // or, when it can't (plugins synced from claude.ai), turn it off on this machine.
-      // A timeout, so a slow or waiting `claude` can't freeze the app.
-      // `claude` on PATH, or where the installer puts it (~/.local/bin/claude).
+      const n = p.skills.length;
+      const copied = `${n} skill${n === 1 ? " from " + id + " is" : "s from " + id + " are"} in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}`;
+      // Claude Code does the removing, where the plugin is installed: uninstall (keeping its data, so a
+      // reinstall brings it back as it was), or, when it can't (synced from claude.ai, no claude command), turn it off.
+      const ref = refOf(p);
       const bin = claudeBinary();
-      const claude = (...args: string[]) => spawnSync(bin!, ["plugin", ...args], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 });
-      const synced = id.endsWith("@synced");
-      const off = bin && !synced && claude("uninstall", id, "--keep-data").status === 0 ? "uninstalled" : bin ? claude("disable", id) : null;
-      if (off === "uninstalled") {
-        recordRemovedPlugin(id, "user");
-        return `${copied}; ${id} is uninstalled (restore it from Settings › Backups, or reinstall with /plugin)`;
+      if (bin && !ref.synced) {
+        const r = uninstallPlugin(ref);
+        if (r.ok) return `${copied}; ${r.message}`;
       }
-      if (off?.status === 0)
-        return synced ? `${copied}; ${id} is off (it's synced from claude.ai: remove it there to delete it for good)` : `${copied}; ${id} is off: finish with /plugin uninstall ${id}`;
-      const why = !off
-        ? "the claude command isn't on your PATH"
-        : off.error
-          ? `claude didn't answer: ${off.error.message}`
-          : (off.stderr || off.stdout).trim().split("\n")[0] || `exit ${off.status}`;
-      // No claude command: the same setting `claude plugin disable` writes, so nothing loads twice.
-      try {
-        setPluginEnabled(id, false);
-      } catch (e) {
-        return failed(`${copied}; couldn't turn ${id} off (${why}; ${(e as Error).message}): turn it off with /plugin`);
-      }
-      return `${copied}; turned ${id} off in ~/.claude/settings.json (${why})${synced ? "" : `: finish with /plugin uninstall ${id}`}`;
+      const off = setPluginOn(ref, false);
+      if (!off.ok) return failed(`${copied}; couldn't turn ${id} off (${off.message}): turn it off with /plugin`);
+      const why = bin ? "" : " (the claude command isn't on your PATH)";
+      return ref.synced ? `${copied}; ${id} is off${why} (it's synced from claude.ai: remove it there to delete it for good)` : `${copied}; ${id} is off${why}: finish with /plugin uninstall ${id}`;
+    },
+    setPlugin: (p, on) => {
+      const r = setPluginOn(refOf(p), on);
+      return r.ok ? r.message : failed(r.message);
+    },
+    uninstallPlugin: (p) => {
+      const r = uninstallPlugin(refOf(p));
+      return r.ok ? r.message : failed(r.message);
+    },
+    updatePlugin: (p) => {
+      const r = updatePlugin(refOf(p));
+      return r.ok ? r.message : failed(r.message);
     },
     deleteLibrary: (name) => {
       // Every repo that tracks it, hidden ones too; each copy (edits included) goes to the backups first.

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { HARNESSES, type HarnessId } from "../harnesses.js";
+import { harness, HARNESSES, type HarnessId } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
@@ -16,11 +16,12 @@ import { tildify as homeRelative } from "../output.js";
 /** Home-relative path for labels. */
 const tildify = (p: string) => homeRelative(p);
 
-type Place = "projects" | "library" | "global" | "health" | "settings";
+type Place = "projects" | "library" | "global" | "plugins" | "health" | "settings";
 const PLACES: [Place, string][] = [
   ["projects", "Projects"],
   ["library", "Your skills"],
   ["global", "Global"],
+  ["plugins", "Plugins"],
   ["health", "Health"],
   ["settings", "Settings"],
 ];
@@ -65,6 +66,7 @@ type Item = {
   cands?: W.GroupKey[];
   skill?: W.Usable;
   lib?: W.LibrarySkill;
+  plugin?: W.Plugin;
   /** A group's row; `inFold`: a member shown under its open group. */
   fold?: { key: string; open: boolean };
   inFold?: string;
@@ -281,6 +283,7 @@ function projectSkillItems(w: W.World, p: string, nameW: number, ui: Ui): Item[]
 type Ui = {
   notify(message: string): void;
   openInGlobal(name: string): void;
+  openInPlugins(id: string): void;
   edit(file: string): void;
   copy(text: string, what: string): void;
   menu(title: string, options: Option[]): void;
@@ -362,11 +365,14 @@ function overview(w: W.World, p: string): [label: string, value: Seg[]][] {
       : project.manifest === "no git"
         ? ["skilllib.json (not a git repo)", color.muted]
         : [`skilllib.json ${GIT_LABEL[project.manifest]}`, project.manifest === "committed" ? color.text : color.yellow];
+  // Plugins whose skills load here (a repo's settings can turn one on or off just there).
+  const plugins = [...new Set(W.machineIn(w, project).filter((m) => m.source === "plugin").map((m) => m.where.split("@")[0]!))];
   return [
     ["Folder", [[tildify(project.path), color.text]]],
     ["Remote", [[info.remote ?? "none", info.remote ? color.blue : color.faint]]],
     ["Branch", [[info.branch ?? "–", color.text], [info.dirty ? `  ${info.dirty} uncommitted` : "", color.yellow]]],
     ["Manifest", [manifest]],
+    ["Plugins", [[plugins.length ? plugins.join(", ") : "none", plugins.length ? color.magenta : color.faint]]],
   ];
 }
 
@@ -416,14 +422,14 @@ function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return byName(copies).map((g) => skillItem(w, g, mergeIssues(g.map((c) => W.machineIssues(w, c.machine!))), nameW, globalActions(w, g[0]!, ui), null));
 }
 
-/** Global's actions: all on the machine-wide copy (see W.machineActions), plus vendor settings you change at the source. */
+/** Global's actions: all on the machine-wide copy (see W.machineActions), plus vendor settings you change at the source. Plugins are managed in Plugins. */
 function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
   const m = u.machine!;
-  const atSource = m.source === "plugin" ? "Turn it off with /plugin in Claude Code" : m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : m.source === "system" ? `An admin manages ${m.where}` : "Cursor manages it";
+  const atSource = m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : m.source === "system" ? `An admin manages ${m.where}` : "Cursor manages it";
   return [
     ...W.machineActions(m).map(fixOption),
-    ...(m.source === "plugin" ? [fixOption(W.replacePluginFix(w, m.where))] : []),
-    ...(m.source === "global" || m.source === "skilllib" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
+    ...(m.source === "plugin" ? [{ label: `Open ${m.where.split("@")[0]} in Plugins`, action: () => ui.openInPlugins(m.where) }] : []),
+    ...(m.source === "global" || m.source === "skilllib" || m.source === "plugin" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
     ...(m.source === "global" && !m.broken ? [{ label: "Edit SKILL.md", action: () => ui.edit(`${m.path}/SKILL.md`) }] : []),
     reviewOption(w, m.name, ui),
   ];
@@ -524,6 +530,80 @@ function agentSkillItems(w: W.World, nameW: number): Item[] {
   ];
 }
 
+/** Plugin names are short; the room goes to Scope and Issue. */
+const pluginW = (nameW: number) => Math.min(nameW, 17);
+
+const STATE: Record<string, Seg> = { on: ["on", color.green], off: ["off", color.faint], unknown: ["?", color.faint] };
+
+/** Plugins: one row per install, on or off, with what it brings and how much its skills get used. */
+function pluginItems(w: W.World, skillW: number, ui: Ui): Item[] {
+  const nameW = pluginW(skillW);
+  return w.plugins.map((p): Item => {
+    const issues = W.pluginIssues(w, p);
+    const top = W.worst(issues);
+    const cursor = p.agent === "cursor";
+    const uses = cursor ? 0 : W.pluginUses(w, p);
+    const [state, stateColor] = STATE[p.on === null ? "unknown" : p.on ? "on" : "off"]!;
+    const n = p.skills.length;
+    const name = W.pluginName(p);
+    const actions: Option[] = cursor
+      ? [{ label: "Turn it off in Cursor (Settings › Plugins)", action: () => ui.notify(`Turn ${p.id} off in Cursor; skilllib can't read or change Cursor's plugins`) }]
+      : [
+          fixOption(W.pluginSwitchFix(p, !p.on)),
+          ...(p.update ? [fixOption(W.updatePluginFix(p))] : []),
+          ...(n ? [fixOption(W.replacePluginFix(p))] : []),
+          ...(p.scope === "claude.ai" ? [] : [fixOption(W.uninstallPluginFix(p))]),
+        ];
+    return {
+      key: p.key,
+      name: p.id,
+      plugin: p,
+      issues,
+      uses,
+      cells: [
+        { text: top ? SEV[top.severity].icon : " ", width: 2, color: top ? SEV[top.severity].color : undefined },
+        { text: clip(name, nameW), width: nameW, color: p.on === false ? color.muted : undefined },
+        { text: harness(p.agent).icon, width: 3, color: harness(p.agent).color },
+        { text: clip(cursor ? "–" : W.pluginScope(p), 19), width: 19, color: p.repo ? color.blue : color.muted },
+        { text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted },
+        { text: state.padEnd(4), width: 4, color: stateColor },
+        { text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted },
+        { text: " " + (top?.short ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+      ],
+      detail: (width) => {
+        const b = builder(p.id);
+        for (const l of wrap(p.description || "(no description)", width - 4, 2)) b.line([l, color.muted]);
+        b.line();
+        b.issues(issues);
+        b.actions([...actions, { label: "Open its folder", action: () => ui.notify(said(w.ops.openFolder(p.path))) }, {
+          label: "Review prompt",
+          action: () =>
+            ui.copy(
+              reviewPrompt(w, p.skills.map((s) => s.name), `Review the ${harness(p.agent).name} plugin ${p.id}${p.description ? ` (${p.description})` : ""}: these are its skills${p.parts.length ? `, and it also brings ${p.parts.join(", ")}` : ""}. Should I keep it ${p.on === false ? "off" : "on"}, turn it ${p.on === false ? "on" : "off"}, uninstall it, or replace it with my own copies of the skills I use?`),
+              `a review prompt for ${name}`,
+            ),
+        }], width);
+        b.line();
+        const label = (t: string) => [t.padEnd(12), color.muted] as Seg;
+        const uses = (n: number) => (n ? `${n} use${n === 1 ? "" : "s"}` : "unused");
+        const skills = p.skills.map((s) => (cursor || !w.days ? s.name : `${s.name} (${uses(W.totalUses(w, s.name))})`));
+        wrap(skills.join(" · ") || "none", width - 16, 4).forEach((l, i) => b.line(label(i ? "" : "Skills"), [l, color.text]));
+        b.line(label("Also brings"), [p.parts.join(", ") || "nothing else", p.parts.length ? color.text : color.faint]);
+        const installed = cursor
+          ? "in Cursor (whether it's on is only in Cursor)"
+          : p.scope === "claude.ai"
+            ? "synced from your claude.ai account"
+            : p.repo
+              ? `${p.scope} scope, in ${p.repo} only`
+              : `user scope, in every repo`;
+        b.line(label("Installed"), [installed, color.text], [p.version ? `   v${p.version.replace(/^v/, "")}` : "", color.muted], [p.id.includes("@") && p.scope !== "claude.ai" ? `   from ${p.id.split("@")[1]}` : "", color.faint]);
+        b.line(label("Folder"), [tildify(p.path), color.faint]);
+        return b.d;
+      },
+    };
+  });
+}
+
 /** The picker's cursor, kept off group titles. */
 function addCursor(rows: W.AddRow[], cursor: number): number {
   const i = Math.min(cursor, rows.length - 1);
@@ -576,12 +656,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const nameW = Math.min(22, Math.max(17, Math.floor(columns * 0.22)));
   const dashboard = place === "projects" && open !== null;
   const chips: [Chip, string][] =
-    dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : place === "health" ? CHIPS.slice(0, 1) : CHIPS.slice(0, 2);
+    dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : place === "health" ? CHIPS.slice(0, 1) : CHIPS.slice(0, 2); // Your skills, Plugins: All · Issues
 
   // ── Current list ──
   const ui: Ui = {
     notify: setToast,
     openInGlobal,
+    openInPlugins,
     edit,
     copy: (text, what) => setToast(said(world.ops.copy(text, what))),
     menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
@@ -604,6 +685,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         ? globalItems(world, nameW, ui)
         : place === "library"
           ? libraryItems(world, nameW, ui)
+          : place === "plugins"
+            ? pluginItems(world, nameW, ui)
           : place === "health"
             ? healthItems(world, nameW, ui)
             : settingsItems();
@@ -778,8 +861,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       ...(locals.length
         ? [fixOption({ label: `Remove all ${locals.length} from this repo`, preview: `Remove these ${n(locals.length)} from ${open}; your library keeps the tracked ones.`, run: (w) => (locals.forEach((s) => w.ops.remove(open!, s.name)), `Removed ${n(locals.length)} from ${open}`) })]
         : []),
-      ...[...new Set(machines.filter((m) => m.source === "plugin").map((m) => m.where))].map((id) => fixOption(W.replacePluginFix(world, id))),
-      ...(machines.some((m) => m.source === "plugin") ? [{ label: "Turn the plugin off with /plugin in Claude Code", action: () => setToast("Turn it off with /plugin in Claude Code; skilllib picks it up next time") }] : []),
+      ...[...new Set(machines.filter((m) => m.source === "plugin").map((m) => m.where))].map((id): Option => ({ label: `Open ${id.split("@")[0]} in Plugins`, action: () => openInPlugins(id) })),
       { label: "Review prompt", action: () => ui.copy(reviewPrompt(world, names, `Review these related skills (${label}).`), `a review prompt for ${label}`) },
     ];
   }
@@ -884,6 +966,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   function openInGlobal(name: string) {
     goPlace("global");
     setQuery(name);
+  }
+  /** Jumps to Plugins, filtered to one plugin. */
+  function openInPlugins(id: string) {
+    goPlace("plugins");
+    setQuery(id);
   }
 
   function settingsItems(): Item[] {
@@ -1134,6 +1221,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const globalFlagged = world.machine.map((m) => [m.name, W.machineIssues(world, m)] as const).filter(([, issues]) => issues.length);
   const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
+  // Plugins' count turns yellow when one repeats your skills; hints (unused, updates) don't color it.
+  const pluginsWorst = W.worst(world.plugins.flatMap((p) => W.pluginIssues(world, p)).filter((i) => i.severity !== "hint"));
 
   /** The sidebar: places, then every repo. Moving onto a row opens it. */
   // Like Global's count: skills with something to fix, marked by the worst of them.
@@ -1156,6 +1245,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     // The number turns red or yellow when any of them has an issue.
     sideRow("global", "◈ Global", place === "global", () => goPlace("global"), [
       { text: String(new Set(world.machine.map((m) => m.name)).size), width: 4, color: globalProblem ? color.red : globalIssues ? color.yellow : color.muted },
+    ]),
+    sideRow("plugins", "⧉ Plugins", place === "plugins", () => goPlace("plugins"), [
+      { text: String(world.plugins.length), width: 4, color: pluginsWorst ? SEV[pluginsWorst.severity].color : color.muted },
     ]),
     sideRow("health", "✓ Health", place === "health", () => goPlace("health"), [
       { text: String(healthCount), width: 4, color: healthWorst ? SEV[healthWorst.severity].color : color.green },
@@ -1213,6 +1305,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         ? titles([["", 2], ["Project", 18], ["Skills", 10], ["Issues", 0]])
         : place === "library"
           ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 18], [" Uses", 6], [" Issue / description", 0]])
+          : place === "plugins"
+            ? titles([["", 2], ["Plugin", pluginW(nameW)], ["", 3], ["Scope", 19], ["Brings", 13], ["On", 4], [" Uses", 6], [" Issue", 0]])
           : place === "health"
             ? titles([["", 2], ["Skill", nameW], ["Where", 16], [" Issue", 0]])
             : null;
@@ -1224,11 +1318,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     </Box>
   );
 
-  const overviewH = dashboard && !sidebar ? 4 : 0;
+  const overviewH = dashboard && !sidebar ? Math.ceil(overview(world, open!).length / 2) + 2 : 0;
   const listH = split ? Math.floor((bodyH - overviewH) / 2) : bodyH - overviewH;
   const detailH = split ? bodyH - overviewH - listH : bodyH;
   const listRows: Row[] = items.map((i) => ({ key: i.key, cells: i.cells, header: i.header }));
-  const listTitle = dashboard ? "Skills" : place === "projects" ? "Projects" : place === "library" ? "Your skills" : place === "global" ? "Loads everywhere" : place === "health" ? "To fix" : "Settings";
+  const listTitle = dashboard ? "Skills" : place === "projects" ? "Projects" : place === "library" ? "Your skills" : place === "global" ? "Loads everywhere" : place === "plugins" ? "Plugins" : place === "health" ? "To fix" : "Settings";
   const list = (
     <ListPanel
       title={listTitle}

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { findIssues, runFix } from "./health.js";
 import { addSkill, importSkill } from "./library.js";
-import { removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
+import { installedPlugins, pluginBackups, removePlugin, restorePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin } from "./plugins.js";
 import { machineSkills, skillsLoadedIn } from "./sources.js";
 
 let tmp: string;
@@ -233,4 +233,126 @@ test("a repo copy Claude Code doesn't load (only in .agents/skills) doesn't coll
   const web = join(tmp, "web");
   skill(join(web, ".agents", "skills", "alpha"));
   expect(findIssues([web], machineSkills(), new Set()).find((i) => i.id.startsWith("plugin:"))).toBeUndefined();
+});
+
+/** Plugins as Claude Code records them: two installs for you, one in a project, one synced from claude.ai. */
+function installs() {
+  const plugins = join(tmp, ".claude", "plugins");
+  const web = join(tmp, "web");
+  const at = (name: string, version: string) => join(plugins, "cache", "mk", name, version);
+  skill(join(at("a", "1.0.0"), "skills", "alpha"));
+  mkdirSync(join(at("a", "1.0.0"), "hooks"), { recursive: true });
+  writeFileSync(join(at("a", "1.0.0"), "hooks", "hooks.json"), "{}");
+  skill(join(at("b", "2.0.0"), "skills", "beta"));
+  skill(join(at("c", "0.1.0"), "skills", "gamma"));
+  writeFileSync(
+    join(plugins, "installed_plugins.json"),
+    JSON.stringify({
+      version: 2,
+      plugins: {
+        "a@mk": [{ scope: "user", installPath: at("a", "1.0.0"), version: "1.0.0" }],
+        "b@mk": [{ scope: "user", installPath: at("b", "2.0.0"), version: "2.0.0", gitCommitSha: "old" }],
+        "c@mk": [{ scope: "project", projectPath: web, installPath: at("c", "0.1.0"), version: "0.1.0" }],
+      },
+    }),
+  );
+  mkdirSync(join(plugins, "marketplaces", "mk", ".claude-plugin"), { recursive: true });
+  writeFileSync(
+    join(plugins, "marketplaces", "mk", ".claude-plugin", "marketplace.json"),
+    JSON.stringify({ plugins: [{ name: "a", version: "1.10.0", source: "./a" }, { name: "b", source: { source: "url", sha: "new" } }, { name: "c", source: "./c" }] }),
+  );
+  const synced = join(plugins, "synced", "bucket", "uuid");
+  skill(join(synced, "skills", "deploy"));
+  mkdirSync(join(synced, ".claude-plugin"), { recursive: true });
+  writeFileSync(join(synced, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "rail", description: "Railway" }));
+  // "gone@mk": false is what an uninstall can leave behind: not a plugin to list.
+  skill(join(plugins, "marketplaces", "mk", "plugins", "gone", "skills", "old"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "a@mk": true, "b@mk": false, "rail@synced": false, "gone@mk": false } }));
+  mkdirSync(join(web, ".claude"), { recursive: true });
+  writeFileSync(join(web, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "c@mk": true } }));
+  return web;
+}
+
+/** A `claude` in ~/.local/bin that logs where it ran and what it was asked; `fail` makes one subcommand fail. */
+function fakeClaude(fail = "") {
+  const bin = join(tmp, ".local", "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(
+    join(bin, "claude"),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.284 (Claude Code)"; exit 0; fi\necho "$(pwd -P) $@" >> "${join(tmp, "calls")}"\n${fail ? `[ "$2" = "${fail}" ] && echo "Run it in a terminal to confirm the marketplace command" >&2 && exit 1\n` : ""}exit 0\n`,
+  );
+  chmodSync(join(bin, "claude"), 0o755);
+}
+
+function withPath(path: string, body: () => void) {
+  const saved = process.env.PATH;
+  process.env.PATH = path;
+  try {
+    body();
+  } finally {
+    process.env.PATH = saved;
+  }
+}
+
+test("every install is listed, on or off, with what it brings and whether its marketplace has a newer version", () => {
+  const web = installs();
+  const list = installedPlugins().map((p) => ({ id: p.id, scope: p.scope, projectPath: p.projectPath, on: p.on, version: p.version, update: p.update, skills: p.skills.length, extras: p.extras }));
+  expect(list).toEqual([
+    { id: "a@mk", scope: "user", projectPath: undefined, on: true, version: "1.0.0", update: "1.10.0", skills: 1, extras: ["hooks"] },
+    { id: "b@mk", scope: "user", projectPath: undefined, on: false, version: "2.0.0", update: "newer", skills: 1, extras: [] },
+    // On in its project's settings, though your own settings don't name it.
+    { id: "c@mk", scope: "project", projectPath: web, on: true, version: "0.1.0", update: undefined, skills: 1, extras: [] },
+    { id: "rail@synced", scope: null, projectPath: undefined, on: false, version: undefined, update: undefined, skills: 1, extras: [] },
+  ]);
+});
+
+test.skipIf(process.platform === "win32")("a project install is turned off, uninstalled and reinstalled in its project", () => {
+  const web = installs();
+  fakeClaude();
+  const c = installedPlugins().find((p) => p.id === "c@mk")!;
+  withPath("/usr/bin:/bin", () => {
+    expect(setPluginOn(c, false)).toMatchObject({ ok: true, message: "c@mk is off in web (project); Claude Code picks it up in its next session" });
+    expect(uninstallPlugin(c)).toMatchObject({ ok: true });
+    const backup = pluginBackups().find((b) => b.from === "c@mk")!;
+    expect(restorePlugin(backup)).toEqual({ ok: true, to: "Claude Code plugins (project in web)" });
+  });
+  const real = realpathSync(web);
+  expect(readFileSync(join(tmp, "calls"), "utf-8").trim().split("\n")).toEqual([
+    `${real} plugin disable c@mk --scope project`,
+    `${real} plugin uninstall c@mk --keep-data --scope project`,
+    `${real} plugin install c@mk --scope project`,
+  ]);
+  expect(pluginBackups()).toEqual([]);
+});
+
+test("without the claude command, turning a plugin on or off writes its scope's settings", () => {
+  const web = installs();
+  withPath(join(tmp, "empty"), () => {
+    const [a, , c] = installedPlugins();
+    expect(setPluginOn(a!, false).ok).toBe(true);
+    expect(setPluginOn({ ...c!, scope: "local" }, false).ok).toBe(true);
+    // Synced plugins never go through the CLI.
+    expect(setPluginOn(installedPlugins().find((p) => p.synced)!, true).ok).toBe(true);
+  });
+  expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "a@mk": false, "b@mk": false, "rail@synced": true, "gone@mk": false });
+  expect(JSON.parse(readFileSync(join(web, ".claude", "settings.local.json"), "utf-8")).enabledPlugins).toEqual({ "c@mk": false });
+});
+
+test.skipIf(process.platform === "win32")("an update that needs a confirmation isn't confirmed for you", () => {
+  installs();
+  fakeClaude("update");
+  withPath("/usr/bin:/bin", () => {
+    const r = updatePlugin(installedPlugins()[0]!);
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("Run it in a terminal to confirm the marketplace command");
+    expect(r.message).toContain("run `claude plugin update a@mk`");
+  });
+  expect(readFileSync(join(tmp, "calls"), "utf-8")).not.toContain("-y");
+});
+
+test("a synced plugin can't be uninstalled or updated from here", () => {
+  installs();
+  const rail = installedPlugins().find((p) => p.synced)!;
+  expect(uninstallPlugin(rail).ok).toBe(false);
+  expect(updatePlugin(rail).ok).toBe(false);
 });

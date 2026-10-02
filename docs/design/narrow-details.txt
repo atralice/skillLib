@@ -1,4 +1,4 @@
- ◆ skilllib   Projects  Your skills  Global  Health 19  Settings
+ ◆ skilllib   Projects  Your skills  Global  Plugins  Health 19  Settings
 ╭── stripe-payments ─────────────────────────────────────────────────────────╮
 │ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and │
 │ proration.                                                                 │

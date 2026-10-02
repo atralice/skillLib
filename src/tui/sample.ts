@@ -3,7 +3,7 @@
  * everywhere, held in memory. Its ops change it in place; `reload()` hands back a fresh copy.
  */
 import { harness, type HarnessId } from "../harnesses.js";
-import type { LocalSkill, MachineSkill, Ops, Project, RepoInfo, World } from "./world.js";
+import type { LocalSkill, MachineSkill, Ops, Plugin, Project, RepoInfo, World } from "./world.js";
 
 const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor"];
 const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed"];
@@ -40,6 +40,19 @@ const machine = (name: string, source: MachineSkill["source"], where: string, ex
   path: source === "global" || source === "skilllib" ? `${where}/${name}` : where,
   links: [],
   agents: [],
+  ...extra,
+});
+
+const plugin = (id: string, scope: string, skills: string[], extra: Partial<Plugin> = {}): Plugin => ({
+  key: `${id}|${scope}|${extra.repo ?? ""}`,
+  id,
+  agent: scope === "cursor" ? "cursor" : "claude-code",
+  scope,
+  on: scope === "cursor" ? null : true,
+  description: "",
+  path: `~/.claude/plugins/cache/${id.split("@")[1]}/${id.split("@")[0]}`,
+  skills: skills.map((name) => ({ name, path: `~/.claude/plugins/cache/${id.split("@")[1]}/${id.split("@")[0]}/skills/${name}` })),
+  parts: [],
   ...extra,
 });
 
@@ -153,15 +166,35 @@ export function sampleWorld(): World {
       machine("pr-review", "global", "~/.claude/skills", { kept: true }),
       machine("security-audit", "global", "~/.codex/skills", { installed: "2026-09-22 18:30" }),
       machine("old-helper", "global", "~/.claude/skills", { broken: true }),
-      machine("vercel-deploy", "plugin", "vercel@claude-plugins-official", { pluginParts: ["commands", "agents", "hooks"] }),
-      machine("vercel-env", "plugin", "vercel@claude-plugins-official", { pluginParts: ["commands", "agents", "hooks"] }),
-      machine("nextjs", "plugin", "vercel@claude-plugins-official", { pluginParts: ["commands", "agents", "hooks"] }),
+      machine("vercel-deploy", "plugin", "vercel@claude-plugins-official"),
+      machine("vercel-env", "plugin", "vercel@claude-plugins-official"),
+      machine("nextjs", "plugin", "vercel@claude-plugins-official"),
       machine("frontend-design", "plugin", "frontend-design@claude-plugins-official"),
       machine("use-railway", "plugin", "railway@claude-plugins-official"),
       machine("brand-voice", "claude.ai", "claude.ai account"),
       machine("pdf", "claude.ai", "claude.ai account"),
       machine("create-rule", "cursor", "Cursor built-in"),
       machine("skilllib", "skilllib", "~/.claude/skills", { links: ["~/.agents/skills/skilllib"] }),
+    ],
+    plugins: [
+      plugin("vercel@claude-plugins-official", "user", ["vercel-deploy", "vercel-env", "nextjs"], {
+        version: "0.50.0",
+        update: "0.51.0",
+        description: "Build and deploy web apps and agents",
+        parts: ["commands", "agents", "hooks", "MCP servers"],
+      }),
+      plugin("frontend-design@claude-plugins-official", "user", ["frontend-design"], { version: "1.0.0", description: "Frontend design skills" }),
+      plugin("railway@claude-plugins-official", "user", ["use-railway"], { version: "1.5.2", description: "Deploy and manage apps on Railway", parts: ["MCP servers"] }),
+      plugin("ponytail@ponytail", "user", ["ponytail"], { version: "4.10.0", on: false, description: "The laziest solution that works" }),
+      plugin("stripe-tools@acme", "project", ["stripe-payments", "stripe-webhooks"], {
+        repo: "api-server",
+        projectPath: "~/Projects/api-server",
+        version: "2.1.0",
+        description: "Stripe helpers for the API team",
+        parts: ["MCP servers"],
+      }),
+      plugin("railway@synced", "claude.ai", ["use-railway"], { version: "1.4.0", on: false, description: "Deploy and manage apps on Railway" }),
+      plugin("react-kit@cursor-public", "cursor", ["react-patterns", "react-testing"], { version: "0.3.0", description: "React patterns for Cursor" }),
     ],
     library: [
       { name: "stripe-payments", latest: 2 },
@@ -268,12 +301,29 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       return `Created ${name} v1 (its SKILL.md would open in your editor)`;
     },
     pluginOffHere: (repo, id) => `${id} turned off in ${repo}; other repos keep it`,
-    replacePlugin: (id, repos) => {
-      const skills = w.machine.filter((m) => m.source === "plugin" && m.where === id);
-      for (const m of skills) if (!lib(m.name)) w.library.push({ name: m.name, latest: 1, origin: `plugin: ${id}` });
-      for (const r of repos) for (const m of skills) add(r, m.name);
-      w.machine = w.machine.filter((m) => !skills.includes(m));
-      return `${skills.length} skills from ${id} are in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}; ${id} is uninstalled`;
+    replacePlugin: (p, repos) => {
+      for (const s of p.skills) if (!lib(s.name)) w.library.push({ name: s.name, latest: 1, origin: `plugin: ${p.id}` });
+      for (const r of repos) for (const s of p.skills) add(r, s.name);
+      w.machine = w.machine.filter((m) => !(m.source === "plugin" && m.where === p.id));
+      w.plugins = w.plugins.filter((x) => x.key !== p.key);
+      return `${p.skills.length} skills from ${p.id} are in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}; ${p.id} is uninstalled`;
+    },
+    setPlugin: (p, on) => {
+      w.plugins.find((x) => x.key === p.key)!.on = on;
+      if (!on) w.machine = w.machine.filter((m) => !(m.source === "plugin" && m.where === p.id));
+      else if (!p.repo) for (const s of p.skills) w.machine.push(machine(s.name, "plugin", p.id));
+      return done(`${p.id} is ${on ? "on" : "off"}`);
+    },
+    uninstallPlugin: (p) => {
+      w.plugins = w.plugins.filter((x) => x.key !== p.key);
+      w.machine = w.machine.filter((m) => !(m.source === "plugin" && m.where === p.id));
+      return `${p.id} is uninstalled (Settings › Backups reinstalls it)`;
+    },
+    updatePlugin: (p) => {
+      const x = w.plugins.find((y) => y.key === p.key)!;
+      x.version = x.update;
+      delete x.update;
+      return `${p.id} is updated; Claude Code uses the new version after a restart`;
     },
     deleteLibrary: (name) => {
       const from = w.projects.filter((p) => p.skills.some((s) => s.name === name && s.source === "lib")).map((p) => p.name);

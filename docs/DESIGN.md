@@ -43,10 +43,10 @@ Two layouts, picked by terminal width (`SIDEBAR_AT = 80` columns in `App.tsx`).
  hints, or the last message
 ```
 
-- **Places** is 28 columns wide (`SIDEBAR_W`): your skills, Global, Health, every repo, then Settings and Help.
+- **Places** is 28 columns wide (`SIDEBAR_W`): your skills, Global, Plugins, Health, every repo, then Settings and Help.
 - **List and details share the rest.** With 30 rows or more (`split`), details sit under the list and half the height goes to each. Shorter terminals show the list only, and `enter` swaps in the details.
 - **Focus** is the pane with the bright border (`accent`); the others are dim (`accentDim`). Only the focused pane shows a selection background.
-- While Places is focused on a repo, the details pane shows the repo's overview (folder, remote, branch, `skilllib.json` state).
+- While Places is focused on a repo, the details pane shows the repo's overview (folder, remote, branch, `skilllib.json` state, the plugins that load there).
 
 | | |
 |---|---|
@@ -132,13 +132,28 @@ Everything that loads in every repo: your global folders, plugins, claude.ai ski
 - **Action rows:** `✦ Fix N issues automatically…`, `⧉ Review prompt for your N global skills…`.
 - **Tabs:** as a repo's, without Local.
 - **Issues:** broken links, loaded twice (a global copy and a plugin, or two global copies), and *Not reviewed* for each of your global skills you haven't decided about.
-- **Vendor skills** can't be changed from here, except a Claude Code plugin, which can be replaced (below). Their actions say where to turn them off.
+- **Vendor skills** can't be changed from here. Their actions say where to turn them off; a plugin's skills and groups offer *Open vercel in Plugins*, where plugins are managed.
 - **The skilllib skill** (`◆ skilllib`, in the Global tab): out of date, its row offers the update; its action removes it (`skilllib agent-skill remove`).
 
 | | |
 |---|---|
 | ![Group open](design/global-group-open.svg) | ![Plugin](design/global-plugin.svg) |
-| A group, opened with `→` | A plugin's group: *Replace vercel with library skills…* |
+| A group, opened with `→` | A plugin's group: *Open vercel in Plugins* |
+
+### Plugins
+
+Every plugin installed, on or off, one row per install (a plugin can be installed for you and again in a project). Global shows a plugin's skills; this is where the plugin itself is turned on or off, updated, uninstalled or replaced.
+
+![Plugins](design/plugins.svg)
+
+- **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, by skill name) · the worst issue.
+- **Tabs:** All · Issues.
+- **Issues** are all *your call* (turning plugins on or off and updating them changes code that runs in your sessions, so "fix all" never does): *Repeats N of yours*, *Unused 30 days*, *Update to vN*.
+- **Actions:** Turn it on / off · Update to vN · Replace *plugin* with library skills… · Uninstall · Open its folder · Review prompt. A synced plugin can't be uninstalled; a Cursor plugin only says to turn it off in Cursor.
+- **Details:** description, issues, actions, then *Skills* (with their uses), *Also brings*, *Installed* (scope, repo, version, marketplace) and *Folder*.
+- **The sidebar count** is the number of plugins, yellow when one repeats your skills (hints don't color it).
+
+![Plugin details](design/plugin-details.svg)
 
 ### Health
 
@@ -172,13 +187,13 @@ A skill's candidate groups, strongest first (`W.groupCandidates`):
 
 `W.assignGroups` gives each skill its strongest candidate that another skill shares, and drops groups of one.
 
-A group row shows its worst severity, its label and size, and how many members have issues. Its details list the members and actions for all of them at once: *Move all N to repos…*, *Keep all N global on purpose*, *Delete all N*, *Add all N to repos…*, *Remove all N from this repo*, *Replace plugin with library skills…*, *Review prompt*.
+A group row shows its worst severity, its label and size, and how many members have issues. Its details list the members and actions for all of them at once: *Move all N to repos…*, *Keep all N global on purpose*, *Delete all N*, *Add all N to repos…*, *Remove all N from this repo*, *Open plugin in Plugins*, *Review prompt*.
 
 ---
 
 ## Issues
 
-Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` for Global. Each has an `id`, a `severity`, a `title` (the details), a `short` (the list), `decision` (your call) and `fixes`; the first fix of a non-decision is the `★` one.
+Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` for Global, `pluginIssues` for Plugins. Each has an `id`, a `severity`, a `title` (the details), a `short` (the list), `decision` (your call) and `fixes`; the first fix of a non-decision is the `★` one.
 
 | Where | Short | Severity | Your call | Fixes |
 |---|---|---|---|---|
@@ -207,6 +222,9 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Global | Also in a Cursor plugin | ⚠ | yes | Turn the plugin off in Cursor (reported only) |
 | Global | Not reviewed | ⚠ | yes | Move it to the repos that need it… · Keep it global on purpose · Delete it |
 | Your skills | Used in no repo | · | yes | Add to repos… · Delete from your library |
+| Plugins | Repeats N of yours (a skill in your library or global folders) | ⚠ | yes | Replace *plugin* with library skills… · Turn it off (Cursor: turn it off in Cursor) |
+| Plugins | Unused 30 days (on, ships skills, none used) | · | yes | Turn it off · Uninstall |
+| Plugins | Update to vN (the marketplace declares a newer version or commit) | · | yes | Update to vN |
 
 Extra copies and copies that differ come from `tidy.ts` (read in `load.ts`); their fix asks before changing a file git tracks, and **Fix all** skips those changes. While a skill's copies differ, the library hints (*Differs from library*, *Not tracked*, *Only in this repo*) are hidden: the copy they'd compare is arbitrary.
 
@@ -263,7 +281,7 @@ Text on an `accent` background (the selected tab, the top bar's place) is `#0B10
 | `★` | Recommended fix |
 | `✓` | No issues; `global ✓` = kept global on purpose; `✓ committed` |
 | `◆` | The repo you're in (and the app's mark) |
-| `▤` `◈` `✓` `⚙` `?` | Your skills, Global, Health, Settings, Help |
+| `▤` `◈` `⧉` `✓` `⚙` `?` | Your skills, Global, Plugins, Health, Settings, Help |
 | `⧉` | A plugin; also *copy a prompt* |
 | `✦` | Automatic: fix all, or an agent writes it |
 | `+` `⋯` `↺` | Add or create · more for this repo · restore a backup |
@@ -288,7 +306,7 @@ Text on an `accent` background (the selected tab, the top bar's place) is `#0B10
 | `src/tui/components.tsx` | `Panel`, `ListPanel`, `wrap` |
 | `src/tui/theme.ts` | Colors |
 | `src/tui/world.ts` | The model the screens render (`World`), issues, fixes, groups, search. No I/O. |
-| `src/tui/load.ts` | Fills a `World` from disk; its `ops` make the changes (through `library.ts`, `config.ts`, `plugins.ts`) |
+| `src/tui/load.ts` | Fills a `World` from disk (plugins from `plugins.ts`' `installedPlugins` and `cursorPlugins`); its `ops` make the changes (through `library.ts`, `config.ts`, `plugins.ts`) |
 | `src/tui/sample.ts` | A `World` in memory, for tests, `snapshot.tsx` and these screens |
 | `src/tui/prompts.ts` | Review and write-a-skill prompts |
 | `src/tui/snapshot.tsx` | Renders the app headless: `SIZE=118x30 STEPS='["enter","#a"]' npx tsx src/tui/snapshot.tsx` (`REAL=1` reads your machine instead) |

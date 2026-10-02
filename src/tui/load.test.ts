@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { setHarnesses } from "../config.js";
 import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
+import { recordOrigin } from "../sources.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
@@ -261,6 +262,7 @@ function fakePlugin() {
   const plugin = join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "tools");
   for (const name of ["lint", "fmt"]) writeSkill(join(plugin, "skills", name));
   mkdirSync(join(plugin, "commands"), { recursive: true });
+  writeFileSync(join(plugin, "commands", "check.md"), "Check the code.\n");
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "tools@mk": true } }));
 }
 
@@ -282,21 +284,31 @@ test.skipIf(process.platform === "win32")("a plugin is replaced by library skill
   fakePlugin();
   let w = loadWorld();
   expect(w.machine.map((m) => `${m.name}:${m.source}`).sort()).toEqual(["fmt:plugin", "lint:plugin"]);
-  const fix = replacePluginFix(w, "tools@mk");
-  expect(fix.preview).toContain("then uninstalls tools@mk from Claude Code");
+  const fix = replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!);
+  expect(fix.preview).toContain("then uninstalls tools@mk (its saved data is kept)");
   expect(fix.preview).toContain("It also brings commands: those go too.");
-  withClaude(true, () => expect(fix.pickRepos!(w, ["app"])).toBe("2 skills from tools@mk are in your library and in app; tools@mk is uninstalled (restore it from Settings › Backups, or reinstall with /plugin)"));
+  withClaude(true, () => expect(fix.pickRepos!(w, ["app"])).toBe("2 skills from tools@mk are in your library and in app; tools@mk is uninstalled (Settings › Backups reinstalls it)"));
   expect(loadWorld().backups[0]).toMatchObject({ name: "tools@mk", from: "tools@mk" });
-  expect(readFileSync(join(tmp, "claude-args"), "utf-8").trim()).toBe("plugin uninstall tools@mk --keep-data");
+  expect(readFileSync(join(tmp, "claude-args"), "utf-8").trim()).toBe("plugin uninstall tools@mk --keep-data --scope user");
   w = loadWorld();
   expect(w.library.map((l) => `${l.name}:${l.origin}`).sort()).toEqual(["fmt:plugin: tools@mk", "lint:plugin: tools@mk"]);
   expect(w.projects[0]!.skills.map((s) => s.name).sort()).toEqual(["fmt", "lint"]);
 });
 
+test("replacing a plugin keeps the origin of a skill you already had", () => {
+  fakePlugin();
+  writeSkill(join(tmp, "src", "fmt"));
+  importSkill(join(tmp, "src", "fmt"));
+  recordOrigin("fmt", "skills.sh: me/tools");
+  const w = loadWorld();
+  withClaude(false, () => replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, []));
+  expect(loadWorld().library.map((l) => `${l.name}:${l.origin}`).sort()).toEqual(["fmt:skills.sh: me/tools", "lint:plugin: tools@mk"]);
+});
+
 test("without the claude command, a replaced plugin is at least turned off", () => {
   fakePlugin();
   const w = loadWorld();
-  withClaude(false, () => expect(replacePluginFix(w, "tools@mk").pickRepos!(w, [])).toContain("turned tools@mk off in ~/.claude/settings.json (the claude command isn't on your PATH): finish with /plugin uninstall tools@mk"));
+  withClaude(false, () => expect(replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, [])).toContain("tools@mk is off (the claude command isn't on your PATH): finish with /plugin uninstall tools@mk"));
   expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "tools@mk": false });
   expect(loadWorld().machine).toEqual([]);
 });
@@ -306,21 +318,23 @@ test("a plugin synced from claude.ai is copied in and turned off (it can't be un
   let w = loadWorld();
   const id = w.machine.find((m) => m.name === "deploy")!.where;
   expect(id).toBe("rail@synced");
-  const fix = replacePluginFix(w, id);
+  const fix = replacePluginFix(w.plugins.find((p) => p.id === id)!);
   expect(fix.preview).toContain("then turns rail@synced off in Claude Code. It's synced from your claude.ai account");
   // Without the claude command: the same setting `claude plugin disable` writes.
-  withClaude(false, () => expect(fix.pickRepos!(w, [])).toContain("turned rail@synced off in ~/.claude/settings.json"));
+  withClaude(false, () => expect(fix.pickRepos!(w, [])).toContain("rail@synced is off (the claude command isn't on your PATH) (it's synced from claude.ai"));
   expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "rail@synced": false });
   w = loadWorld();
   expect(w.library.map((l) => l.name)).toEqual(["deploy"]);
   expect(w.machine).toEqual([]);
 });
 
-test.skipIf(process.platform === "win32")("with the claude command, a synced plugin is disabled, not uninstalled", () => {
+test.skipIf(process.platform === "win32")("with the claude command, a synced plugin is turned off in your settings, not uninstalled", () => {
   writeSkill(join(tmp, ".claude", "plugins", "synced", "b1", "rail", "skills", "deploy"));
   const w = loadWorld();
-  withClaude(true, () => expect(replacePluginFix(w, "rail@synced").pickRepos!(w, [])).toBe("1 skill from rail@synced is in your library; rail@synced is off (it's synced from claude.ai: remove it there to delete it for good)"));
-  expect(readFileSync(join(tmp, "claude-args"), "utf-8").trim()).toBe("plugin disable rail@synced");
+  withClaude(true, () => expect(replacePluginFix(w.plugins.find((p) => p.id === "rail@synced")!).pickRepos!(w, [])).toBe("1 skill from rail@synced is in your library; rail@synced is off (it's synced from claude.ai: remove it there to delete it for good)"));
+  // `claude plugin` can't touch a synced plugin: its switch is enabledPlugins.
+  expect(existsSync(join(tmp, "claude-args"))).toBe(false);
+  expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "rail@synced": false });
 });
 
 test("identical copies in a repo become one copy plus a link", () => {

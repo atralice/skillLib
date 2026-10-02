@@ -4,11 +4,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { importSkill, type Backup } from "./library.js";
 import { claudeDir, skilllibHome, userHome } from "./paths.js";
 import { skillDirsIn } from "./skills.js";
-import type { SourcedSkill } from "./sources.js";
+import { enabledPlugins, type SourcedSkill } from "./sources.js";
 import { latestVersion } from "./versions.js";
 
-/** A Claude Code plugin that ships skills. */
-export type ClaudePlugin = {
+/** Which install of a Claude Code plugin to act on. */
+export type PluginRef = {
   /** name@marketplace, as `claude plugin` takes it. */
   id: string;
   /** Install scope (user, project, local); null for plugins synced from claude.ai. */
@@ -16,6 +16,10 @@ export type ClaudePlugin = {
   /** For project and local scope: the project it's installed in (`claude plugin` must run there). */
   projectPath?: string;
   synced: boolean;
+};
+
+/** A Claude Code plugin that ships skills. */
+export type ClaudePlugin = PluginRef & {
   /** Skill folders it ships. */
   skills: string[];
   /** What else it brings, lost if it's deleted: "MCP servers", "hooks", "agents", "commands". */
@@ -68,6 +72,130 @@ export function claudePlugins(machine: SourcedSkill[], root?: string): ClaudePlu
       extras: extrasOf(dirname(dirname(skills[0]!))),
     };
   });
+}
+
+/** An installed plugin, on or off, whether or not it ships skills. */
+export type InstalledPlugin = PluginRef & {
+  agent: "claude-code" | "cursor";
+  /** On where it's installed; null when that can't be read (Cursor). */
+  on: boolean | null;
+  /** Its folder. */
+  root: string;
+  version?: string;
+  /** A newer version the marketplace offers ("newer" when only its commit differs). */
+  update?: string;
+  description: string;
+  skills: string[];
+  extras: string[];
+};
+
+type InstallEntry = { scope?: string; projectPath?: string; installPath?: string; version?: string; gitCommitSha?: string };
+
+/** "1.10.0" > "1.9.2": compares the numbers in each part. */
+function newer(a: string, b: string): boolean {
+  const pa = a.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+  const pb = b.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  return false;
+}
+
+/**
+ * What the marketplace (as Claude Code last fetched it) offers that's newer than `entry`:
+ * a declared version, the version in a plugin it holds itself, or a different pinned commit.
+ * Undefined when it can't tell: no guessing.
+ */
+function updateOf(name: string, marketplace: string, entry: InstallEntry): string | undefined {
+  const dir = join(claudeDir(), "plugins", "marketplaces", marketplace);
+  type Listed = { name?: string; version?: string; source?: string | { sha?: string } };
+  const listed = readJson<{ plugins?: Listed[] }>(join(dir, ".claude-plugin", "marketplace.json"))?.plugins?.find((p) => p.name === name);
+  if (!listed) return undefined;
+  const version = listed.version ?? (typeof listed.source === "string" ? readJson<{ version?: string }>(join(dir, listed.source, ".claude-plugin", "plugin.json"))?.version : undefined);
+  if (version && entry.version) return newer(version, entry.version) ? version : undefined;
+  const sha = typeof listed.source === "object" ? listed.source?.sha : undefined;
+  return sha && entry.gitCommitSha && sha !== entry.gitCommitSha ? "newer" : undefined;
+}
+
+/** Where an installed plugin's files are: its install path, or its marketplace's copy. */
+function pluginRoot(name: string, marketplace: string, entry: InstallEntry): string {
+  const plugins = join(claudeDir(), "plugins");
+  const candidates = [
+    ...(entry.installPath ? [entry.installPath] : []),
+    join(plugins, "marketplaces", marketplace, "plugins", name),
+    join(plugins, "marketplaces", marketplace, "external_plugins", name),
+  ];
+  return candidates.find((c) => existsSync(c)) ?? candidates[0] ?? join(plugins, "marketplaces", marketplace);
+}
+
+function describe(root: string) {
+  const manifest = readJson<{ description?: string; version?: string }>(join(root, ".claude-plugin", "plugin.json")) ?? {};
+  return { description: manifest.description ?? "", version: manifest.version, skills: skillDirsIn(join(root, "skills")), extras: extrasOf(root) };
+}
+
+/**
+ * Every Claude Code plugin on this machine, on or off: one per install (a plugin can be
+ * installed for you and again in a project), plus the ones synced from claude.ai. An install's
+ * on/off is enabledPlugins as Claude Code resolves it where it's installed.
+ */
+export function installedPlugins(): InstalledPlugin[] {
+  const plugins = join(claudeDir(), "plugins");
+  const installed = readJson<{ plugins?: Record<string, InstallEntry[]> }>(join(plugins, "installed_plugins.json"))?.plugins ?? {};
+  const fromMarketplaces = Object.entries(installed).flatMap(([id, entries]) =>
+    entries.map((entry): InstalledPlugin => {
+      const [name = id, marketplace = ""] = id.split("@");
+      const scope = entry.scope ?? "user";
+      const projectPath = scope === "user" ? undefined : entry.projectPath;
+      const root = pluginRoot(name, marketplace, entry);
+      const about = describe(root);
+      const update = updateOf(name, marketplace, entry);
+      return {
+        id,
+        scope,
+        ...(projectPath ? { projectPath } : {}),
+        synced: false,
+        agent: "claude-code",
+        on: enabledPlugins(projectPath)[id] === true,
+        root,
+        ...about,
+        version: entry.version ?? about.version,
+        ...(update ? { update } : {}),
+      };
+    }),
+  );
+  // Turned on in your settings with no install record: Claude Code loads it from its marketplace's copy.
+  // (One set to false there is a leftover, not a plugin.)
+  const user = enabledPlugins();
+  const fromSettings = Object.keys(user)
+    .filter((id) => user[id] === true && id.includes("@") && !id.endsWith("@synced") && !installed[id])
+    .flatMap((id): InstalledPlugin[] => {
+      const [name = "", marketplace = ""] = id.split("@");
+      const root = pluginRoot(name, marketplace, {});
+      return existsSync(root) ? [{ id, scope: "user", synced: false, agent: "claude-code", on: true, root, ...describe(root) }] : [];
+    });
+  // Synced from claude.ai: on unless "<name>@synced" is false in your settings.
+  const syncedDir = join(plugins, "synced");
+  const dirs = (p: string) => (existsSync(p) ? readdirSync(p, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => join(p, d.name)) : []);
+  const fromSynced = dirs(syncedDir)
+    .flatMap(dirs)
+    .map((root): InstalledPlugin => {
+      const id = `${readJson<{ name?: string }>(join(root, ".claude-plugin", "plugin.json"))?.name ?? basename(root)}@synced`;
+      return { id, scope: null, synced: true, agent: "claude-code", on: user[id] !== false, root, ...describe(root) };
+    });
+  return [...fromMarketplaces, ...fromSettings, ...fromSynced];
+}
+
+/** Cursor's marketplace plugins: what they bring, never whether they're on (Cursor keeps that in its database). */
+export function cursorPlugins(): InstalledPlugin[] {
+  const cache = join(userHome(), ".cursor", "plugins", "cache");
+  const dirs = (p: string) => (existsSync(p) ? readdirSync(p).filter((d) => !d.startsWith(".") && statSync(join(p, d)).isDirectory()) : []);
+  return dirs(cache).flatMap((marketplace) =>
+    dirs(join(cache, marketplace)).flatMap((plugin) => {
+      const versions = dirs(join(cache, marketplace, plugin)).map((v) => join(cache, marketplace, plugin, v));
+      const root = versions.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+      if (!root) return [];
+      const about = describe(root);
+      return [{ id: `${plugin}@${marketplace}`, scope: null, synced: false, agent: "cursor" as const, on: null, root, ...about, version: about.version ?? basename(root) }];
+    }),
+  );
 }
 
 /**
@@ -174,11 +302,64 @@ export function turnOffIn(plugin: ClaudePlugin, root: string): { ok: boolean; me
   return r.ok ? { ok: true, message: done } : { ok: false, message: `${plugin.id}: ${r.reason}` };
 }
 
+/** The settings file a scope's enabledPlugins lives in (what `claude plugin enable|disable --scope` writes). */
+function settingsFileOf(p: PluginRef): string | null {
+  if (p.synced || !p.scope || p.scope === "user") return join(claudeDir(), "settings.json");
+  if (!p.projectPath) return null;
+  return join(p.projectPath, ".claude", p.scope === "local" ? "settings.local.json" : "settings.json");
+}
+
+/** Where a plugin is installed, for messages: "for you", "in web-app (project)". */
+function whereOf(p: PluginRef): string {
+  return p.projectPath ? ` in ${basename(p.projectPath)} (${p.scope})` : "";
+}
+
+/**
+ * Turns a plugin on or off where it's installed: `claude plugin enable|disable --scope`, run in
+ * its project for project and local installs. Synced plugins have no install, so their line in
+ * ~/.claude/settings.json is written directly; so is any install's when the CLI doesn't run.
+ */
+export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: string } {
+  const done = { ok: true, message: `${p.id} is ${on ? "on" : "off"}${whereOf(p)}${p.synced ? "" : "; Claude Code picks it up in its next session"}` };
+  if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}\` there` };
+  if (!p.synced && claudeBinary()) {
+    const r = claude(["plugin", on ? "enable" : "disable", p.id, ...(p.scope ? ["--scope", p.scope] : [])], p.projectPath);
+    return r.ok ? done : { ok: false, message: `${p.id}: ${r.reason}` };
+  }
+  const r = setPluginIn(settingsFileOf(p)!, p.id, on);
+  return r.ok ? done : { ok: false, message: `${p.id}: ${r.reason}` };
+}
+
+/**
+ * Uninstalls a plugin where it's installed, keeping its data (a reinstall brings it back as it
+ * was), and records it so Settings › Backups can reinstall it.
+ */
+export function uninstallPlugin(p: PluginRef): { ok: boolean; message: string } {
+  if (p.synced) return { ok: false, message: `${p.id} is synced from your claude.ai account: remove it there, or turn it off here` };
+  if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin uninstall ${p.id} --scope ${p.scope}\` there` };
+  const r = claude(["plugin", "uninstall", p.id, "--keep-data", "--scope", p.scope ?? "user"], p.projectPath);
+  if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}` };
+  recordRemovedPlugin(p.id, p.scope ?? "user", p.projectPath);
+  return { ok: true, message: `${p.id} is uninstalled${whereOf(p)} (Settings › Backups reinstalls it)` };
+}
+
+/**
+ * Updates a plugin from its marketplace. Never confirms for you: when the marketplace declares a
+ * command to run, `claude` stops and asks, and you run the update yourself.
+ */
+export function updatePlugin(p: PluginRef): { ok: boolean; message: string } {
+  if (p.synced) return { ok: false, message: `${p.id} is synced from your claude.ai account: it updates from there` };
+  const r = claude(["plugin", "update", p.id, ...(p.scope ? ["--scope", p.scope] : [])], p.projectPath);
+  return r.ok
+    ? { ok: true, message: `${p.id} is updated${whereOf(p)}; Claude Code uses the new version after a restart` }
+    : { ok: false, message: `${p.id}: ${r.reason}; to update it yourself, run \`claude plugin update ${p.id}\`${p.projectPath ? ` in ${p.projectPath}` : ""}` };
+}
+
 function removedFile(): string {
   return join(skilllibHome(), "plugin-backup.json");
 }
 
-type Removed = { id: string; scope: string; at: string };
+type Removed = { id: string; scope: string; projectPath?: string; at: string };
 
 /**
  * Keeps your skills and removes the plugin that duplicates them. Every skill
@@ -200,15 +381,15 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
     : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
-  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user");
+  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath);
   return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? "removed" : "turned off"}${saved}` };
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
-export function recordRemovedPlugin(id: string, scope: string) {
+export function recordRemovedPlugin(id: string, scope: string, projectPath?: string) {
   const list = readJson<Removed[]>(removedFile()) ?? [];
   mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, at: new Date().toISOString() }], null, 2) + "\n");
+  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, ...(projectPath ? { projectPath } : {}), at: new Date().toISOString() }], null, 2) + "\n");
 }
 
 /** Plugins skilllib removed, as Health backups. */
@@ -216,18 +397,22 @@ export function pluginBackups(): Backup[] {
   return (readJson<Removed[]>(removedFile()) ?? []).map((r) => ({
     name: r.id,
     kind: "plugin",
-    path: r.scope,
+    // Project and local installs go back into their project.
+    path: r.projectPath ? `${r.scope}:${r.projectPath}` : r.scope,
     movedAt: r.at.slice(0, 16).replace("T", " "),
     from: r.id,
   }));
 }
 
-/** Reinstalls a plugin skilllib removed. */
+/** Reinstalls a plugin skilllib removed, in its project for project and local installs. */
 export function restorePlugin(backup: Backup): { ok: true; to: string } | { ok: false; reason: string } {
-  const r = claude(["plugin", "install", backup.from, "--scope", backup.path]);
+  const [scope = "user", ...rest] = backup.path.split(":");
+  const projectPath = rest.join(":") || undefined;
+  const r = claude(["plugin", "install", backup.from, "--scope", scope], projectPath);
   if (!r.ok) return r;
-  writeFileSync(removedFile(), JSON.stringify((readJson<Removed[]>(removedFile()) ?? []).filter((x) => x.id !== backup.from), null, 2) + "\n");
-  return { ok: true, to: `Claude Code plugins (${backup.path})` };
+  const left = (readJson<Removed[]>(removedFile()) ?? []).filter((x) => !(x.id === backup.from && (x.projectPath ?? undefined) === projectPath && x.scope === scope));
+  writeFileSync(removedFile(), JSON.stringify(left, null, 2) + "\n");
+  return { ok: true, to: `Claude Code plugins (${scope}${projectPath ? ` in ${basename(projectPath)}` : ""})` };
 }
 
 /**

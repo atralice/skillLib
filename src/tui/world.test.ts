@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, agentSkillIssue, assignGroups, failed, isFailure, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
+import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
 
 const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
@@ -107,7 +107,7 @@ test("related skills group by source, then install time, then first word", () =>
 
 test("replacing a plugin: its skills join your library, grouped by the plugin", () => {
   const w = sampleWorld();
-  const fix = replacePluginFix(w, "vercel@claude-plugins-official");
+  const fix = replacePluginFix(w.plugins.find((p) => p.id === "vercel@claude-plugins-official")!);
   expect(fix.preview).toContain("Copies its 3 skills");
   expect(fix.preticked!(w)).toEqual(["web-app"]);
   fix.pickRepos!(w, []);
@@ -193,4 +193,30 @@ test("importing a repo's skill or tracking it writes to skilllib.json: your call
   const issue = (repo: string, name: string, id: string) => issuesOf(w, repo, usable(w, repo).find((u) => u.local && u.name === name)!).find((i) => i.id === `${id}:${name}`);
   expect(issue("docs-site", "mdx-tips", "adopt")!.decision).toBe(true);
   expect(issue("mobile-app", "pr-review", "local")!.decision).toBe(true);
+});
+
+test("plugin issues are always your call: fix-all never turns plugins on or off, or updates them", () => {
+  const w = sampleWorld();
+  const issues = w.plugins.flatMap((p) => pluginIssues(w, p).map((i) => [p.id, i.short, i.decision] as const));
+  expect(issues).toEqual([
+    ["vercel@claude-plugins-official", "Update to 0.51.0", true],
+    ["frontend-design@claude-plugins-official", "Repeats 1 of yours", true],
+    ["frontend-design@claude-plugins-official", "Unused 30 days", true],
+    ["stripe-tools@acme", "Repeats 1 of yours", true],
+    ["react-kit@cursor-public", "Repeats 1 of yours", true],
+  ]);
+  // Off plugins load nothing: no duplicates, nothing unused.
+  expect(pluginIssues(w, w.plugins.find((p) => p.id === "ponytail@ponytail")!)).toEqual([]);
+});
+
+test("turning a plugin off takes its skills out of what loads everywhere; on brings them back", () => {
+  const w = sampleWorld();
+  const vercel = () => w.plugins.find((p) => p.id === "vercel@claude-plugins-official")!;
+  const loaded = () => w.machine.filter((m) => m.where === "vercel@claude-plugins-official").map((m) => m.name);
+  expect(pluginSwitchFix(vercel(), false).preview).toContain("Runs claude plugin disable vercel@claude-plugins-official --scope user");
+  pluginSwitchFix(vercel(), false).run(w);
+  expect(vercel().on).toBe(false);
+  expect(loaded()).toEqual([]);
+  pluginSwitchFix(vercel(), true).run(w);
+  expect(loaded()).toEqual(["vercel-deploy", "vercel-env", "nextjs"]);
 });
