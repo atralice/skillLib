@@ -197,8 +197,8 @@ Defined in `src/tui/world.ts`: `issuesOf` for a repo's skills, `machineIssues` f
 | Repo | *Agent* can't see it | ⚠ | | Link it for every agent |
 | Repo | *Agent* can't see it: commit it first (only links into folders git tracks would help, and the copy isn't committed) | ⚠ | yes | none (reported only) |
 | Repo | Differs from library | · | yes | Update your library from this copy · Replace it with the library version |
-| Repo | Not tracked | · | | Track it |
-| Repo | Only in this repo | · | | Import it into your library |
+| Repo | Not tracked | · | yes | Track it |
+| Repo | Only in this repo | · | yes | Import it into your library |
 | Repo | Unused 30 days | · | yes | Remove it from this repo |
 | Global | Broken link | ✕ | | Remove the link |
 | Global | Loaded twice (also from a plugin, claude.ai or Cursor) | ✕ | yes | Keep that copy, stop loading yours globally |

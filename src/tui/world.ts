@@ -626,7 +626,8 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "hint",
       title: "Same as your library skill, but not tracked",
       short: "Not tracked",
-      decision: false,
+      // It writes to the repo's skilllib.json (and your library): your call, never in Fix all (as in doctor, #11).
+      decision: true,
       fixes: [{ label: "Track it", preview: `Record ${s.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(projectName, s.name) }],
     });
   if (s.source === "untracked" && !l && !vendor && !differ)
@@ -635,7 +636,8 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       severity: "hint",
       title: "Only exists in this repo",
       short: "Only in this repo",
-      decision: false,
+      // It writes to the repo's skilllib.json (and your library): your call, never in Fix all (as in doctor, #11).
+      decision: true,
       fixes: [
         {
           label: "Import it into your library",

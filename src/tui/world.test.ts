@@ -187,3 +187,10 @@ test("fix all says what it held back and why, and what failed", () => {
   expect(isFailure(bad)).toBe(true);
   expect(said(bad)).toBe("Applied 0 of 2 fixes · couldn't: y: nope; x: gone");
 });
+
+test("importing a repo's skill or tracking it writes to skilllib.json: your call, never in fix all (#49)", () => {
+  const w = sampleWorld();
+  const issue = (repo: string, name: string, id: string) => issuesOf(w, repo, usable(w, repo).find((u) => u.local && u.name === name)!).find((i) => i.id === `${id}:${name}`);
+  expect(issue("docs-site", "mdx-tips", "adopt")!.decision).toBe(true);
+  expect(issue("mobile-app", "pr-review", "local")!.decision).toBe(true);
+});
