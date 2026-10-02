@@ -9,7 +9,6 @@
  * `satisfies`, so they can't drift from what the CLI prints.
  */
 import type { AgentSkillState } from "./agentSkill.js";
-import type { Issue } from "./health.js";
 import type { Library } from "./here.js";
 import type { Change, SkillState } from "./library.js";
 
@@ -72,14 +71,18 @@ export type ImportJson = {
 }[];
 
 /** `skilllib doctor [--fix] --json` */
-export type DoctorJson = (Pick<Issue, "id" | "severity" | "title" | "detail"> & {
+export type DoctorJson = {
+  id: string;
+  severity: "problem" | "suggestion";
+  title: string;
+  detail: string;
   /** A safe repair; `doctor --fix` runs it. */
   fix?: string;
   /** Fixes that need a decision (skilllib → Health). */
   choices?: string[];
   /** With --fix: what running `fix` did. */
   fixed?: { ok: boolean; message: string };
-})[];
+}[];
 
 /** `skilllib usage [--days N] --json` */
 export type UsageJson = {
