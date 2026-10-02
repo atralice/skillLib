@@ -1,5 +1,18 @@
 import { resolve, sep } from "node:path";
 import { realPath, userHome } from "./paths.js";
+import type {
+  AgentSkillJson,
+  AllChangesJson,
+  ChangesJson,
+  DoctorJson,
+  ImportJson,
+  ListJson,
+  OutdatedJson,
+  ProjectsJson,
+  ShowJson,
+  StatusJson,
+  UsageJson,
+} from "./json.js";
 
 let jsonMode = false;
 
@@ -11,8 +24,28 @@ export function setJsonMode(on: boolean) {
   jsonMode = on;
 }
 
-/** Prints `data` as the command's JSON result, on one line: agents pay for every token. */
-export function json(data: unknown) {
+/** What each command prints with --json: the public types in json.ts. */
+type JsonOutputs = {
+  status: StatusJson;
+  list: ListJson;
+  show: ShowJson;
+  projects: ProjectsJson;
+  /** add, remove, and sync or update in one project */
+  changes: ChangesJson;
+  /** sync --all, update --all */
+  "changes --all": AllChangesJson;
+  outdated: OutdatedJson;
+  import: ImportJson;
+  doctor: DoctorJson;
+  usage: UsageJson;
+  "agent-skill": AgentSkillJson;
+};
+
+/**
+ * Prints `data` as the command's JSON result, on one line: agents pay for every token.
+ * `output` names its published type, so every --json result is checked against it.
+ */
+export function json<K extends keyof JsonOutputs>(output: K, data: JsonOutputs[K]) {
   process.stdout.write(JSON.stringify(data) + "\n");
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "skilllib",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Manage your agent skills like dependencies. One library for all your skills; each repo gets only the ones it needs, and every agent can see them. Works with Claude Code, Cursor, Codex and Zed.",
   "keywords": [
     "agent-skills",
@@ -30,6 +30,18 @@
   "bin": {
     "skilllib": "dist/index.js"
   },
+  "types": "./dist/json.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/json.d.ts"
+      },
+      "require": {
+        "types": "./dist/json.d.cts"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "skills",
@@ -37,7 +49,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target node22 --clean",
+    "build": "tsup src/index.ts --format esm --target node22 --clean && tsup src/json.ts --dts-only --format esm,cjs",
     "dev": "tsx src/index.ts",
     "design": "tsx src/tui/design.ts",
     "type-check": "tsc --noEmit",

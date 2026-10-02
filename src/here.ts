@@ -1,73 +1,13 @@
 import { readdirSync } from "node:fs";
 import { basename } from "node:path";
-import { librarySkills, nestedSkills, projectStatus, type ProjectSkill, type SkillState } from "./library.js";
+import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
-import { gitInfo, relativeTo, type GitState } from "./git.js";
-import type { HarnessId } from "./harnesses.js";
+import { gitInfo, relativeTo } from "./git.js";
 import { projectHere, readManifest } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
 import { findIssues } from "./health.js";
-
-/*
- * What agents read (`status --json`, `list --json`). Agents pay for every
- * token, so the shapes are compact: skills that share every attribute are
- * grouped (one entry for a repo's 60 committed skills), attributes at their
- * usual value are left out, and descriptions only appear where they're needed
- * to choose (the library).
- */
-
-/**
- * - library: added from your skills with skilllib (pinned in skilllib.json)
- * - repo:    the team's: committed to git (any skill folder), or in .agents/skills
- * - local:   only on this machine: not committed, not managed by skilllib
- */
-export type ProjectSource = "library" | "repo" | "local";
-
-/** The repo's own skills (or its subfolders') that share every attribute. */
-export type HereGroup = {
-  source: ProjectSource;
-  skills: string[];
-  /** Folder with the real copy, when it isn't .claude/skills. */
-  dir?: string;
-  version?: number;
-  /** Only when it isn't "ok". */
-  state?: SkillState;
-  /** Newer library version, when there is one. */
-  latest?: number;
-  git?: GitState;
-  /** Only when some of your agents don't load it here. */
-  agents?: HarnessId[];
-};
-
-export type GlobalGroup = {
-  source: SourceKind;
-  /** e.g. "railway@claude-plugins-official", "vercel-labs/agent-skills", "~/.claude/skills". */
-  from: string;
-  agents: HarnessId[];
-  skills: string[];
-};
-
-/**
- * Problems skilllib found here or in your global skills that share a cause and remedy: a `fix` is a
- * safe repair (`skilllib doctor --fix` runs it); `choices` need the user to decide (skilllib → Health).
- */
-export type HereIssue = { problems: string[]; detail: string; fix?: string; choices?: string[] };
-
-export type Here = {
-  project: string;
-  /** The repo's top-level files and folders (folders end in "/"), so an agent can read the right ones in one step. */
-  files: string[];
-  agents: HarnessId[];
-  skills: HereGroup[];
-  /** Skills in subfolders (monorepo packages), always with their `dir`: agents load them only when they work there. */
-  nested?: HereGroup[];
-  /** Skills that load in every repo, as this one loads them (its .claude/settings can turn a plugin on or off). */
-  global: GlobalGroup[];
-  issues: HereIssue[];
-  /** Claude Code uses in this repo per skill, when there were any. */
-  usesHere?: Record<string, number>;
-};
+import type { ListJson, StatusGlobalGroup, StatusIssue, StatusJson, StatusSkillGroup } from "./json.js";
 
 /** Groups items by a key, collecting names. */
 function groupBy<T extends { skills: string[] }>(items: [key: string, name: string, make: () => T][]): T[] {
@@ -104,7 +44,7 @@ function topLevel(root: string): string[] {
 }
 
 /** Every skill your agents can use in `root`: the repo's own, its subfolders', then global ones grouped by source. */
-export function usableHere(root: string, uses: Map<string, number> = new Map()): Here {
+export function usableHere(root: string, uses: Map<string, number> = new Map()): StatusJson {
   const agents = enabledHarnesses();
   // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills,
   // and subfolders are just folders.
@@ -113,7 +53,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   const nestedHere = inRepo ? nestedSkills(root, { enabled: agents }) : [];
   const git = gitInfo(root, [...new Set(nestedHere.map((s) => s.location))]);
   const group = (list: ProjectSkill[]) =>
-    groupBy<HereGroup>(
+    groupBy<StatusSkillGroup>(
       list.map((s) => {
         const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
         const behind = s.managed && s.latest !== null && s.version !== null && s.latest > s.version;
@@ -121,14 +61,15 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         // A copy git tracks is the team's wherever it lives (.claude/skills too), as the TUI shows it.
         const repo = !s.managed && (s.state.startsWith("repo skill") || gitState === "committed" || gitState === "changed");
         const usual = s.state === "ok" || s.state === "local only" || (repo && s.state !== "from npx skills");
-        const attrs = {
-          source: (s.managed ? "library" : repo ? "repo" : "local") as ProjectSource,
-          ...(s.location !== ".claude/skills" && { dir: s.location }),
-          ...(s.version !== null && { version: s.version }),
-          ...(!usual && { state: s.state }),
-          ...(behind && { latest: s.latest! }),
-          ...(gitState && { git: gitState }),
-          ...(!sameSet(loadedBy, agents) && { agents: loadedBy }),
+        // Left out at their usual value: JSON.stringify drops undefined (as a spread would), and tsc checks each name.
+        const attrs: Omit<StatusSkillGroup, "skills"> = {
+          source: s.managed ? "library" : repo ? "repo" : "local",
+          dir: s.location !== ".claude/skills" ? s.location : undefined,
+          version: s.version ?? undefined,
+          state: usual ? undefined : s.state,
+          latest: behind ? s.latest! : undefined,
+          git: gitState,
+          agents: sameSet(loadedBy, agents) ? undefined : loadedBy,
         };
         return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];
       }),
@@ -140,7 +81,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   // As this repo loads them: its .claude/settings(.local).json can turn a plugin on or off just here.
   // (findIssues takes the machine's skills and applies the repo's settings itself.)
   const loaded = inRepo ? skillsLoadedIn(root, machine, agents) : machine;
-  const global = groupBy<GlobalGroup>(
+  const global = groupBy<StatusGlobalGroup>(
     loaded
       .filter((m) => !m.broken && m.harnesses.length > 0)
       .map((m) => {
@@ -148,11 +89,11 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         return [`${m.kind}\0${from}\0${m.harnesses.join()}`, m.name, () => ({ source: m.kind, from, agents: m.harnesses, skills: [] })];
       }),
   );
-  const issues = new Map<string, HereIssue>();
+  const issues = new Map<string, StatusIssue>();
   for (const i of findIssues(inRepo ? [root] : [], machine, new Set(librarySkills().map((l) => l.name)))) {
     const choices = i.choices?.map((c) => c.label);
     const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
-    const issue = issues.get(key) ?? { problems: [], detail: i.detail, ...(i.fix && { fix: i.fix.label }), ...(choices && { choices }) };
+    const issue = issues.get(key) ?? { problems: [], detail: i.detail, fix: i.fix?.label, choices };
     issue.problems.push(i.title);
     issues.set(key, issue);
   }
@@ -162,19 +103,12 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
     files: topLevel(root),
     agents,
     skills,
-    ...(nested.length > 0 && { nested }),
+    nested: nested.length > 0 ? nested : undefined,
     global,
     issues: [...issues.values()],
-    ...(Object.keys(usesHere).length > 0 && { usesHere }),
+    usesHere: Object.keys(usesHere).length > 0 ? usesHere : undefined,
   };
 }
-
-export type Library = {
-  /** Library skills the current project already has (names only). */
-  inThisProject?: string[];
-  /** The rest, with what's needed to choose: description, and the projects that use it. */
-  skills: { name: string; description: string; projects?: string[] }[];
-};
 
 /** The first sentence of a description, at most 200 characters: enough to choose; `show` has the rest. */
 export function firstSentence(description: string): string {
@@ -184,13 +118,13 @@ export function firstSentence(description: string): string {
 }
 
 /** Your library; inside a project, split into what it has and what it could add. */
-export function libraryFor(currentProject: string | null): Library {
+export function libraryFor(currentProject: string | null): ListJson {
   const manifests = visibleProjects().map((p) => ({ name: basename(p), skills: readManifest(p).skills }));
   const here = currentProject ? new Set(projectStatus(currentProject).map((s) => s.name)) : null;
   const all = librarySkills();
-  const describe = (s: (typeof all)[number]) => {
+  const describe = (s: (typeof all)[number]): ListJson["skills"][number] => {
     const projects = manifests.filter((m) => s.name in m.skills).map((m) => m.name);
-    return { name: s.name, description: firstSentence(s.description), ...(projects.length > 0 && { projects }) };
+    return { name: s.name, description: firstSentence(s.description), projects: projects.length > 0 ? projects : undefined };
   };
   if (!here) return { skills: all.map(describe) };
   return { inThisProject: all.filter((s) => here.has(s.name)).map((s) => s.name), skills: all.filter((s) => !here.has(s.name)).map(describe) };

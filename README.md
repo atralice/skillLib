@@ -389,6 +389,17 @@ A command exits 1 when it couldn't do all you asked: a skill skipped (not in the
 
 The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so an agent usually answers "which skills can you use here?" in one step.
 
+**TypeScript types.** The package ships a type for each command's JSON (`StatusJson`, `ListJson`, `ChangesJson`, `DoctorJson`…). It has types only, no runtime API:
+
+```ts
+import { execFileSync } from "node:child_process";
+import type { StatusJson } from "skilllib";
+
+const status: StatusJson = JSON.parse(execFileSync("skilllib", ["status", "--json"], { encoding: "utf-8" }));
+```
+
+A field is only removed or changed in a major version.
+
 ## Files
 
 | Path | What |
@@ -436,7 +447,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.8.0 && git push --tags
+   git tag v1.9.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.
