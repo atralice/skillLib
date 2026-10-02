@@ -236,9 +236,9 @@ export function claudeBinary(): string | null {
  * for it, so switching and uninstalling get 20 seconds; installs and updates download, and get 2 minutes.
  */
 function claude(args: string[], cwd?: string, bin = claudeBinary()): { ok: true } | { ok: false; reason: string } {
-  if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
-  // A project install whose folder is gone: say so, rather than a spawn error that reads like a missing CLI.
+  // A project install whose folder is gone: say so first, rather than a spawn error that reads like a missing CLI.
   if (cwd && !existsSync(cwd)) return { ok: false, reason: `${cwd} no longer exists; run \`claude ${args.join(" ")}\` in the project's new folder, or remove the install with /plugin` };
+  if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
   const slow = args[1] === "install" || args[1] === "update";
   try {
     execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: slow ? 120_000 : 20_000, encoding: "utf-8" });

@@ -372,10 +372,10 @@ test("a synced plugin can't be uninstalled or updated from here", () => {
 
 test("a project install whose folder is gone says so instead of a spawn error", () => {
   const web = installs();
-  fakeClaude();
   const c = installedPlugins().find((p) => p.id === "c@mk")!;
   rmSync(web, { recursive: true, force: true });
-  withPath("/usr/bin:/bin", () => {
+  // Checked before looking for the CLI, so the message is right with or without it (and on Windows).
+  withPath(join(tmp, "empty"), () => {
     const r = uninstallPlugin(c);
     expect(r.ok).toBe(false);
     expect(r.message).toContain(`${web} no longer exists`);
