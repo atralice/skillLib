@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { findIssues, runFix } from "./health.js";
 import { addSkill, importSkill } from "./library.js";
-import { installedPlugins, pluginBackups, removePlugin, restorePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin } from "./plugins.js";
+import { claudeBinary, forgetClaudeBinary, installedPlugins, pluginBackups, removePlugin, restorePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin } from "./plugins.js";
 import { machineSkills, skillsLoadedIn } from "./sources.js";
 
 let tmp: string;
@@ -368,4 +368,46 @@ test("a synced plugin can't be uninstalled or updated from here", () => {
   const rail = installedPlugins().find((p) => p.synced)!;
   expect(uninstallPlugin(rail).ok).toBe(false);
   expect(updatePlugin(rail).ok).toBe(false);
+});
+
+test("a project install whose folder is gone says so instead of a spawn error", () => {
+  const web = installs();
+  fakeClaude();
+  const c = installedPlugins().find((p) => p.id === "c@mk")!;
+  rmSync(web, { recursive: true, force: true });
+  withPath("/usr/bin:/bin", () => {
+    const r = uninstallPlugin(c);
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain(`${web} no longer exists`);
+  });
+});
+
+test("a marketplace version written as v1.2.0 is compared as 1.2.0", () => {
+  installs();
+  const catalog = join(tmp, ".claude", "plugins", "marketplaces", "mk", ".claude-plugin", "marketplace.json");
+  writeFileSync(catalog, JSON.stringify({ plugins: [{ name: "a", version: "v1.2.0" }] }));
+  expect(installedPlugins().find((p) => p.id === "a@mk")!.update).toBe("v1.2.0");
+  writeFileSync(catalog, JSON.stringify({ plugins: [{ name: "a", version: "v0.9.0" }] }));
+  expect(installedPlugins().find((p) => p.id === "a@mk")!.update).toBeUndefined();
+});
+
+test("a plugin turned on only in your settings is switched in your settings, even with the claude command", () => {
+  installs();
+  fakeClaude();
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "solo", "skills", "tidy"));
+  const settings = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { ...settings.enabledPlugins, "solo@solo": true } }));
+  withPath("/usr/bin:/bin", () => expect(setPluginOn(installedPlugins().find((p) => p.id === "solo@solo")!, false).ok).toBe(true));
+  expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins["solo@solo"]).toBe(false);
+  expect(existsSync(join(tmp, "calls"))).toBe(false);
+});
+
+test.skipIf(process.platform === "win32")("the claude command is looked for again after forgetClaudeBinary", () => {
+  withPath("/usr/bin:/bin", () => {
+    expect(claudeBinary()).toBeNull();
+    fakeClaude();
+    expect(claudeBinary()).toBeNull();
+    forgetClaudeBinary();
+    expect(claudeBinary()).toBe(join(tmp, ".local", "bin", "claude"));
+  });
 });

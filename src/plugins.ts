@@ -95,8 +95,10 @@ type InstallEntry = { scope?: string; projectPath?: string; installPath?: string
 
 /** "1.10.0" > "1.9.2": compares the numbers in each part. */
 function newer(a: string, b: string): boolean {
-  const pa = a.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
-  const pb = b.split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+  // "v1.2.0" is 1.2.0.
+  const parts = (v: string) => v.replace(/^v/i, "").split(/[.+-]/).map((x) => parseInt(x, 10) || 0);
+  const pa = parts(a);
+  const pb = parts(b);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
   return false;
 }
@@ -202,6 +204,11 @@ export function cursorPlugins(): InstalledPlugin[] {
 /** claudeBinary's answer per PATH and home: finding it spawns `claude --version`, which is slow. */
 const binaries = new Map<string, string | null>();
 
+/** Looks for the CLI again next time (on reload): it may have been installed or fixed since. */
+export function forgetClaudeBinary() {
+  binaries.clear();
+}
+
 /**
  * The Claude Code CLI to run: `claude` on PATH if it works, else the native
  * installer's ~/.local/bin/claude (or the older ~/.claude/local/claude).
@@ -230,6 +237,8 @@ export function claudeBinary(): string | null {
  */
 function claude(args: string[], cwd?: string, bin = claudeBinary()): { ok: true } | { ok: false; reason: string } {
   if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
+  // A project install whose folder is gone: say so, rather than a spawn error that reads like a missing CLI.
+  if (cwd && !existsSync(cwd)) return { ok: false, reason: `${cwd} no longer exists; run \`claude ${args.join(" ")}\` in the project's new folder, or remove the install with /plugin` };
   const slow = args[1] === "install" || args[1] === "update";
   try {
     execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: slow ? 120_000 : 20_000, encoding: "utf-8" });
@@ -324,7 +333,8 @@ function whereOf(p: PluginRef): string {
 export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: string } {
   const done = { ok: true, message: `${p.id} is ${on ? "on" : "off"}${whereOf(p)}${p.synced ? "" : "; Claude Code picks it up in its next session"}` };
   if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}\` there` };
-  const bin = p.synced ? null : claudeBinary();
+  // Synced plugins aren't installed, and neither is one only turned on in your settings: `claude plugin` can't switch them.
+  const bin = p.synced || p.settingsOnly ? null : claudeBinary();
   if (bin) {
     const r = claude(["plugin", on ? "enable" : "disable", p.id, ...(p.scope ? ["--scope", p.scope] : [])], p.projectPath, bin);
     return r.ok ? done : { ok: false, message: `${p.id}: ${r.reason}` };

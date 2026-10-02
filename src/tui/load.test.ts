@@ -306,6 +306,34 @@ test("replacing a plugin keeps the origin of a skill you already had", () => {
   expect(loadWorld().library.map((l) => `${l.name}:${l.origin}`).sort()).toEqual(["fmt:skills.sh: me/tools", "lint:plugin: tools@mk"]);
 });
 
+test.skipIf(process.platform === "win32")("a plugin only turned on in your settings is turned off by Replace, never sent to `claude plugin`", () => {
+  fakePlugin();
+  // No install record: Claude Code loads it from its marketplace's copy.
+  rmSync(join(tmp, ".claude", "plugins", "installed_plugins.json"));
+  const w = loadWorld();
+  const p = w.plugins.find((x) => x.id === "tools@mk")!;
+  expect(p.settingsOnly).toBe(true);
+  expect(replacePluginFix(p).preview).toContain("It isn't installed, only turned on there, so there's nothing to uninstall.");
+  withClaude(true, () => expect(replacePluginFix(p).pickRepos!(w, [])).toBe("2 skills from tools@mk are in your library; tools@mk is off (it was only turned on in your settings, so there's nothing to uninstall)"));
+  expect(existsSync(join(tmp, "claude-args"))).toBe(false);
+  expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "tools@mk": false });
+});
+
+test.skipIf(process.platform === "win32")("when uninstalling fails, Replace turns the plugin off and says why", () => {
+  fakePlugin();
+  const w = loadWorld();
+  const bin = join(tmp, "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "claude"), `#!/bin/sh\n[ "$1" = --version ] && echo "2.1 (Claude Code)" && exit 0\n[ "$2" = uninstall ] && echo "plugin is busy" >&2 && exit 1\nexit 0\n`, { mode: 0o755 });
+  const path = process.env.PATH;
+  process.env.PATH = bin;
+  try {
+    expect(replacePluginFix(w.plugins.find((x) => x.id === "tools@mk")!).pickRepos!(w, [])).toContain("tools@mk is off (uninstalling failed: plugin is busy");
+  } finally {
+    process.env.PATH = path;
+  }
+});
+
 test("without the claude command, a replaced plugin is at least turned off", () => {
   fakePlugin();
   const w = loadWorld();
@@ -322,7 +350,7 @@ test("a plugin synced from claude.ai is copied in and turned off (it can't be un
   const fix = replacePluginFix(w.plugins.find((p) => p.id === id)!);
   expect(fix.preview).toContain("then turns rail@synced off in Claude Code. It's synced from your claude.ai account");
   // Without the claude command: the same setting `claude plugin disable` writes.
-  withClaude(false, () => expect(fix.pickRepos!(w, [])).toContain("rail@synced is off (the claude command isn't on your PATH) (it's synced from claude.ai"));
+  withClaude(false, () => expect(fix.pickRepos!(w, [])).toContain("rail@synced is off (it's synced from claude.ai: remove it there to delete it for good)"));
   expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "rail@synced": false });
   w = loadWorld();
   expect(w.library.map((l) => l.name)).toEqual(["deploy"]);

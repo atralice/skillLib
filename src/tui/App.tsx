@@ -536,10 +536,10 @@ const pluginW = (nameW: number) => Math.min(nameW, 17);
 const STATE: Record<string, Seg> = { on: ["on", color.green], off: ["off", color.faint], unknown: ["?", color.faint] };
 
 /** Plugins: one row per install, on or off, with what it brings and how much its skills get used. */
-function pluginItems(w: W.World, skillW: number, ui: Ui): Item[] {
+function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W.Issue[]>): Item[] {
   const nameW = pluginW(skillW);
   return w.plugins.map((p): Item => {
-    const issues = W.pluginIssues(w, p);
+    const issues = issuesOf.get(p.key) ?? [];
     const top = W.worst(issues);
     const cursor = p.agent === "cursor";
     const uses = cursor ? 0 : W.pluginUses(w, p);
@@ -667,6 +667,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     copy: (text, what) => setToast(said(world.ops.copy(text, what))),
     menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
   };
+  // Each plugin's issues, once per render: the sidebar's count and the Plugins list both need them.
+  const pluginIssues = new Map(world.plugins.map((p) => [p.key, W.pluginIssues(world, p)]));
   // Health's count (skills with something to fix, per repo and in Global), without building its rows.
   const flagged = [
     ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
@@ -686,7 +688,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         : place === "library"
           ? libraryItems(world, nameW, ui)
           : place === "plugins"
-            ? pluginItems(world, nameW, ui)
+            ? pluginItems(world, nameW, ui, pluginIssues)
           : place === "health"
             ? healthItems(world, nameW, ui)
             : settingsItems();
@@ -1222,7 +1224,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
   // Plugins' count turns yellow when one repeats your skills; hints (unused, updates) don't color it.
-  const pluginsWorst = W.worst(world.plugins.flatMap((p) => W.pluginIssues(world, p)).filter((i) => i.severity !== "hint"));
+  const pluginsWorst = W.worst([...pluginIssues.values()].flat().filter((i) => i.severity !== "hint"));
 
   /** The sidebar: places, then every repo. Moving onto a row opens it. */
   // Like Global's count: skills with something to fix, marked by the worst of them.

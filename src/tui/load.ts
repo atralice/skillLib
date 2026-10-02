@@ -46,6 +46,7 @@ import {
   claudePlugins,
   cursorPlugins,
   cursorPluginSkills,
+  forgetClaudeBinary,
   installedPlugins,
   pluginBackups,
   restorePlugin,
@@ -60,7 +61,7 @@ import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type Sourc
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import { failed, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type RepoInfo, type Result, type World } from "./world.js";
+import { failed, followUp, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type RepoInfo, type Result, type World } from "./world.js";
 import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
@@ -187,6 +188,7 @@ function dupesOf(r: TidyReport, root: string | null, git: GitInfo | null = null)
 /** Everything on disk the screens show, except usage. */
 export function loadWorld(): World {
   forgetLatest();
+  forgetClaudeBinary();
   const agents = enabledHarnesses();
   const here = projectHere();
   // The same repo can come as two paths (a symlinked folder, /var vs /private/var): match by real path.
@@ -336,6 +338,10 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   /** Library skills into repos; links git-tracked folders held back are asked about once, for all of them. */
   const addTo = (repos: string[], names: string[]): Result => {
     if (repos.length === 1 && names.length === 1) return withLinks(addSkill(rootOf(repos[0]!), names[0]!), repos[0]!, names[0]!);
+    return addMany(repos, names).result;
+  };
+  /** addTo's work, with what it couldn't add and the links it held back, for callers that need them apart. */
+  const addMany = (repos: string[], names: string[]): { result: Result; skipped: string[]; notes: string[] } => {
     const changes = repos.flatMap((repo) => names.map((name) => ({ repo, name, c: addSkill(rootOf(repo), name) })));
     const done = changes.filter((x) => x.c.action !== "skipped");
     const added = [...new Set(done.map((x) => x.name))];
@@ -355,9 +361,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     const skipped = changes.filter((x) => x.c.action === "skipped").map((x) => `${x.name} not added to ${x.repo}: ${x.c.reason}`);
     const text = [summary, ...notes, ...skipped].filter(Boolean).join("; ");
     const held = done.flatMap((x) => (x.c.blocked?.length ? [{ repo: x.repo, name: x.name, blocked: x.c.blocked }] : []));
-    if (!done.length) return failed(text);
-    if (held.length) return { message: text, then: allowTracked(held) };
-    return skipped.length ? failed(text) : text;
+    const result: Result = !done.length ? failed(text) : held.length ? { message: text, then: allowTracked(held) } : skipped.length ? failed(text) : text;
+    return { result, skipped, notes };
   };
   /** Asks to add the links git-tracked folders held back: skills by repo, with the folders each one missed. */
   const allowTracked = (held: { repo: string; name: string; blocked: string[] }[]): Fix => {
@@ -560,26 +565,31 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       if (clashes.length) return failed(`${id} kept: your library has different ${clashes.join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
       // Skills you already had keep the origin they have.
       for (const r of imported) if (r.status !== "unchanged") recordOrigin(r.name, `plugin: ${id}`);
-      const skipped = repos.flatMap((r) => p.skills.flatMap((s) => {
-        const c = addSkill(rootOf(r), s.name);
-        return c.action === "skipped" ? [`${s.name} in ${r} (${c.reason})`] : [];
-      }));
+      // Adding them asks about links git-tracked folders held back, as Add to repos does.
+      const added = repos.length ? addMany(repos, p.skills.map((s) => s.name)) : { result: "", skipped: [], notes: [] };
       // Only remove the plugin once every repo you picked has its skills.
-      if (skipped.length) return failed(`${id} kept: not added ${skipped.join(", ")}`);
+      if (added.skipped.length) return failed(`${id} kept: ${added.skipped.join("; ")}`);
       const n = p.skills.length;
       const copied = `${n} skill${n === 1 ? " from " + id + " is" : "s from " + id + " are"} in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}`;
+      const notes = added.notes.length ? `; ${added.notes.join("; ")}` : "";
+      const then = followUp(added.result);
+      const done = (message: string): Result => (then ? { message: message + notes, then } : message + notes);
       // Claude Code does the removing, where the plugin is installed: uninstall (keeping its data, so a
-      // reinstall brings it back as it was), or, when it can't (synced from claude.ai, no claude command), turn it off.
+      // reinstall brings it back as it was), or, when it can't (synced from claude.ai, only turned on in
+      // your settings, no claude command), turn it off.
       const ref = refOf(p);
       const bin = claudeBinary();
-      if (bin && !ref.synced) {
+      let uninstallFailed = "";
+      if (bin && !ref.synced && !ref.settingsOnly) {
         const r = uninstallPlugin(ref);
-        if (r.ok) return `${copied}; ${r.message}`;
+        if (r.ok) return done(`${copied}; ${r.message}`);
+        uninstallFailed = ` (uninstalling failed: ${r.message.replace(`${id}: `, "")})`;
       }
       const off = setPluginOn(ref, false);
-      if (!off.ok) return failed(`${copied}; couldn't turn ${id} off (${off.message}): turn it off with /plugin`);
-      const why = bin ? "" : " (the claude command isn't on your PATH)";
-      return ref.synced ? `${copied}; ${id} is off${why} (it's synced from claude.ai: remove it there to delete it for good)` : `${copied}; ${id} is off${why}: finish with /plugin uninstall ${id}`;
+      if (!off.ok) return failed(`${copied}; couldn't turn ${id} off (${off.message}): turn it off with /plugin${notes}`);
+      if (ref.synced) return done(`${copied}; ${id} is off (it's synced from claude.ai: remove it there to delete it for good)`);
+      if (ref.settingsOnly) return done(`${copied}; ${id} is off (it was only turned on in your settings, so there's nothing to uninstall)`);
+      return done(`${copied}; ${id} is off${bin ? uninstallFailed : " (the claude command isn't on your PATH)"}: finish with /plugin uninstall ${id}`);
     },
     setPlugin: (p, on) => {
       const r = setPluginOn(refOf(p), on);

@@ -239,3 +239,15 @@ test("a plugin only turned on in your settings can be turned off, not uninstalle
   const p = { ...w.plugins.find((x) => x.id === "frontend-design@claude-plugins-official")!, settingsOnly: true as const };
   expect(pluginIssues(w, p).find((i) => i.short === "Unused 30 days")!.fixes.map((f) => f.label)).toEqual(["Turn it off"]);
 });
+
+test("a plugin installed for one repo only repeats what loads in that repo", () => {
+  const w = sampleWorld();
+  const stripe = w.plugins.find((p) => p.id === "stripe-tools@acme")!;
+  // api-server has stripe-payments: the plugin repeats it there.
+  expect(pluginIssues(w, stripe).map((i) => i.short)).toContain("Repeats 1 of yours");
+  // Without it there or globally, your library copy loads nowhere the plugin does.
+  const api = w.projects.find((p) => p.name === "api-server")!;
+  api.skills = api.skills.filter((s) => s.name !== "stripe-payments");
+  w.machine = w.machine.filter((m) => !(m.source === "global" && m.name === "stripe-payments"));
+  expect(pluginIssues(w, stripe).map((i) => i.short)).not.toContain("Repeats 1 of yours");
+});

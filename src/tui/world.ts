@@ -826,17 +826,21 @@ export function pluginScope(p: Plugin): string {
  */
 export function replacePluginFix(p: Plugin): Fix {
   const names = p.skills.map((s) => s.name);
-  // Marketplace plugins can be uninstalled; ones synced from claude.ai ("name@synced") only turned off here.
+  // Marketplace plugins can be uninstalled; ones synced from claude.ai ("name@synced"), or only turned on
+  // in your settings (not installed), are only turned off.
   const synced = p.scope === "claude.ai";
+  const offOnly = synced || !!p.settingsOnly;
   return {
     label: `Replace ${pluginName(p)} with library skills…`,
     preview: [
       `Copies its ${plural(names.length, "skill")} into your library and adds them to the repos you tick (or none),`,
       synced
         ? `then turns ${p.id} off in Claude Code. It's synced from your claude.ai account: to delete it for good, remove it there.`
-        : `then uninstalls ${p.id}${p.repo ? ` from ${p.repo}` : ""} (its saved data is kept).`,
-      p.parts.length ? `It also brings ${p.parts.join(", ")}: those ${synced ? "stop" : "go"} too.` : "",
-      synced ? "Turn it back on from Plugins." : "Settings › Backups reinstalls it.",
+        : p.settingsOnly
+          ? `then turns ${p.id} off in ~/.claude/settings.json. It isn't installed, only turned on there, so there's nothing to uninstall.`
+          : `then uninstalls ${p.id}${p.repo ? ` from ${p.repo}` : ""} (its saved data is kept).`,
+      p.parts.length ? `It also brings ${p.parts.join(", ")}: those ${offOnly ? "stop" : "go"} too.` : "",
+      offOnly ? "Turn it back on from Plugins." : "Settings › Backups reinstalls it.",
     ]
       .filter(Boolean)
       .join(" "),
@@ -888,9 +892,11 @@ export function updatePluginFix(p: Plugin): Fix {
  * code that runs in your sessions, so "fix all" never does it.
  */
 export function pluginIssues(w: World, p: Plugin): Issue[] {
+  const library = new Set(w.library.map((l) => l.name));
+  const global = new Set(w.machine.filter((m) => m.source === "global" && !m.broken).map((m) => m.name));
   if (p.agent === "cursor") {
     // Cursor's plugin state can't be read: say which skills it repeats, and leave it to you.
-    const dupes = p.skills.filter((s) => w.library.some((l) => l.name === s.name) || w.machine.some((m) => m.source === "global" && m.name === s.name));
+    const dupes = p.skills.filter((s) => library.has(s.name) || global.has(s.name));
     return dupes.length
       ? [
           {
@@ -906,7 +912,10 @@ export function pluginIssues(w: World, p: Plugin): Issue[] {
   }
   const issues: Issue[] = [];
   if (p.on) {
-    const yours = (n: string) => w.library.some((l) => l.name === n) || w.machine.some((m) => m.source === "global" && m.name === n && !m.broken);
+    // Installed for one repo, it only repeats what loads there: that repo's skills, or your global ones.
+    const repo = p.repo ? w.projects.find((x) => x.name === p.repo) : undefined;
+    const here = repo ? new Set(repo.skills.map((s) => s.name)) : undefined;
+    const yours = (n: string) => global.has(n) || (p.repo ? !!here?.has(n) : library.has(n));
     const dupes = p.skills.filter((s) => yours(s.name));
     if (dupes.length)
       issues.push({
