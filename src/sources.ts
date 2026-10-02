@@ -4,6 +4,7 @@ import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
 import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
+import { tildify as homeRelative } from "./output.js";
 
 /**
  * Where a skill Claude Code can load comes from.
@@ -152,8 +153,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
 
 /** Home-relative path for labels, always with "/" so it reads the same on every OS. */
 function tildify(p: string): string {
-  const shown = p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
-  return shown.replace(/\\/g, "/");
+  return homeRelative(p).replace(/\\/g, "/");
 }
 
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */

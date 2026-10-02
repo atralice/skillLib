@@ -9,14 +9,12 @@ import { existsSync } from "node:fs";
 import { HARNESSES, type HarnessId } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
-import { userHome } from "../paths.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
 import * as W from "./world.js";
+import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
-function tildify(p: string): string {
-  return p.startsWith(userHome()) ? "~" + p.slice(userHome().length) : p;
-}
+const tildify = (p: string) => homeRelative(p);
 
 type Place = "projects" | "library" | "global" | "health" | "settings";
 const PLACES: [Place, string][] = [

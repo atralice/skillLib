@@ -38,7 +38,7 @@ import {
   type ProjectSkill,
 } from "../library.js";
 import { harness, type HarnessId } from "../harnesses.js";
-import { PROJECT_SKILLS_DIR, userHome } from "../paths.js";
+import { PROJECT_SKILLS_DIR } from "../paths.js";
 import { projectHere, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
 import { claudeBinary, claudePlugins, cursorPluginSkills, pluginBackups, recordRemovedPlugin, restorePlugin, turnOffIn } from "../plugins.js";
@@ -47,11 +47,11 @@ import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, pl
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
 import { failed, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Project, type RepoInfo, type Result, type World } from "./world.js";
+import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
 export function tildify(p: string): string {
-  const home = userHome();
-  return (p.startsWith(home) ? "~" + p.slice(home.length) : p).replace(/\\/g, "/");
+  return homeRelative(p).replace(/\\/g, "/");
 }
 
 /** Folder names, with as many parent folders as it takes to tell repos apart (ops find repos by name). */
