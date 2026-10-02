@@ -149,7 +149,7 @@ What skilllib flags:
   - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
 - **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
-- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer.
+- **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), skilllib asks once and remembers your answer. A skill whose copy git doesn't share (not committed, and not in a folder the repo commits) never gets a link in a committed folder: teammates would get a broken link.
 
 ### Versions
 
@@ -342,7 +342,7 @@ skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders; skills that aren't committed are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 

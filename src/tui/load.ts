@@ -322,7 +322,11 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     link: (repo, name, allow = false) => {
       const s = find(repo, name)!;
       const r = s.managed ? relinkDependency(rootOf(repo), name, { allowTracked: allow }) : linkEverywhere(rootOf(repo), name, s.location, { allowTracked: allow });
-      const message = r.created.length ? `${name}: linked in ${r.created.join(", ")}` : `${name}: nothing to link`;
+      const linked = r.created.length ? `linked in ${r.created.join(", ")}` : "";
+      const notLinked = r.uncommitted.length
+        ? `not linked in ${r.uncommitted.join(", ")}: git tracks ${r.uncommitted.length === 1 ? "it" : "them"} and ${name} isn't committed, so teammates would get broken links`
+        : "";
+      const message = `${name}: ${[linked, notLinked].filter(Boolean).join("; ") || "nothing to link"}`;
       return r.blocked.length && !allow ? { message, then: allowTracked(repo, name, r.blocked) } : message;
     },
     track: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),

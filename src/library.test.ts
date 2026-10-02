@@ -198,7 +198,7 @@ describe("harnesses", () => {
       ],
     });
 
-    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [] });
+    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
     expect(lstatSync(local("team-flow")).isSymbolicLink()).toBe(true);
     // One skill, reported once; Cursor now reaches it through two folders.
     expect(projectStatus(project).filter((s) => s.name === "team-flow")).toHaveLength(1);
@@ -237,6 +237,31 @@ describe("harnesses", () => {
     expect(existsSync(local("alpha"))).toBe(false);
     expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "updated" });
     expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
+  });
+
+  test("never links a skill git doesn't share into a folder git tracks, even when allowed", async () => {
+    const { linkAll, linkEverywhere } = await import("./library.js");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    git("init", "-q");
+    writeFileSync(join(project, ".gitignore"), ".codex/skills/\n");
+    writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "shared"), "s");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "only on this machine"); // folder git doesn't track
+    writeSkill(join(project, ".codex", "skills", "ignored"), "gitignored");
+    writeSkill(join(project, ".agents", "skills", "fresh"), "new in a committed folder");
+    setHarnesses(["claude-code", "cursor", "codex"]);
+
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
+    expect(linkEverywhere(project, "ignored", ".codex/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills"] });
+    // Not yet committed, but in a folder the repo commits: it goes in with the link.
+    expect(linkEverywhere(project, "fresh", ".agents/skills", { allowTracked: true })).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(existsSync(local("mine"))).toBe(false);
+
+    const res = linkAll(project, { allowTracked: true });
+    expect(res.linked.map((l) => l.name)).toEqual(["shared", "team"]);
+    expect(res.uncommitted).toEqual(["ignored", "mine"]);
   });
 
   test("without Claude Code, the one real copy goes in .agents/skills, which Cursor and Codex both read", () => {

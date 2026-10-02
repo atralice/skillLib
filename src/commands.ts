@@ -580,6 +580,10 @@ export function link(args: Args) {
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
     else if (!args.all) success("Every skill here is already usable by all your agents");
     if (res.blocked.length) warn(`${label}git tracks ${res.blocked.join(", ")}; re-run with --allow-tracked to link there too`);
+    if (res.uncommitted.length)
+      warn(
+        `${label}${res.uncommitted.join(", ")} ${res.uncommitted.length === 1 ? "isn't" : "aren't"} committed, so not linked into folders git tracks (teammates would get broken links); commit ${res.uncommitted.length === 1 ? "it" : "them"} first`,
+      );
   }
 }
 
