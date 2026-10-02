@@ -288,7 +288,10 @@ type Ui = {
   menu(title: string, options: Option[]): void;
 };
 
-const reviewOption = (w: W.World, name: string, ui: Ui): Option => ({ label: "Review prompt", action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}.`), `a review prompt for ${name}`) });
+const reviewOption = (w: W.World, name: string, ui: Ui, repo?: string): Option => ({
+  label: "Review prompt",
+  action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}${repo ? ` in ${repo}` : ""}.`, repo), `a review prompt for ${name}`),
+});
 
 /** Pick a library version to install in a repo (older ones too). */
 function versionsOption(w: W.World, repo: string, name: string, installed: number | undefined, ui: Ui): Option {
@@ -330,13 +333,13 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
           ]
         : []),
       fixOption(remove),
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   if (s?.source === "repo")
     return [
       ...(inLibrary ? [] : [fixOption({ label: "Copy into library", preview: `Copy ${u.name} into your library, so other repos can add it. The repo's copy stays as it is.`, run: (w) => w.ops.copyToLibrary(p, u.name) })]),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   if (s)
     return [
@@ -345,7 +348,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
         : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library and track it here.`, run: (w) => w.ops.importLocal(p, u.name) }),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       fixOption(remove),
-      reviewOption(w, u.name, ui),
+      reviewOption(w, u.name, ui, p),
     ];
   // Loads everywhere: what's left to do from a repo is turning a plugin off here, or going to Global.
   return [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)];
@@ -815,7 +818,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           ui.menu(repo, [
             { label: "Open its folder", action: () => setToast(said(world.ops.openFolder(W.project(world, repo).path))) },
             { label: "Hide it from the list", action: () => (apply((w) => w.ops.hide(repo)), setOpen(null), setFocus(sidebar ? "sidebar" : "list")) },
-            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`), `a review prompt for ${repo}`) }] : []),
+            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`, repo), `a review prompt for ${repo}`) }] : []),
           ]),
         ),
       ];

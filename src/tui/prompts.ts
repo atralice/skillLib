@@ -1,14 +1,43 @@
 /** Prompts the TUI copies for an agent: reviewing skills, and writing a new one. */
 import { harness, type HarnessId } from "../harnesses.js";
 import { buildReviewPrompt, type ReviewSkill } from "../review.js";
-import { totalUses, type World } from "./world.js";
+import { totalUses, type LocalSkill, type World } from "./world.js";
 
 const agentNames = (agents: HarnessId[]) => agents.map((a) => harness(a).name).join(", ") || "none of my agents";
 
-/** Everything an agent needs to judge these skills, as review.ts expects it. */
-export function reviewPrompt(w: World, names: string[], scope: string): string {
+/** How a repo's own copy got there, in the review prompt's words. */
+const localSource = (s: LocalSkill) =>
+  s.source === "lib" ? "Your skills (skilllib library), installed in the repo" : s.source === "repo" ? "a repo's own skill (committed by the team)" : "a copy only on this machine (not committed)";
+const localInstalled = (s: LocalSkill) =>
+  s.origin ?? (s.source === "lib" ? "added from my library with skilllib" : s.source === "repo" ? "committed in the repo" : "copied into the repo by hand (not committed)");
+
+/**
+ * Everything an agent needs to judge these skills, as review.ts expects it. With `repo`, each skill
+ * is that repo's own copy when it has one; global and vendor copies are then its other copies.
+ */
+export function reviewPrompt(w: World, names: string[], scope: string, repo?: string): string {
   const skills = names.map((name): ReviewSkill => {
     const copies = w.machine.filter((m) => m.name === name);
+    const here = repo ? w.projects.find((p) => p.name === repo)?.skills.find((s) => s.name === name) : undefined;
+    if (here) {
+      const lib = w.library.find((l) => l.name === name);
+      return {
+        name,
+        description: w.descriptions[name] ?? "",
+        source: localSource(here),
+        installedHow: localInstalled(here),
+        path: here.path,
+        links: [],
+        loadedBy: `${agentNames(here.agents)} — in ${repo}`,
+        vendor: null,
+        usesTotal: w.days ? totalUses(w, name) : null,
+        usesByProject: Object.entries(w.usage).flatMap(([p, u]): [string, number][] => (u[name] ? [[p, u[name]]] : [])),
+        installedIn: w.projects.filter((p) => p.skills.some((s) => s.name === name)).map((p) => p.name),
+        otherCopies: copies.map((c) => `${c.source} ${c.where}`),
+        inYourSkills: lib ? `yes, v${lib.latest}` : null,
+        keptGlobal: undefined,
+      };
+    }
     const m = copies.find((c) => c.source === "global") ?? copies[0];
     const lib = w.library.find((l) => l.name === name);
     const repos = w.projects.filter((p) => p.skills.some((s) => s.name === name));
@@ -16,8 +45,8 @@ export function reviewPrompt(w: World, names: string[], scope: string): string {
     return {
       name,
       description: w.descriptions[name] ?? "",
-      source: m ? (m.source === "global" ? "my global skills" : `vendor: ${m.source} (${m.where})`) : lib ? "Your skills (skilllib library)" : "a repo's own skill",
-      installedHow: m?.origin ?? (m ? m.where : (local?.origin ?? (lib ? "created or imported into skilllib" : "committed in the repo"))),
+      source: m ? (m.source === "global" ? "my global skills" : `vendor: ${m.source} (${m.where})`) : lib ? "Your skills (skilllib library)" : local ? localSource(local) : "a repo's own skill",
+      installedHow: m?.origin ?? (m ? m.where : lib ? "created or imported into skilllib" : local ? localInstalled(local) : "committed in the repo"),
       path: m?.path ?? (lib ? w.ops.libraryFile(name).replace(/\/SKILL\.md$/, "") : (local?.path ?? "")),
       links: m?.links ?? [],
       loadedBy: m

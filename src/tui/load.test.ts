@@ -463,6 +463,11 @@ test("a skill `npx skills add` put in the repo isn't a library skill; committed,
   const prompt = reviewPrompt(w, ["lint"], "Review lint.");
   expect(prompt).toContain("- Installed via: npx skills: acme/skills");
   expect(prompt).toContain("- Loaded by: Codex — in app");
+  // A copy only on this machine says so, and a repo's review describes the repo's own copy.
+  const fmt = reviewPrompt(w, ["fmt"], "Review the skills in app.", "app");
+  expect(fmt).toContain("- Source: a copy only on this machine (not committed)");
+  expect(fmt).toContain("- Installed via: npx skills: acme/skills");
+  expect(reviewPrompt(w, ["lint"], "Review the skills in app.", "app")).toContain("- Source: a repo's own skill (committed by the team)");
 });
 
 test("status --json calls a copy git tracks the repo's, as the TUI does, wherever it lives", () => {
