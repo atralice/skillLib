@@ -1,11 +1,10 @@
-import { existsSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
-import { MANIFEST_FILE } from "./paths.js";
+import { readdirSync } from "node:fs";
+import { basename } from "node:path";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill, type SkillState } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo, type GitState } from "./git.js";
 import type { HarnessId } from "./harnesses.js";
-import { isProjectCandidate, readManifest } from "./project.js";
+import { projectHere, readManifest } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
 import { findIssues } from "./health.js";
@@ -109,7 +108,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   const agents = enabledHarnesses();
   // Outside a repo (e.g. a session started in ~), the skill folders here are the global ones: no project skills,
   // and subfolders are just folders.
-  const inRepo = isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE)));
+  const inRepo = projectHere(root) === root;
   // Monorepo packages' own skill folders.
   const nestedHere = inRepo ? nestedSkills(root, { enabled: agents }) : [];
   const git = gitInfo(root, [...new Set(nestedHere.map((s) => s.location))]);

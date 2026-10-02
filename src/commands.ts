@@ -16,8 +16,8 @@ import {
   type Change,
   type SkillState,
 } from "./library.js";
-import { claudeDir, libraryDir } from "./paths.js";
-import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
+import { claudeDir, libraryDir, MANIFEST_FILE, userHome } from "./paths.js";
+import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectHere, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
@@ -121,10 +121,19 @@ async function usageBySkill(days: number, onlyProject?: string): Promise<Map<str
   return new Map(summarize(scoped, projectOf).map((s) => [s.skill, s]));
 }
 
-/** The project you're in, or null when the working directory isn't one. */
-function currentProject(): string | null {
-  const root = findProjectRoot();
-  return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, "skilllib.json"))) ? root : null;
+/**
+ * The project you're in, for commands that change or report on it. Outside a
+ * repo the folders around you aren't a project, and in your home folder
+ * they're the global ones: installing there would load a skill in every repo.
+ */
+function requireProject(): string {
+  const root = projectHere();
+  if (root) return root;
+  if (!isProjectCandidate(findProjectRoot())) {
+    const stray = existsSync(join(userHome(), MANIFEST_FILE)) ? `, though ${tildify(join(userHome(), MANIFEST_FILE))} makes it look like one` : "";
+    throw new Error(`Your home folder isn't a project${stray}: skills added here would load in every repo. Run this inside a project.`);
+  }
+  throw new Error("Not in a git repo. Run this inside a project (or `git init` first).");
 }
 
 function lastUsed(summary: UsageSummary | undefined): string {
@@ -135,14 +144,15 @@ function lastUsed(summary: UsageSummary | undefined): string {
 
 /** Skills in the current project and how they compare to the library. */
 export async function status(args: Args) {
-  const root = findProjectRoot();
   if (args.json) {
+    // The skilllib skill runs this wherever an agent is: outside a repo it lists the global skills.
+    const root = findProjectRoot();
     const usage = await usageBySkill(args.days, root);
     json(usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
-    // The skilllib skill runs this wherever an agent is; only remember real repos.
-    if (currentProject()) rememberProjects([root]);
+    if (projectHere()) rememberProjects([root]);
     return;
   }
+  const root = requireProject();
   const skills = projectStatus(root);
   const nested = nestedSkills(root);
   info(`${basename(root)} ${dim(tildify(root))}\n`);
@@ -186,10 +196,16 @@ export async function status(args: Args) {
   rememberProjects([root]);
 }
 
+/** `skilllib` piped: this project's status; outside one, where to look instead (no error, it's an overview). */
+export async function overview(args: Args) {
+  if (args.json || projectHere()) return status(args);
+  info("Not in a project. `skilllib projects` lists yours, `skilllib list` your library, `skilllib global` your global skills.");
+}
+
 /** Everything in the library, where each skill is installed, and how much it's used. */
 export async function list(args: Args) {
   if (args.json) {
-    return json(libraryFor(currentProject()));
+    return json(libraryFor(projectHere()));
   }
   const skills = librarySkills();
   if (skills.length === 0) {
@@ -268,7 +284,7 @@ export function add(args: Args) {
     error("Usage: skilllib add <skill-name>... [--force]");
     process.exit(1);
   }
-  const root = findProjectRoot();
+  const root = requireProject();
   if (args.allowTracked) allowTrackedLinks(root);
   printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force })), args);
   rememberProjects([root]);
@@ -279,13 +295,13 @@ export function remove(args: Args) {
     error("Usage: skilllib remove <skill-name>... [--force]");
     process.exit(1);
   }
-  const root = findProjectRoot();
+  const root = requireProject();
   printChanges(root, args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
 }
 
 /** Installs exactly the versions in skilllib.json (--all: every project). */
 export function sync(args: Args) {
-  const roots = args.all ? visibleProjects() : [findProjectRoot()];
+  const roots = args.all ? visibleProjects() : [requireProject()];
   const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = syncProject(root, { force: args.force });
@@ -302,7 +318,7 @@ export function sync(args: Args) {
 
 /** Moves skills to their newest library version (all, or the ones named). */
 export function update(args: Args) {
-  const roots = args.all ? visibleProjects() : [findProjectRoot()];
+  const roots = args.all ? visibleProjects() : [requireProject()];
   const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = updateProject(root, args.positional.length ? args.positional : undefined, { force: args.force });
@@ -318,7 +334,7 @@ export function update(args: Args) {
 
 /** Skills with a newer library version, per project. */
 export function outdated(args: Args) {
-  const roots = args.all ? visibleProjects() : [findProjectRoot()];
+  const roots = args.all ? visibleProjects() : [requireProject()];
   const behind = roots.flatMap((root) =>
     projectStatus(root)
       .filter((s) => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
@@ -395,8 +411,16 @@ export function scan(args: Args) {
 
 export function folders(args: Args) {
   const [action, ...paths] = args.positional;
+  let failed = false;
   if (action === "add") {
-    for (const p of paths) success(`Added ${tildify(addRoot(p))}`);
+    for (const p of paths) {
+      try {
+        success(`Added ${tildify(addRoot(p))}`);
+      } catch (e) {
+        error((e as Error).message);
+        failed = true;
+      }
+    }
     discoverProjects();
   } else if (action === "remove" || action === "rm") {
     for (const p of paths) {
@@ -407,13 +431,25 @@ export function folders(args: Args) {
   const { roots, hidden } = readConfig();
   info(roots.length ? `Project folders:\n${roots.map((r) => `  ${tildify(r)}`).join("\n")}` : "No project folders. Add one: skilllib folders add ~/Projects");
   if (hidden.length) info(dim(`Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}  (skilllib unhide <path>)`));
+  if (failed) process.exit(1);
 }
 
 export function unhide(args: Args) {
-  for (const p of args.positional) {
-    setHidden(expandHome(p), false);
-    success(`${tildify(expandHome(p))} is visible again`);
+  if (args.positional.length === 0) {
+    error("Usage: skilllib unhide <path>...");
+    process.exit(1);
   }
+  let failed = false;
+  for (const p of args.positional) {
+    const path = expandHome(p);
+    if (setHidden(path, false)) success(`${tildify(path)} is visible again`);
+    else {
+      const { hidden } = readConfig();
+      error(`${tildify(path)} wasn't hidden. ${hidden.length ? `Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}` : "No projects are hidden."}`);
+      failed = true;
+    }
+  }
+  if (failed) process.exit(1);
 }
 
 export function newSkill(args: Args) {
@@ -572,7 +608,7 @@ export function harnessesCommand(args: Args) {
 
 /** Makes every skill in the project (or --all projects) usable by every harness you use. */
 export function link(args: Args) {
-  const roots = args.all ? visibleProjects() : [findProjectRoot()];
+  const roots = args.all ? visibleProjects() : [requireProject()];
   for (const root of roots) {
     if (args.allowTracked) allowTrackedLinks(root);
     const res = linkAll(root);
@@ -616,7 +652,7 @@ export function tidy(args: Args) {
     args.keep ? Object.fromEntries(names.map((n) => [n, base ? resolve(base, args.keep!) : expandHome(args.keep!)])) : {};
   const reports: { label: string; report: TidyReport }[] = args.global
     ? [{ label: "global folders", report: planGlobalTidy({ keep: keepFor(null) }) }]
-    : (args.all ? visibleProjects() : [findProjectRoot()]).map((root) => ({ label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) }));
+    : (args.all ? visibleProjects() : [requireProject()]).map((root) => ({ label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) }));
 
   let held = 0;
   let changed = 0;

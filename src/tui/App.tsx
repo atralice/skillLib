@@ -79,7 +79,8 @@ type Modal =
   | { kind: "fixall"; items: { label: string; fix: W.Fix; on: boolean }[]; cursor: number }
   | { kind: "help" }
   | { kind: "menu"; title: string; options: Option[]; cursor: number }
-  | { kind: "input"; title: string; value: string; submit: (value: string) => void }
+  /** `placeholder`: shown while the field is empty, and what enter submits then. */
+  | { kind: "input"; title: string; value: string; placeholder?: string; submit: (value: string) => void }
   /** Pick your agents; `then` runs after (the first run asks for your projects folder next). */
   | { kind: "agents"; selected: HarnessId[]; cursor: number; then?: () => void };
 
@@ -592,13 +593,15 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   /** Runs a change, reads the world again, and asks about any follow-up (e.g. git-tracked folders). */
   function apply(run: (w: W.World) => W.Result) {
     let result: W.Result;
+    let failed = false;
     try {
       result = run(world);
     } catch (e) {
       result = `Couldn't do it: ${(e as Error).message}`;
+      failed = true;
     }
     setBase(reload());
-    setToast(`✓ ${said(result)}`);
+    setToast(`${failed ? "✗" : "✓"} ${said(result)}`);
     if (typeof result !== "string") setModal({ kind: "confirm", fix: result.then });
   }
   function choose(o: Option) {
@@ -816,7 +819,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   }
   /** Asks where your projects live, and starts scanning there. */
   function askForFolder(title: string) {
-    setModal({ kind: "input", title, value: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
+    // Empty, with ~/Projects as the placeholder: a prefilled value would have typing append to it.
+    setModal({ kind: "input", title, value: "", placeholder: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
   }
   // First run: pick your agents, then say where your projects live.
   useEffect(() => {
@@ -972,7 +976,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     }
     if (m.kind === "input") {
       if (key.escape) return setModal(null);
-      if (key.return) return setModal(null), m.submit(m.value.trim());
+      if (key.return) {
+        const value = m.value.trim() || m.placeholder;
+        setModal(null);
+        return value ? m.submit(value) : undefined;
+      }
       if (key.backspace || key.delete) return setModal({ ...m, value: m.value.slice(0, -1) });
       if (key.ctrl && input === "u") return setModal({ ...m, value: "" });
       if (input && !key.ctrl && !key.meta) return setModal({ ...m, value: m.value + input });
@@ -1214,8 +1222,15 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   else if (modal?.kind === "input")
     body = (
       <Panel title={modal.title} focused width={columns} height={5}>
-        <Text color={color.text}>{modal.value + "▏"}</Text>
-        <Text color={color.faint}>{"enter to confirm · ctrl+u clears · esc cancels"}</Text>
+        {modal.value || !modal.placeholder ? (
+          <Text color={color.text}>{modal.value + "▏"}</Text>
+        ) : (
+          <Text>
+            {"▏"}
+            <Text color={color.faint}>{modal.placeholder}</Text>
+          </Text>
+        )}
+        <Text color={color.faint}>{modal.value || !modal.placeholder ? "enter to confirm · ctrl+u clears · esc cancels" : `type a path, or enter for ${modal.placeholder} · esc cancels`}</Text>
       </Panel>
     );
   else if (modal?.kind === "agents")
