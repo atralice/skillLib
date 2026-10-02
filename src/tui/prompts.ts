@@ -1,7 +1,9 @@
 /** Prompts the TUI copies for an agent: reviewing skills, and writing a new one. */
-import { harness } from "../harnesses.js";
+import { harness, type HarnessId } from "../harnesses.js";
 import { buildReviewPrompt, type ReviewSkill } from "../review.js";
 import { totalUses, type World } from "./world.js";
+
+const agentNames = (agents: HarnessId[]) => agents.map((a) => harness(a).name).join(", ") || "none of my agents";
 
 /** Everything an agent needs to judge these skills, as review.ts expects it. */
 export function reviewPrompt(w: World, names: string[], scope: string): string {
@@ -15,10 +17,12 @@ export function reviewPrompt(w: World, names: string[], scope: string): string {
       name,
       description: w.descriptions[name] ?? "",
       source: m ? (m.source === "global" ? "my global skills" : `vendor: ${m.source} (${m.where})`) : lib ? "Your skills (skilllib library)" : "a repo's own skill",
-      installedHow: m?.origin ?? (m ? m.where : lib ? "created or imported into skilllib" : "committed in the repo"),
+      installedHow: m?.origin ?? (m ? m.where : (local?.origin ?? (lib ? "created or imported into skilllib" : "committed in the repo"))),
       path: m?.path ?? (lib ? w.ops.libraryFile(name).replace(/\/SKILL\.md$/, "") : (local?.path ?? "")),
       links: m?.links ?? [],
-      loadedBy: m ? `${m.agents.map((a) => harness(a).name).join(", ") || "none of my agents"} — in every repo` : `repos: ${repos.map((p) => p.name).join(", ") || "none"}`,
+      loadedBy: m
+        ? `${agentNames(m.agents)} — in every repo`
+        : repos.map((p) => `${agentNames(p.skills.find((s) => s.name === name)!.agents)} — in ${p.name}`).join("; ") || "none of my agents",
       vendor: m && m.source !== "global" ? "turn it off at its source (/plugin in Claude Code, claude.ai settings, or Cursor)" : null,
       usesTotal: w.days ? totalUses(w, name) : null,
       usesByProject: Object.entries(w.usage).flatMap(([p, u]): [string, number][] => (u[name] ? [[p, u[name]]] : [])),

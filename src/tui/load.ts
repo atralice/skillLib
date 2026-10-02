@@ -10,6 +10,7 @@ import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
 import { gitInfo, relativeTo, type GitInfo } from "../git.js";
+import { addedAt } from "../health.js";
 import {
   addSkill,
   createSkill,
@@ -101,6 +102,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
     ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(unshared.length && { unshared }),
+    ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
+    added: addedAt(s.path),
     git: state,
   };
 }
@@ -275,7 +278,11 @@ function remoteLabel(url: string): string | undefined {
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
   if (c.action === "removed") return `Removed ${c.name} from ${repo}`;
-  const done = `${c.action === "installed" ? "Added" : c.action === "reset" ? "Reset" : "Updated"} ${c.name}${c.to ? ` v${c.to}` : ""} in ${repo}`;
+  // An older version picked from Other versions… isn't an update.
+  const back = c.action === "updated" && c.from !== undefined && c.to !== undefined && c.to < c.from;
+  const done = back
+    ? `Pinned ${c.name} to v${c.to} in ${repo} (was v${c.from})`
+    : `${c.action === "installed" ? "Added" : c.action === "reset" ? "Reset" : "Updated"} ${c.name}${c.to ? ` v${c.to}` : ""} in ${repo}`;
   return c.backedUp ? `${done} (your edits are in Settings › Backups)` : done;
 }
 

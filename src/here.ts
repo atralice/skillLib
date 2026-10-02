@@ -19,8 +19,8 @@ import { findIssues } from "./health.js";
 
 /**
  * - library: added from your skills with skilllib (pinned in skilllib.json)
- * - repo:    committed to the repo's .agents/skills by the team
- * - local:   in the repo's skill folders, not managed by skilllib
+ * - repo:    the team's: committed to git (any skill folder), or in .agents/skills
+ * - local:   only on this machine: not committed, not managed by skilllib
  */
 export type ProjectSource = "library" | "repo" | "local";
 
@@ -117,13 +117,17 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
       list.map((s) => {
         const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
         const behind = s.managed && s.latest !== null && s.version !== null && s.latest > s.version;
+        const gitState = git?.of(relativeTo(root, s.path));
+        // A copy git tracks is the team's wherever it lives (.claude/skills too), as the TUI shows it.
+        const repo = !s.managed && (s.state.startsWith("repo skill") || gitState === "committed" || gitState === "changed");
+        const usual = s.state === "ok" || s.state === "local only" || (repo && s.state !== "from npx skills");
         const attrs = {
-          source: (s.managed ? "library" : s.state.startsWith("repo skill") ? "repo" : "local") as ProjectSource,
+          source: (s.managed ? "library" : repo ? "repo" : "local") as ProjectSource,
           ...(s.location !== ".claude/skills" && { dir: s.location }),
           ...(s.version !== null && { version: s.version }),
-          ...(s.state !== "ok" && s.state !== "local only" && !s.state.startsWith("repo skill") && { state: s.state }),
+          ...(!usual && { state: s.state }),
           ...(behind && { latest: s.latest! }),
-          ...(git && { git: git.of(relativeTo(root, s.path)) }),
+          ...(gitState && { git: gitState }),
           ...(!sameSet(loadedBy, agents) && { agents: loadedBy }),
         };
         return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];

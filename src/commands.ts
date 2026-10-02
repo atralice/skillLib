@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import {
   addSkill,
   createSkill,
+  backupFrom,
   listBackups,
   restoreBackup,
   importSkill,
@@ -17,16 +18,17 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir, MANIFEST_FILE, userHome } from "./paths.js";
-import { agentsSkillsDir, findProjectRoot, isProjectCandidate, knownProjects, projectHere, projectSkillsDir, readManifest, rememberProjects } from "./project.js";
+import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
+import { gitInfo, relativeTo } from "./git.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { libraryFor, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
+import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues, runFix, usageIssues, type Choice } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
@@ -70,7 +72,7 @@ export function parseArgs(argv: string[]): Args {
 function colorState(state: SkillState): string {
   if (state === "ok") return green(state);
   if (state === "folder missing" || state === "not in library") return red(state);
-  if (state === "local only" || state === "from npx skills") return dim(state);
+  if (state === "local only" || state === "from npx skills" || state === "repo skill") return dim(state);
   return yellow(state);
 }
 
@@ -170,16 +172,28 @@ export async function status(args: Args) {
   const skills = projectStatus(root);
   const nested = nestedSkills(root);
   info(`${basename(root)} ${dim(tildify(root))}\n`);
-  if (skills.length === 0 && nested.length === 0) {
-    info("No skills in this project yet. Add one from your library with: skilllib add <name>");
-    return;
-  }
+  if (skills.length === 0 && nested.length === 0) info("No skills in this project yet. Add one from your library with: skilllib add <name>");
   const usage = await usageBySkill(args.days, root);
+  // A copy git tracks is the team's wherever it lives, as `skilllib` and `status --json` show it.
+  const git = gitInfo(root, [...new Set(nested.map((s) => s.location))]);
+  const committed = (path: string) => ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+  const asRepo: Partial<Record<SkillState, SkillState>> = {
+    "local only": "repo skill",
+    "untracked copy of library skill": "repo skill, in library",
+    "untracked, differs from library": "repo skill, differs from library",
+  };
+  const stateOf = (s: { state: SkillState; path: string }) => colorState((committed(s.path) && asRepo[s.state]) || s.state);
+  // Your agents that load it here: "all", or which.
+  const agentsOf = (s: { visibility: { id: HarnessId; paths: number }[] }) => {
+    const ids = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
+    return ids.length === s.visibility.length ? dim("all") : ids.length ? ids.map((id) => harness(id).name).join(", ") : red("none");
+  };
   if (skills.length) {
     table(
       skills.map((s) => ({
         Skill: s.name,
-        Status: s.source ? dim(`npx skills: ${s.source}`) : colorState(s.state),
+        Status: s.source ? dim(`npx skills: ${s.source}`) : stateOf(s),
+        Agents: agentsOf(s),
         [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
         "Last used": lastUsed(usage.get(s.name)),
       })),
@@ -191,7 +205,8 @@ export async function status(args: Args) {
       nested.map((s) => ({
         Skill: s.name,
         Folder: s.location,
-        Status: colorState(s.state),
+        Status: stateOf(s),
+        Agents: agentsOf(s),
         [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
       })),
     );
@@ -212,6 +227,13 @@ export async function status(args: Args) {
   if (states.has("untracked copy of library skill") || states.has("untracked, differs from library"))
     hints.push("`skilllib add <name>` to manage an untracked skill (--force if it differs)");
   if (hints.length > 0) info("\n" + hints.map((h) => dim(`→ ${h}`)).join("\n"));
+
+  // What else loads here, and what doctor would say: what `status --json` gives agents.
+  const here = usableHere(root);
+  const globals = new Set(here.global.flatMap((g) => g.skills)).size;
+  if (globals) info(`\n${globals} global ${globals === 1 ? "skill also loads" : "skills also load"} here ${dim("(your global folders, plugins, claude.ai): `skilllib` lists them")}`);
+  const problems = here.issues.reduce((n, i) => n + i.problems.length, 0);
+  if (problems) warn(`${problems} ${problems === 1 ? "issue" : "issues"} here or in your global skills: \`skilllib doctor\` lists them with fixes`);
   rememberProjects([root]);
 }
 
@@ -252,16 +274,17 @@ export async function list(args: Args) {
   }
 
   const libraryNames = new Set(skills.map((s) => s.name));
-  const globals = machineSkills().filter((m) => m.movable && !m.broken);
+  // By name: a skill in two global folders is one skill.
+  const globals = [...new Set(machineSkills().filter((m) => m.movable && !m.broken).map((m) => m.name))];
   if (globals.length > 0) {
     info("");
-    warn(`${globals.length} of your global skill(s) still load in every project`);
-    const missing = globals.filter((g) => !libraryNames.has(g.name));
+    warn(`${globals.length} of your global ${globals.length === 1 ? "skill still loads" : "skills still load"} in every project`);
+    const missing = globals.filter((g) => !libraryNames.has(g));
     info(
       dim(
         missing.length > 0
           ? `→ \`skilllib import --global\` copies ${missing.length} of them into the library`
-          : "→ all are in your library; run `skilllib` → Global skills to stop loading them everywhere",
+          : "→ all are in your library; run `skilllib` → Global to stop loading them everywhere",
       ),
     );
   }
@@ -327,7 +350,10 @@ export function sync(args: Args) {
     if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
-      if (changes.length === 0) success("Installed versions match skilllib.json");
+      if (changes.length === 0) {
+        if (existsSync(join(root, MANIFEST_FILE))) success("Installed versions match skilllib.json");
+        else info(dim("No skilllib.json: nothing to sync"));
+      }
       else printChanges(root, changes, args);
     }
     return { project: basename(root), path: root, changes: withDirs(root, changes) };
@@ -423,17 +449,20 @@ export function scan(args: Args) {
   }
   const found = discoverProjects();
   const library = new Set(librarySkills().map((s) => s.name));
-  const skillNames = (root: string) => [...skillDirsIn(projectSkillsDir(root)), ...skillDirsIn(agentsSkillsDir(root))].map((d) => basename(d));
+  // Every agent's folder, and monorepo packages' own folders.
+  const skillNames = (root: string) => [
+    ...new Set([...ALL_PROJECT_DIRS.flatMap((d) => skillDirsIn(join(root, d))).map((d) => basename(d)), ...nestedSkills(root).map((s) => s.name)]),
+  ];
   const withSkills = found.filter((root) => skillNames(root).length > 0);
-  info(`Scanned ${roots.map((r) => tildify(r)).join(", ")}: ${found.length} project(s), ${withSkills.length} with skills\n`);
+  info(`Scanned ${roots.map((r) => tildify(r)).join(", ")}: ${found.length} project${found.length === 1 ? "" : "s"}, ${withSkills.length} with skills\n`);
   table(
     withSkills.map((root) => ({
       Project: basename(root),
       Path: dim(tildify(root)),
-      Skills: [...new Set(skillNames(root))].map((n) => (library.has(n) ? n : yellow(n))).join(", "),
+      Skills: skillNames(root).map((n) => (library.has(n) ? n : yellow(n))).join(", "),
     })),
   );
-  if (withSkills.length > 0) info(`\n${yellow("Yellow")} skills aren't in your library yet (import them from \`skilllib\` → 3 Sources or 5 Health).`);
+  if (withSkills.length > 0) info(`\n${yellow("Yellow")} skills aren't in your library yet (\`skilllib import <skill-dir>\`, or \`skilllib\` → Health).`);
 }
 
 export function folders(args: Args) {
@@ -498,7 +527,7 @@ export function restore(args: Args) {
   const name = args.positional[0];
   if (!name) {
     if (backups.length === 0) return info("Nothing to restore.");
-    table(backups.map((b) => ({ Skill: b.name, From: b.kind === "trash" ? "library (deleted)" : b.kind === "plugin" ? "Claude Code plugin" : tildify(dirname(b.from)), Moved: b.movedAt })));
+    table(backups.map((b) => ({ Skill: b.name, From: backupFrom(b), Moved: b.movedAt })));
     info(dim("\n→ skilllib restore <name>"));
     return;
   }
@@ -682,7 +711,8 @@ export function globalCommand(args: Args) {
   const kept = keptGlobal();
   if (!yours.length) return info("None of your skills load globally.");
   for (const m of yours) info(`${kept.has(m.name) ? green("✓") : yellow("⚠")} ${m.name.padEnd(32)} ${dim(tildify(m.path))}`);
-  const unreviewed = yours.filter((m) => !kept.has(m.name)).length;
+  // By name: a skill in two global folders is listed twice but is one skill to review.
+  const unreviewed = new Set(yours.filter((m) => !kept.has(m.name)).map((m) => m.name)).size;
   if (unreviewed) info(dim(`\n${unreviewed} not reviewed. Keep one global on purpose: skilllib global keep <name>`));
 }
 

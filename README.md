@@ -322,7 +322,7 @@ skilllib scan [folder...]       add project folders and scan them
 skilllib folders [add|remove]   show or change project folders
 skilllib harnesses [id...]      show or set your agents (claude-code cursor codex zed)
 
-skilllib status                 this repo's skills
+skilllib status                 this repo's skills, which agents load them, and issues
 skilllib add | remove <name>    change this repo's skills
 skilllib sync [--all]           install exactly the pinned versions
 skilllib outdated [--all]       skills with a newer version

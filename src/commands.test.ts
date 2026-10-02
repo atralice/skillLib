@@ -158,3 +158,64 @@ describe("doctor", () => {
     expect(r.out).not.toContain("updated");
   });
 });
+
+describe("what the plain commands say", () => {
+  const skill = (dir: string) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+  };
+  const repo = (path: string) => (mkdirSync(join(path, ".git"), { recursive: true }), path);
+
+  test("global counts a skill in two global folders once", () => {
+    skill(join(tmp, ".agents", "skills", "mine"));
+    const r = cli(tmp, "global");
+    expect(r.out.split("\n").filter((l) => l.includes(" mine ")).length).toBe(2);
+    expect(r.out).toContain("1 not reviewed");
+  });
+
+  test("scan finds skills in every agent's folder, and a monorepo's packages", () => {
+    const web = repo(join(tmp, "Projects", "web"));
+    skill(join(web, ".codex", "skills", "codex-one"));
+    skill(join(web, ".cursor", "skills", "cursor-one"));
+    skill(join(repo(join(tmp, "Projects", "mono")), "packages", "api", ".claude", "skills", "nested-one"));
+    repo(join(tmp, "Projects", "empty"));
+    const r = cli(tmp, "scan", join(tmp, "Projects"));
+    expect(r.out).toContain("3 projects, 2 with skills");
+    for (const name of ["codex-one", "cursor-one", "nested-one"]) expect(r.out).toContain(name);
+    expect(r.out).not.toContain("Sources");
+  });
+
+  test("status says which agents load each skill, and what else loads here, even in an empty repo", () => {
+    const web = repo(join(tmp, "web"));
+    skill(join(web, ".agents", "skills", "team"));
+    const r = cli(web, "status");
+    expect(r.out).toMatch(/team\s+.*\s+Codex\s/);
+    expect(r.out).toContain("1 global skill also loads here");
+    const empty = cli(repo(join(tmp, "empty")), "status");
+    expect(empty.out).toContain("No skills in this project yet");
+    expect(empty.out).toContain("1 global skill also loads here");
+  });
+
+  test("status calls a copy git tracks the team's, wherever it lives", () => {
+    const web = join(tmp, "web");
+    skill(join(web, ".claude", "skills", "team"));
+    skill(join(web, ".claude", "skills", "scratch"));
+    mkdirSync(join(web, ".claude", "skills", "alpha"), { recursive: true });
+    writeFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: web });
+    git("init", "-q");
+    git("add", ".claude/skills/team", ".claude/skills/alpha");
+    git("commit", "-qm", "skills");
+    const r = cli(web, "status");
+    expect(r.out).toMatch(/alpha\s+repo skill, in library/);
+    expect(r.out).toMatch(/team\s+repo skill\s/);
+    expect(r.out).toMatch(/scratch\s+local only/);
+  });
+
+  test("sync --all doesn't claim a repo without skilllib.json matches it", () => {
+    cli(repo(join(tmp, "web")), "status");
+    const r = cli(tmp, "sync", "--all");
+    expect(r.out).toContain("No skilllib.json: nothing to sync");
+    expect(r.out).not.toContain("match skilllib.json");
+  });
+});

@@ -301,11 +301,12 @@ export function linkEverywhere(root: string, name: string, location: string, { a
     if (entryExists(link) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
     if (isGitTracked(root, dir)) {
       if (!(shared ??= sharedByGit(root, location, name))) {
-        result.uncommitted.push(dir);
+        if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
         continue;
       }
       if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
-        result.blocked.push(dir);
+        // Codex and Zed share .agents/skills: one folder, listed once.
+        if (!result.blocked.includes(dir)) result.blocked.push(dir);
         continue;
       }
     }
@@ -528,6 +529,8 @@ export function updateProject(root: string, names?: string[], { force = false } 
       const dep = skills[name]!;
       const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
       if (dep.hash === latest.hash && local === latest.hash) return [];
+      // Already on the newest version: local edits are `sync --force`'s business, not an update's.
+      if (dep.hash === latest.hash && local !== null && !force) return [];
       const change = addSkill(root, name, { force });
       return change.action === "skipped" || change.from !== change.to || local !== latest.hash ? [change] : [];
     });
@@ -669,7 +672,7 @@ export function createSkill(name: string, description: string): { ok: true; dir:
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description || "Describe when Claude should use this skill."}\n---\n\n# ${name}\n\nInstructions for Claude go here.\n`,
+    `---\nname: ${name}\ndescription: ${description || "Describe when an agent should use this skill."}\n---\n\n# ${name}\n\nInstructions for the agent go here.\n`,
   );
   forgetLatest(name);
   return { ok: true, dir };
@@ -700,6 +703,12 @@ export function listBackups(): Backup[] {
     })
     // By the entry's full timestamp (movedAt shows minutes only): `restore <name>` takes the newest.
     .sort((a, b) => b.path.slice(-24).localeCompare(a.path.slice(-24)));
+}
+
+/** Where a backup came from, as lists show it: "library (deleted)", or the folder it was in (e.g. "~/Projects/web/.cursor/skills"). */
+export function backupFrom(backup: Backup): string {
+  if (backup.kind === "plugin") return "Claude Code plugin";
+  return backup.from === librarySkillDir(backup.name) ? "library (deleted)" : tildify(dirname(backup.from));
 }
 
 /**

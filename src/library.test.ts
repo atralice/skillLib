@@ -6,6 +6,7 @@ import { addSkill, importSkill, listBackups, nestedSkills, projectStatus, remove
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
+import { tildify } from "./output.js";
 import { execFileSync } from "node:child_process";
 
 let tmp: string;
@@ -200,6 +201,15 @@ describe("moving skills out of the way", () => {
     if (result.ok) expect(existsSync(join(result.movedTo, "SKILL.md"))).toBe(true);
   });
 
+  test("backups say where they came from: the library, or the repo folder a copy was in", async () => {
+    const { backupFrom, deleteLibrarySkill, removeUntracked } = await import("./library.js");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "only here");
+    removeUntracked(project, "mine", join(project, ".cursor", "skills", "mine"));
+    expect(deleteLibrarySkill("alpha")).toMatchObject({ ok: true });
+    const from = Object.fromEntries(listBackups().map((b) => [b.name, backupFrom(b)]));
+    expect(from).toEqual({ mine: tildify(join(project, ".cursor", "skills")), alpha: "library (deleted)" });
+  });
+
   test("unloading a global skill needs it in the library, keeps symlink targets intact, and moves its links too", async () => {
     const { unloadGlobal, restoreBackup, listBackups } = await import("./library.js");
     const { machineSkills } = await import("./sources.js");
@@ -295,6 +305,21 @@ describe("harnesses", () => {
     expect(c.blocked).toBeUndefined();
     expect(existsSync(local("alpha"))).toBe(false);
     expect(readManifest(project).skills.alpha?.links).toBeUndefined();
+  });
+
+  test("Codex and Zed share .agents/skills: a folder held back is listed once", async () => {
+    const { linkEverywhere } = await import("./library.js");
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    git("init", "-q");
+    writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "other"), "o");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+    writeSkill(join(project, ".cursor", "skills", "mine"), "in a folder git doesn't track");
+    setHarnesses(["claude-code", "codex", "zed"]);
+
+    expect(linkEverywhere(project, "team", ".claude/skills")).toEqual({ created: [], blocked: [".agents/skills"], uncommitted: [] });
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
   });
 
   test("never links a skill git doesn't share into a folder git tracks, even when allowed", async () => {

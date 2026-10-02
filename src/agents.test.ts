@@ -176,6 +176,11 @@ describe("exit codes: a command that did nothing fails", () => {
 
     writeFileSync(join(project, ".claude", "skills", "stripe", "SKILL.md"), "---\ndescription: d\n---\nmy edit\n");
     expect(run("remove", "stripe").status).toBe(1);
+    // Already on the newest version: nothing to update, so no "has local edits" either.
+    const latest = run("update", "stripe");
+    expect([latest.status, latest.stderr]).toEqual([0, ""]);
+    skill(join(tmp, "src", "stripe"), "Stripe payments, v2");
+    importSkill(join(tmp, "src", "stripe"), { force: true });
     expect(run("update", "stripe").status).toBe(1);
     expect(run("update", "nope").stderr).toContain("nope: not managed");
     expect(run("sync").status).toBe(1);
