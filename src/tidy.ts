@@ -7,7 +7,7 @@ import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.j
 import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
-import { globalSkillDirs, projectSkillsLock } from "./sources.js";
+import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
 import { treeHash } from "./skills.js";
 
 /**
@@ -165,7 +165,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
 
 /** The global folders an agent reads. */
 function globalReadsOf(id: HarnessId): string[] {
-  return HARNESSES.find((h) => h.id === id)!.globalDirs();
+  return HARNESSES.find((h) => h.id === id)!.globalDirs().map(globalDirAs);
 }
 
 /** A "skills-directory plugin": a folder in a skills dir that is really a Claude Code plugin. Never touched. */
@@ -190,7 +190,8 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
       report.skipped.push({ name, reason: "a Claude Code plugin kept in a skills folder" });
       continue;
     }
-    const reals = entries.filter((e) => !e.link);
+    // Never two "copies" of one real folder: tidying those would replace a skill with a link to itself (#54).
+    const reals = entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && realpathOrNull(o.path) === realpathOrNull(e.path)) === i);
     if (reals.length < 2) continue;
     hashReals(reals);
     // A `keep` folder with no copy picks nothing: differing copies stay a conflict.

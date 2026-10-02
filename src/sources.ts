@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, realPath, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify as homeRelative } from "./output.js";
 
@@ -62,7 +62,9 @@ function realpathOrNull(path: string): string | null {
 
 /** Your enabled harnesses that read global folder `dir`. */
 function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
-  return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().includes(dir));
+  // By real path: two agents can reach the same folder by different paths (#54).
+  const real = realPath(dir);
+  return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().some((d) => realPath(d) === real));
 }
 
 /** Machine-wide folders an admin manages: read, never changed. */
@@ -70,7 +72,22 @@ const systemDirs = () => [codexSystemDir()];
 
 /** Your global skill folders that your harnesses read (~/.claude/skills or $CLAUDE_CONFIG_DIR/skills, ~/.agents/skills, …). */
 export function globalSkillDirs(): string[] {
-  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => !systemDirs().includes(d));
+  // One entry per real folder: a symlinked $HOME with CLAUDE_CONFIG_DIR set to the real path (or CODEX_HOME
+  // written another way) reaches one folder by two paths, which is not two copies of its skills (#54).
+  const seen = new Set<string>();
+  return [...new Set(HARNESSES.flatMap((h) => h.globalDirs()))].filter((d) => {
+    if (systemDirs().includes(d)) return false;
+    const real = realPath(d);
+    if (seen.has(real)) return false;
+    seen.add(real);
+    return true;
+  });
+}
+
+/** The path globalSkillDirs uses for `dir` (the same real folder may be spelled another way). */
+export function globalDirAs(dir: string): string {
+  const real = realPath(dir);
+  return globalSkillDirs().find((d) => realPath(d) === real) ?? dir;
 }
 
 /** Skills in the system folders (/etc/codex/skills). */

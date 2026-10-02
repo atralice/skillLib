@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, setHarnesses, setHidden } from "./config.js";
@@ -258,4 +258,22 @@ test("a repo reached through a symlinked folder is one project, under the path y
   writeFileSync(join(tmp, ".skilllib", "projects.json"), JSON.stringify([join(real, "web"), join(link, "web")]));
   const projects = JSON.parse(cli(tmp, "projects", "--json").out) as { name: string; path: string }[];
   expect(projects.map((p) => [p.name, p.path])).toEqual([["web", join(link, "web")]]);
+});
+
+test("one global folder reached by two paths is one folder: listed once, never tidied into a link to itself (#54)", () => {
+  const link = join(tmpdir(), `skilllib-home-link-${process.pid}-${Date.now()}`);
+  symlinkSync(tmp, link, "junction");
+  try {
+    // Claude Code reads CLAUDE_CONFIG_DIR (the real path); Cursor reads ~/.claude through the symlinked $HOME.
+    setHarnesses(["claude-code", "cursor"]);
+    process.env.HOME = link;
+    process.env.USERPROFILE = link;
+    const listed = cli(tmp, "global").out.split("\n").filter((l) => l.includes(" mine "));
+    expect(listed.length).toBe(1);
+    const tidy = cli(tmp, "tidy", "--global");
+    expect(tidy.out).toContain("every skill has one copy");
+    expect(lstatSync(join(tmp, ".claude", "skills", "mine")).isSymbolicLink()).toBe(false);
+  } finally {
+    rmSync(link, { force: true, recursive: false });
+  }
 });
