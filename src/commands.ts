@@ -172,7 +172,12 @@ export async function status(args: Args) {
   // A copy git tracks is the team's wherever it lives, as `skilllib` and `status --json` show it.
   const git = gitInfo(root, [...new Set(nested.map((s) => s.location))]);
   const committed = (path: string) => ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
-  const stateOf = (s: { state: SkillState; path: string }) => colorState(s.state === "local only" && committed(s.path) ? "repo skill" : s.state);
+  const asRepo: Partial<Record<SkillState, SkillState>> = {
+    "local only": "repo skill",
+    "untracked copy of library skill": "repo skill, in library",
+    "untracked, differs from library": "repo skill, differs from library",
+  };
+  const stateOf = (s: { state: SkillState; path: string }) => colorState((committed(s.path) && asRepo[s.state]) || s.state);
   // Your agents that load it here: "all", or which.
   const agentsOf = (s: { visibility: { id: HarnessId; paths: number }[] }) => {
     const ids = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);

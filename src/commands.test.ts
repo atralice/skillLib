@@ -180,6 +180,22 @@ describe("what the plain commands say", () => {
     expect(empty.out).toContain("1 global skill also loads here");
   });
 
+  test("status calls a copy git tracks the team's, wherever it lives", () => {
+    const web = join(tmp, "web");
+    skill(join(web, ".claude", "skills", "team"));
+    skill(join(web, ".claude", "skills", "scratch"));
+    mkdirSync(join(web, ".claude", "skills", "alpha"), { recursive: true });
+    writeFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: web });
+    git("init", "-q");
+    git("add", ".claude/skills/team", ".claude/skills/alpha");
+    git("commit", "-qm", "skills");
+    const r = cli(web, "status");
+    expect(r.out).toMatch(/alpha\s+repo skill, in library/);
+    expect(r.out).toMatch(/team\s+repo skill\s/);
+    expect(r.out).toMatch(/scratch\s+local only/);
+  });
+
   test("sync --all doesn't claim a repo without skilllib.json matches it", () => {
     cli(repo(join(tmp, "web")), "status");
     const r = cli(tmp, "sync", "--all");
