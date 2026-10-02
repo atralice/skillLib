@@ -348,7 +348,8 @@ Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-track
 
 - **`status --json`** answers everything about the repo in one call:
   - the repo's skills, with their source, version, state and git state
-  - the global skills, grouped by where they come from
+  - skills in subfolders (`nested`, e.g. monorepo packages), with their folder
+  - the global skills, grouped by where they come from, with the plugins the repo's `.claude/settings.json` turns on or off
   - every problem skilllib found here, with its fix
   - how often Claude Code used each skill here
   - the repo's top-level files

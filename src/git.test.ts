@@ -30,3 +30,14 @@ test("tells committed, changed, new and gitignored skill folders apart", () => {
   expect(info.of(".claude/skills/mine")).toBe("ignored");
   expect(gitInfo(tmpdir())).toBeNull();
 });
+
+test("covers extra folders, such as a monorepo package's skills", () => {
+  const repo = join(root, "mono");
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  mkdirSync(join(repo, "packages/web/.claude/skills/nested"), { recursive: true });
+  writeFileSync(join(repo, "packages/web/.claude/skills/nested/SKILL.md"), "x\n");
+  git("init", "-q");
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  expect(gitInfo(repo, ["packages/web/.claude/skills"])!.of("packages/web/.claude/skills/nested")).toBe("committed");
+});
