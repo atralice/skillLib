@@ -101,6 +101,8 @@ describe("project tidy", () => {
       },
     ]);
 
+    // A folder without a copy picks nothing: still a conflict.
+    expect(planProjectTidy(project, { keep: { deploy: join(project, ".nope", "skills") } }).conflicts.map((c) => c.name)).toEqual(["deploy"]);
     const [plan] = planProjectTidy(project, { keep: { deploy: join(project, ".agents", "skills") } }).plans;
     applyTidy(plan!, { git: "go" });
     expect(isLink(at(".claude", "deploy"))).toBe(true);
@@ -207,6 +209,9 @@ describe("global tidy", () => {
     const report = planGlobalTidy();
     expect(report.plans).toEqual([]);
     expect(report.conflicts.map((c) => [c.name, c.copies.map((x) => x.runs)])).toEqual([["web", [["claude-code"], ["codex"]]]]);
+    // Keeping a folder with no copy of it never replaces one differing copy with another.
+    const unknown = planGlobalTidy({ keep: { web: join(tmp, ".nope", "skills") } });
+    expect([unknown.plans, unknown.conflicts.map((c) => c.name)]).toEqual([[], ["web"]]);
     expect(report.skipped.map((s) => s.name)).toEqual(["tool"]);
   });
 });

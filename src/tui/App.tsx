@@ -591,11 +591,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
 
   // ── Actions ──
   /** Runs a change, reads the world again, and asks about any follow-up (e.g. git-tracked folders). */
-  function apply(run: (w: W.World) => W.Result) {
+  function apply(run: (w: W.World) => W.Result, w: W.World = world) {
     let result: W.Result;
     let failed = false;
     try {
-      result = run(world);
+      result = run(w);
     } catch (e) {
       result = `Couldn't do it: ${(e as Error).message}`;
       failed = true;
@@ -802,9 +802,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     setChip("all");
   }
   /** Jumps to Global, filtered to one skill. */
-  /** Opens a file in $EDITOR, handing it the terminal, then reads everything again. */
-  function edit(file: string) {
-    if (!existsSync(file)) return setToast(`${tildify(file)} doesn't exist`);
+  /** Opens a file in $EDITOR, handing it the terminal, then reads everything again (and runs `then`, if given). */
+  function edit(file: string, then?: (w: W.World) => W.Result) {
+    // (The prototype's skills have no files: what comes after editing still happens.)
+    if (!existsSync(file)) return then ? apply(then) : (setBase(reload()), setToast(`${tildify(file)} doesn't exist`));
     const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
     void suspendTerminal(() => {
       // $EDITOR may carry args ("code -w"), so it goes through the shell — but the path is
@@ -813,7 +814,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (process.platform === "win32") spawnSync(`${editor} "${file}"`, { shell: true, stdio: "inherit" });
       else spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
     }).then(() => {
-      setBase(reload());
+      // Read again first: the edit makes a new library version, and `then` must see it.
+      const fresh = reload();
+      if (then) return apply(then, fresh);
+      setBase(fresh);
       setToast(`Saved ${tildify(file)}`);
     });
   }
@@ -1064,10 +1068,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         const row = rows[cursor]!;
         if (row.create && !/^[a-z0-9]/.test(m.query)) return setToast("Type the new skill's name first");
         setModal(null);
-        apply(row.run!);
-        // A new skill opens in your editor.
-        if (row.create) edit(world.ops.libraryFile(m.query));
-        return;
+        if (!row.create) return apply(row.run!);
+        // A new skill opens in your editor, and goes into the repo once you've written it. Nothing
+        // reads the library in between, so the template never becomes a version of its own.
+        row.run!(world);
+        return edit(world.ops.libraryFile(m.query), row.afterEdit);
       }
       if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
     }

@@ -142,7 +142,7 @@ What skilllib flags:
 
 ### Adding and removing skills
 
-- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`) or copy a prompt for an agent to write it.
+- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`, and goes into the repo when you close it) or copy a prompt for an agent to write it.
 - **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link.
   - Claude Code (with or without Cursor): `.claude/skills/<name>`.
   - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`.
@@ -161,7 +161,7 @@ Every change to a library skill becomes a new version, kept in `~/.skilllib/stor
 
 | | Like | What it does |
 |---|---|---|
-| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits. |
+| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits (`--force` resets them, backing them up first). |
 | `skilllib outdated` | `npm outdated` | Lists skills with a newer version |
 | `skilllib update [name]` | `npm update` | Moves to the newest version |
 | *Other versions…* in a skill's actions | `npm i x@1` | Pins any version, including older ones |
@@ -243,7 +243,7 @@ skilllib never really deletes anything you can't get back. What it removes goes 
 - removed library skills and untracked copies go to `~/.skilllib/trash`
 - removed global skills go to `~/.skilllib/global-backup`
 - copies replaced by a link go to `~/.skilllib/tidy-backup`
-- edits `skilllib doctor` discards go to `~/.skilllib/edit-backup`
+- local edits that `skilllib doctor` discards, or that `--force` overwrites (`add`, `update`, `sync`), go to `~/.skilllib/edit-backup`
 - removed plugins are listed too; restoring one reinstalls it
 
 ---
@@ -344,7 +344,9 @@ skilllib --version
 
 The repo commands (`status`, `add`, `remove`, `sync`, `outdated`, `update`, `link`, `tidy`) work in a git repo or a folder with `skilllib.json`, and never in your home folder: skills there would load in every repo. Elsewhere they stop with an error. `--all`, `tidy --global` and `status --json` work from any folder; outside a repo, `status --json` lists only the global skills.
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`), `--allow-tracked` (link into git-tracked folders), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+
+A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder. What it did do is still done, and listed.
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 

@@ -29,7 +29,7 @@ import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandH
 import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
-import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
+import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
 
@@ -78,24 +78,33 @@ function colorState(state: SkillState): string {
 function withDirs(root: string, changes: Change[]) {
   const { skills } = readManifest(root);
   return changes.map((c) => {
-    const dep = c.action === "installed" || c.action === "updated" ? skills[c.name] : undefined;
+    const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" ? skills[c.name] : undefined;
     return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
   });
 }
 
+/**
+ * Prints what changed. A skipped skill is a failure: the command exits 1, so
+ * scripts and agents can tell (the other skills' changes still happened).
+ */
 function printChanges(root: string, changes: Change[], args: Args) {
+  if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
   if (args.json) return json(withDirs(root, changes));
   for (const c of changes) {
     if (c.blocked?.length) {
       warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
     }
-    if (c.action === "skipped") warn(`${c.name}: ${c.reason}`);
+    if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
-      const icon = c.action === "removed" ? red("-") : green(c.action === "installed" ? "+" : "↑");
+      const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : "↑");
       const versions = c.action === "removed" ? "" : c.from && c.from !== c.to ? ` v${c.from} → v${c.to}` : c.to ? ` v${c.to}` : "";
       info(`  ${icon} ${c.name}${versions} ${dim(c.action)}`);
     }
+    if (c.backedUp) info(dim(`    local edits saved to ${tildify(c.backedUp)}; \`skilllib restore ${c.name}\` brings them back`));
   }
+  const done = changes.filter((c) => c.action !== "skipped").length;
+  const skipped = changes.length - done;
+  if (skipped && done) info(dim(`\n${done} done, ${skipped} skipped`));
 }
 
 /**
@@ -186,7 +195,12 @@ export async function status(args: Args) {
   const states = new Set(skills.map((s) => s.state));
   const hints: string[] = [];
   if (states.has("update available")) hints.push("`skilllib update` to install the newest versions");
-  if (states.has("folder missing")) hints.push("`skilllib sync` to restore missing skills");
+  const missing = skills.filter((s) => s.state === "folder missing");
+  if (missing.some((s) => s.latest !== null)) hints.push("`skilllib sync` to restore missing skills");
+  // sync installs from your library: it can't restore a skill the library doesn't have.
+  const notInLibrary = missing.filter((s) => s.latest === null).map((s) => s.name);
+  if (notInLibrary.length)
+    hints.push(`${notInLibrary.join(", ")} ${notInLibrary.length === 1 ? "isn't" : "aren't"} in your library (${tildify(libraryDir())}): \`skilllib import <dir>\` to add, or set SKILLLIB_HOME to the library that has ${notInLibrary.length === 1 ? "it" : "them"}`);
   if (states.has("edited locally") || states.has("edited locally, update available"))
     hints.push("`skilllib import .claude/skills/<name> --force` to save local edits to the library");
   if (states.has("local only")) hints.push("`skilllib import .claude/skills/<name>` to add a local skill to the library");
@@ -305,6 +319,7 @@ export function sync(args: Args) {
   const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = syncProject(root, { force: args.force });
+    if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
       if (changes.length === 0) success("Installed versions match skilllib.json");
@@ -321,7 +336,14 @@ export function update(args: Args) {
   const roots = args.all ? visibleProjects() : [requireProject()];
   const results = roots.map((root) => {
     if (args.allowTracked) allowTrackedLinks(root);
-    const changes = updateProject(root, args.positional.length ? args.positional : undefined, { force: args.force });
+    const names = args.positional.length ? args.positional : undefined;
+    const changes = updateProject(root, names, { force: args.force });
+    // A name this project doesn't track isn't "on the latest version" (with --all, most projects lack it).
+    if (!args.all) {
+      const { skills } = readManifest(root);
+      for (const name of names ?? []) if (!(name in skills)) changes.push({ name, action: "skipped", reason: "not managed by skilllib in this project" });
+    }
+    if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
       if (changes.length === 0) success("Everything is on the latest version");
@@ -482,7 +504,10 @@ export function restore(args: Args) {
   }
   const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
   if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
-  else error(`Can't restore ${name}: ${r.reason}`);
+  else {
+    error(`Can't restore ${name}: ${r.reason}`);
+    process.exitCode = 1;
+  }
 }
 
 /** Lists problems and suggestions; --fix applies every automatic fix. */
@@ -614,8 +639,12 @@ export function link(args: Args) {
     const res = linkAll(root);
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
-    else if (!args.all) success("Every skill here is already usable by all your agents");
-    if (res.blocked.length) warn(`${label}git tracks ${res.blocked.join(", ")}; re-run with --allow-tracked to link there too`);
+    else if (!args.all && !res.blocked.length) success("Every skill here is already usable by all your agents");
+    if (res.blocked.length) {
+      // Some agents still can't see some skills: that's a failure for scripts and agents.
+      process.exitCode = 1;
+      error(`${label}git tracks ${res.blocked.join(", ")}, so ${res.linked.length ? "some skills weren't" : "nothing was"} linked there; re-run with --allow-tracked to link there too`);
+    }
   }
 }
 
@@ -650,9 +679,35 @@ export function tidy(args: Args) {
   const names = args.positional;
   const keepFor = (base: string | null) =>
     args.keep ? Object.fromEntries(names.map((n) => [n, base ? resolve(base, args.keep!) : expandHome(args.keep!)])) : {};
-  const reports: { label: string; report: TidyReport }[] = args.global
-    ? [{ label: "global folders", report: planGlobalTidy({ keep: keepFor(null) }) }]
-    : (args.all ? visibleProjects() : [requireProject()]).map((root) => ({ label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) }));
+  if (args.keep && !names.length) {
+    error("Usage: skilllib tidy <name>... --keep <folder>");
+    process.exit(1);
+  }
+  const targets: (string | null)[] = args.global ? [null] : args.all ? visibleProjects() : [requireProject()];
+  // A name or --keep folder that matches nothing is a mistake (a typo): say so before changing anything.
+  const problems: string[] = [];
+  for (const name of names) {
+    const where = targets.map((root) => ({ root, ...foldersOf(root, name) })).filter((w) => w.all.length);
+    if (!where.length) {
+      problems.push(`${name}: no skill by that name ${args.global ? "in your global folders" : args.all ? "in your projects" : `in ${basename(targets[0]!)}`}`);
+      continue;
+    }
+    if (!args.keep) continue;
+    for (const { root, real } of where) {
+      if (real.includes(keepFor(root)[name]!)) continue;
+      const label = root ? `${basename(root)} · ` : "";
+      problems.push(
+        `${label}${name}: no copy in ${args.keep}; ${real.length ? `pick one of: ${real.map((d) => folderLabel(root, d)).join(", ")}` : "it has no real copy to keep"}`,
+      );
+    }
+  }
+  if (problems.length) {
+    for (const p of problems) error(p);
+    process.exit(1);
+  }
+  const reports: { label: string; report: TidyReport }[] = targets.map((root) =>
+    root === null ? { label: "global folders", report: planGlobalTidy({ keep: keepFor(null) }) } : { label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) },
+  );
 
   let held = 0;
   let changed = 0;
@@ -668,6 +723,8 @@ export function tidy(args: Args) {
       held += args.dryRun ? 0 : result.held.length;
       changed += result.applied.length;
     }
+    // You picked a copy and it couldn't win (only skilllib's copy can, for a skill it manages).
+    if (args.keep && conflicts.length) process.exitCode = 1;
     for (const c of conflicts) {
       warn(`${label} · ${c.name}: the copies differ`);
       for (const copy of c.copies) {

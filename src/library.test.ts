@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, importSkill, nestedSkills, projectStatus, removeSkill, syncProject, updateProject } from "./library.js";
+import { addSkill, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
@@ -122,6 +122,50 @@ describe("library", () => {
     expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
     expect(removeSkill(project, "alpha", { force: true })).toEqual({ name: "alpha", action: "removed" });
     expect(existsSync(local("alpha"))).toBe(false);
+  });
+
+  test("update --force and sync --force back local edits up before overwriting them", () => {
+    addSkill(project, "alpha");
+    writeSkill(lib("alpha"), "v2");
+    forgetLatest();
+    writeSkill(local("alpha"), "my edit");
+
+    const updated = updateProject(project, ["alpha"], { force: true })[0]!;
+    expect(updated).toMatchObject({ action: "updated", from: 1, to: 2 });
+    expect(readFileSync(join(updated.backedUp!, "SKILL.md"), "utf-8")).toContain("my edit");
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v2");
+
+    // Same version: sync puts it back, and says so ("reset", not "updated").
+    writeSkill(local("alpha"), "another edit");
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: expect.stringContaining("local edits") }]);
+    const [reset] = syncProject(project, { force: true });
+    expect(reset).toMatchObject({ action: "reset", from: 2, to: 2 });
+
+    // `skilllib restore` brings the edits back where they were.
+    const backups = listBackups().filter((b) => b.kind === "edit-backup");
+    expect(backups.map((b) => b.from)).toEqual([local("alpha"), local("alpha")]);
+    expect(backups[0]!.path).toBe(reset!.backedUp!); // newest first, even within the same minute
+    expect(restoreBackup(backups[0]!)).toMatchObject({ ok: true });
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("another edit");
+  });
+
+  test("forced installs back up only what the library doesn't have", () => {
+    addSkill(project, "alpha");
+    writeSkill(lib("alpha"), "v2");
+    forgetLatest();
+    // An older library version isn't an edit: nothing to back up.
+    expect(updateProject(project, ["alpha"], { force: true })[0]).not.toHaveProperty("backedUp");
+    rmSync(local("alpha"), { recursive: true });
+    expect(syncProject(project, { force: true })).toEqual([expect.objectContaining({ action: "installed" })]);
+    expect(listBackups()).toEqual([]);
+  });
+
+  test("sync says when the library doesn't have a pinned skill", () => {
+    addSkill(project, "alpha");
+    rmSync(local("alpha"), { recursive: true });
+    process.env.SKILLLIB_HOME = join(tmp, "other-home");
+    forgetLatest();
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: expect.stringContaining("not in your library") }]);
   });
 
   test("copies symlinked skills as real files so edits never reach the original", () => {

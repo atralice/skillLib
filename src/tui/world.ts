@@ -741,6 +741,8 @@ export type AddRow = {
   /** Hands the writing to an agent; changes nothing here. */
   agent?: boolean;
   run?: (w: World) => Result;
+  /** Runs once the new skill's SKILL.md has been edited: installing it then puts in what you wrote, not the template. */
+  afterEdit?: (w: World) => Result;
 };
 
 /**
@@ -769,10 +771,8 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
           name: q ? `+ Create "${q}"${where}` : "+ Create a new skill (type its name)",
           note: "",
           description: "",
-          run: (w) => {
-            const made = w.ops.createSkill(q);
-            return target ? w.ops.add(target, q) : made;
-          },
+          run: (w) => w.ops.createSkill(q),
+          ...(target ? { afterEdit: (w: World) => w.ops.add(target, q) } : {}),
         },
         { key: "agent", agent: true, name: q ? `✦ Write "${q}" with an agent` : "✦ Write a new skill with an agent", note: "", description: "" },
       ];
