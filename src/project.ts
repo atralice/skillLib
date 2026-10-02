@@ -99,7 +99,22 @@ export function knownProjects(): string[] {
   const path = projectsFile();
   if (!existsSync(path)) return [];
   const list = JSON.parse(readFileSync(path, "utf-8")) as string[];
-  return list.filter((p) => existsSync(p) && isProjectCandidate(p));
+  return onePerFolder(list.filter((p) => existsSync(p) && isProjectCandidate(p)));
+}
+
+/**
+ * One path per real folder: a repo reached through a symlinked folder (a projects folder on another
+ * drive, macOS /var → /private/var) is otherwise recorded twice, by scan and by commands run in it (#52).
+ * Keeps the path you know, the one through the symlink.
+ */
+export function onePerFolder(paths: string[]): string[] {
+  const byReal = new Map<string, string>();
+  for (const p of paths) {
+    const real = realPath(p);
+    const seen = byReal.get(real);
+    if (seen === undefined || (seen === real && p !== real)) byReal.set(real, p);
+  }
+  return [...new Set(byReal.values())];
 }
 
 /**
@@ -113,7 +128,7 @@ export function isProjectCandidate(root: string): boolean {
 
 export function rememberProjects(roots: string[]) {
   const incoming = roots.map((r) => resolve(r)).filter(isProjectCandidate);
-  const all = [...new Set([...knownProjects(), ...incoming])].sort();
+  const all = onePerFolder([...knownProjects(), ...incoming]).sort();
   mkdirSync(skilllibHome(), { recursive: true });
   writeFileSync(projectsFile(), JSON.stringify(all, null, 2) + "\n");
 }

@@ -249,3 +249,13 @@ test("paths under $HOME show as ~ even when $HOME has a trailing slash and goes 
     rmSync(link, { force: true, recursive: false });
   }
 });
+
+test("a repo reached through a symlinked folder is one project, under the path you know (#52)", () => {
+  const real = join(tmp, "drive", "Projects");
+  mkdirSync(join(real, "web", ".git"), { recursive: true });
+  const link = join(tmp, "Projects");
+  symlinkSync(real, link, "junction");
+  writeFileSync(join(tmp, ".skilllib", "projects.json"), JSON.stringify([join(real, "web"), join(link, "web")]));
+  const projects = JSON.parse(cli(tmp, "projects", "--json").out) as { name: string; path: string }[];
+  expect(projects.map((p) => [p.name, p.path])).toEqual([["web", join(link, "web")]]);
+});

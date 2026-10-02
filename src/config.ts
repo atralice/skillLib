@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { skilllibHome, MANIFEST_FILE } from "./paths.js";
+import { realPath, skilllibHome, MANIFEST_FILE } from "./paths.js";
 import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
@@ -96,8 +96,8 @@ export function discoverProjects(): string[] {
 }
 
 export function visibleProjects(): string[] {
-  const hidden = new Set(readConfig().hidden);
-  return knownProjects().filter((p) => !hidden.has(p));
+  const hidden = new Set(readConfig().hidden.map(realPath));
+  return knownProjects().filter((p) => !hidden.has(realPath(p)));
 }
 
 /** Harnesses you use. Before you choose, the ones installed on this machine. */
