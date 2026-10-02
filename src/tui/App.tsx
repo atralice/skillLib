@@ -308,12 +308,26 @@ function versionsOption(w: W.World, repo: string, name: string, installed: numbe
 function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
   const s = u.local;
   const inLibrary = w.library.find((l) => l.name === u.name);
-  const remove: W.Fix = { label: "Remove from repo", preview: s?.source === "lib" ? `Delete ${s.dir}/${u.name} in ${p}. Your library keeps it.` : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`, run: (w) => w.ops.remove(p, u.name) };
+  const remove: W.Fix = {
+    // Its folder gone: all that's left to remove is the skilllib.json entry (the label Health offers too).
+    label: s?.missing ? "Remove it from skilllib.json" : "Remove from repo",
+    preview: s?.missing
+      ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
+      : s?.source === "lib"
+        ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
+        : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`,
+    run: (w) => w.ops.remove(p, u.name),
+  };
   if (s?.source === "lib")
     return [
-      ...(inLibrary && s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
-      { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
-      versionsOption(w, p, u.name, s.version, ui),
+      // A tracked skill your library doesn't have: nothing to edit there, no versions to pick.
+      ...(inLibrary
+        ? [
+            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
+            { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
+            versionsOption(w, p, u.name, s.version, ui),
+          ]
+        : []),
       fixOption(remove),
       reviewOption(w, u.name, ui),
     ];
@@ -652,6 +666,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   function fixSelected() {
     const issue = current && W.worst(current.issues);
     if (!issue) return setToast("Nothing to fix · enter shows what you can do");
+    if (!issue.fixes.length) return setToast(`Nothing skilllib can do here: ${issue.short}`);
     if (issue.decision) {
       setFocus("detail");
       setDetailCursor(Math.max(0, detail?.options.findIndex((o) => o.issue === issue) ?? 0));

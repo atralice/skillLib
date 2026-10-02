@@ -287,9 +287,9 @@ export type LinkResult = { created: string[]; blocked: string[]; uncommitted: st
 /**
  * Adds relative symlinks so every enabled harness loads a skill whose real
  * copy lives at `location`. Folders git tracks are skipped unless `allowTracked`,
- * and always when git doesn't share the real copy.
+ * and always when git doesn't share the real copy. `dryRun`: what it would do, changing nothing.
  */
-export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false } = {}): LinkResult {
+export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false, dryRun = false } = {}): LinkResult {
   const enabled = enabledHarnesses();
   const result: LinkResult = { created: [], blocked: [], uncommitted: [] };
   let shared: boolean | undefined;
@@ -297,7 +297,8 @@ export function linkEverywhere(root: string, name: string, location: string, { a
     if (visibilityOf(root, name, [id])[0]!.paths > 0) continue;
     const dir = harness(id).projectDirs[0]!;
     const link = join(root, dir, name);
-    if (entryExists(link)) continue;
+    // Agents can share a folder (Codex and Zed both read .agents/skills): one entry each.
+    if (entryExists(link) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
     if (isGitTracked(root, dir)) {
       if (!(shared ??= sharedByGit(root, location, name))) {
         result.uncommitted.push(dir);
@@ -308,8 +309,10 @@ export function linkEverywhere(root: string, name: string, location: string, { a
         continue;
       }
     }
-    mkdirSync(join(root, dir), { recursive: true });
-    linkDir(join(root, location, name), link);
+    if (!dryRun) {
+      mkdirSync(join(root, dir), { recursive: true });
+      linkDir(join(root, location, name), link);
+    }
     result.created.push(dir);
   }
   return result;

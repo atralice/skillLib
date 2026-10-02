@@ -27,7 +27,7 @@ import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
-import { findIssues, runFix, usageIssues } from "./health.js";
+import { findIssues, runFix, usageIssues, type Choice } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -529,13 +529,19 @@ export async function doctor(args: Args) {
       }),
     );
   }
+  // A fix that failed or did nothing: ✗, and doctor exits non-zero.
+  const fixed = (fix: Choice) => {
+    const r = runFix(fix);
+    if (!r.ok) process.exitCode = 1;
+    return r;
+  };
   if (args.json) {
     return json(
       issues.map(({ fix, choices, ...issue }) => ({
         ...issue,
         ...(fix && { fix: fix.label }),
         ...(choices && { choices: choices.map((c) => c.label) }),
-        ...(args.fix && fix && { fixed: runFix(fix) }),
+        ...(args.fix && fix && { fixed: fixed(fix) }),
       })),
     );
   }
@@ -545,7 +551,7 @@ export async function doctor(args: Args) {
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
     if (issue.choices) info(dim(`  choose in skilllib → Health: ${issue.choices.map((c) => c.label).join(" / ")}`));
     if (args.fix && issue.fix) {
-      const r = runFix(issue.fix);
+      const r = fixed(issue.fix);
       info(`  ${r.ok ? green("✓") : red("✗")} ${r.message}`);
     }
   }

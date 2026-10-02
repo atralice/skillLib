@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
-import { addSkill, createSkill, deleteGlobal, importSkill, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
+import { addSkill, createSkill, deleteGlobal, importSkill, linkAll, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
@@ -170,9 +170,112 @@ test("a skill some of your agents can't reach gets a link fix, with a choice whe
   skill(join(repo, ".claude", "skills", "committed"));
   execFileSync("git", ["init", "-q"], { cwd: repo });
   execFileSync("git", ["add", "."], { cwd: repo });
-  const tracked = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `usable:${repo}`);
-  expect(tracked?.fix).toBeUndefined();
-  expect(tracked?.choices?.map((c) => c.label)).toEqual(["Add links, but not where git tracks the folder", "Add links everywhere"]);
+  const tracked = () => findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `usable:${repo}`);
+  expect(tracked()?.fix).toBeUndefined();
+  // Every link it needs goes where git tracks the folder: skipping those would link nothing, so that choice isn't offered.
+  expect(tracked()?.choices?.map((c) => c.label)).toEqual(["Add links everywhere"]);
+
+  // When some link can go where git doesn't track the folder, skipping the others is a choice too.
+  setHarnesses(["claude-code", "codex", "zed"]);
+  const both = join(tmp, "both");
+  skill(join(both, ".agents", "skills", "team"));
+  skill(join(both, ".codex", "skills", "tool")); // Zed reads only .agents/skills, which git tracks
+  execFileSync("git", ["init", "-q"], { cwd: both });
+  execFileSync("git", ["add", "."], { cwd: both });
+  const mixed = findIssues([both], machineSkills(), new Set()).find((i) => i.id === `usable:${both}`);
+  expect(mixed?.choices?.map((c) => c.label)).toEqual(["Add links, but not where git tracks the folder", "Add links everywhere"]);
+});
+
+test("a skill only links into folders git tracks could reach, while it isn't committed: commit it first, no link fix", () => {
+  setHarnesses(["claude-code", "codex", "cursor"]);
+  const repo = join(tmp, "repo");
+  skill(join(repo, ".claude", "skills", "team"));
+  skill(join(repo, ".agents", "skills", "tool"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  linkAll(repo, { allowTracked: true });
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "links");
+  skill(join(repo, ".cursor", "skills", "mine")); // not committed; Claude Code and Codex read folders git tracks
+
+  const issues = findIssues([repo], machineSkills(), new Set());
+  expect(issues.find((i) => i.id === `usable:${repo}`)).toBeUndefined();
+  const commit = issues.find((i) => i.id === `uncommitted:${repo}:mine`)!;
+  expect(commit.title).toBe("mine in repo: Claude Code, Codex can't use it until it's committed");
+  expect(commit.detail).toContain("Commit it, then link it");
+  expect(commit.fix).toBeUndefined();
+  expect(commit.choices).toBeUndefined();
+
+  // Committed, the link fix is back.
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "mine");
+  const after = findIssues([repo], machineSkills(), new Set());
+  expect(after.some((i) => i.id === `uncommitted:${repo}:mine`)).toBe(false);
+  expect(after.find((i) => i.id === `usable:${repo}`)?.choices?.map((c) => c.label)).toEqual(["Add links everywhere"]);
+});
+
+test("a link fix that links nothing fails instead of reporting success", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  skill(join(project, ".agents", "skills", "team"));
+  const issue = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `usable:${project}`)!;
+  // Something else takes the link's place before the fix runs.
+  mkdirSync(join(project, ".claude", "skills", "team"), { recursive: true });
+  expect(runFix(issue.fix!)).toEqual({ ok: false, message: "web: nothing linked" });
+});
+
+test("a pinned skill whose folder is missing: sync restores it from the library; one the library lacks can only be removed", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha");
+  rmSync(join(project, ".claude", "skills", "alpha"), { recursive: true });
+  const manifest = JSON.parse(readFileSync(join(project, "skilllib.json"), "utf-8"));
+  manifest.skills["ghost-skill"] = { version: 1, hash: "abc" };
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify(manifest));
+
+  const issues = findIssues([project], machineSkills(), new Set(["alpha"]));
+  const sync = issues.find((i) => i.id === `sync:${project}`)!;
+  expect(sync.title).toBe("web: 1 skill in skilllib.json not installed");
+  expect(sync.detail).toBe("alpha: the folder is missing");
+  const ghost = issues.find((i) => i.id === `unavailable:${project}:ghost-skill`)!;
+  expect(ghost.title).toBe("ghost-skill: pinned in web's skilllib.json, but not in your library");
+  expect(ghost.detail).toContain("import it, or set SKILLLIB_HOME to the library that has it");
+  expect(ghost.fix).toBeUndefined();
+  expect(issues.some((i) => i.title.includes("out of date"))).toBe(false);
+
+  // Sync restores alpha and says ghost-skill was skipped.
+  const r = runFix(sync.fix!);
+  expect(r.ok).toBe(true);
+  expect(r.message).toStartWith("web: restored 1 skill; skipped ghost-skill: not in your library");
+  expect(existsSync(join(project, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+  // Nothing left it can restore: no sync fix to report ✓ for.
+  expect(findIssues([project], machineSkills(), new Set(["alpha"])).some((i) => i.id === `sync:${project}`)).toBe(false);
+
+  expect(runFix(ghost.choices![0]!)).toEqual({ ok: true, message: "ghost-skill: removed from web's skilllib.json" });
+  expect(readManifest(project).skills["ghost-skill"]).toBeUndefined();
+});
+
+test("a newer library version is an update to choose, not a sync that does nothing", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha");
+  skill(join(tmp, "src", "alpha"), "v2");
+  importSkill(join(tmp, "src", "alpha"), { force: true });
+
+  const issues = findIssues([project], machineSkills(), new Set(["alpha"]));
+  expect(issues.some((i) => i.id === `sync:${project}`)).toBe(false);
+  const update = issues.find((i) => i.id === `update:${project}`)!;
+  expect(update.title).toBe("web: 1 skill out of date");
+  expect(update.detail).toBe("alpha (v1 → v2)");
+  expect(update.fix).toBeUndefined();
+  expect(runFix(update.choices![0]!)).toEqual({ ok: true, message: "web: updated 1 skill" });
+  expect(readManifest(project).skills.alpha?.version).toBe(2);
 });
 
 test("a link to a folder under another name isn't offered for import (that made a second copy)", () => {

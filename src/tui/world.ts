@@ -33,8 +33,13 @@ export type LocalSkill = {
   version?: number;
   edited?: boolean;
   missing?: boolean;
-  /** How it compares with your library: the same, different, or not there (tracked but deleted from it). */
+  /** How it compares with your library: the same, different, or not there (tracked but deleted from it, or never in yours). */
   library?: "same" | "differs" | "missing";
+  /**
+   * Agents that can't see it, and only would through a link in a folder git tracks. Git doesn't share the real copy
+   * (not committed), so that link would break for teammates: skilllib never adds it until it's committed.
+   */
+  unshared?: HarnessId[];
   /** Its git state; null when the repo isn't a git repo. */
   git: GitState | null;
   dupes?: Dupes;
@@ -439,7 +444,17 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
     run: (w) => w.ops.remove(projectName, s.name),
   };
 
-  if (s.missing)
+  // Sync restores a missing folder from your library: one the library doesn't have (a teammate's skill, another library) can't come back.
+  if (s.missing && s.library === "missing")
+    issues.push({
+      id: `unavailable:${s.name}`,
+      severity: "problem",
+      title: "Pinned in skilllib.json, but not in your library: import it, or set SKILLLIB_HOME to the library that has it",
+      short: "Pinned, not in your library",
+      decision: true,
+      fixes: [{ label: "Remove it from skilllib.json", preview: `${projectName}'s skilllib.json stops pinning ${s.name} v${s.version}. There's no folder to delete.`, run: (w) => w.ops.remove(projectName, s.name) }],
+    });
+  else if (s.missing)
     issues.push({
       id: `missing:${s.name}`,
       severity: "problem",
@@ -448,7 +463,7 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       decision: false,
       fixes: [{ label: "Restore it (sync)", preview: `Reinstall ${s.name} v${s.version} into ${s.dir}.`, run: (w) => w.ops.restore(projectName, s.name) }],
     });
-  if (s.source === "lib" && s.library === "missing")
+  else if (s.source === "lib" && s.library === "missing")
     issues.push({
       id: `not-in-lib:${s.name}`,
       severity: "problem",
@@ -550,20 +565,34 @@ export function issuesOf(w: World, projectName: string, u: Usable): Issue[] {
       fixes: [{ label: `Update to v${l.latest}`, preview: `Replace ${s.dir}/${s.name} with library v${l.latest}.`, run: (w) => w.ops.update(projectName, s.name) }],
     });
   const blind = w.agents.filter((a) => !u.agents.includes(a));
-  if (!s.missing && blind.length)
+  // Some agents only get it once it's committed: a link to an uncommitted copy in a folder git tracks breaks for teammates.
+  const unshared = blind.filter((a) => s.unshared?.includes(a));
+  const linkable = blind.filter((a) => !unshared.includes(a));
+  const commitFirst = unshared.length ? ` ${agentNames(unshared)} ${unshared.length === 1 ? "needs" : "need"} it committed first (git tracks the folder they read).` : "";
+  if (!s.missing && linkable.length)
     issues.push({
       id: `blind:${s.name}`,
       severity: "warning",
-      title: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
-      short: `${blind.map((a) => harness(a).name).join(", ")} can't see it`,
+      title: `${agentNames(blind)} can't see it`,
+      short: `${agentNames(blind)} can't see it`,
       decision: false,
       fixes: [
         {
           label: "Link it for every agent",
-          preview: `Add links (nothing is copied or moved), so ${blind.map((a) => harness(a).name).join(", ")} load it too.`,
+          preview: `Add links (nothing is copied or moved), so ${agentNames(linkable)} load it too.${commitFirst}`,
           run: (w) => w.ops.link(projectName, s.name),
         },
       ],
+    });
+  else if (!s.missing && unshared.length)
+    issues.push({
+      id: `blind:${s.name}`,
+      severity: "warning",
+      title: `${agentNames(unshared)} can't see it: commit ${s.dir}/${s.name} first, then link it (git tracks the folder they read, and a link to an uncommitted copy would break for teammates)`,
+      short: `${agentNames(unshared)} can't see it: commit it first`,
+      // Nothing skilllib can do: committing is yours.
+      decision: true,
+      fixes: [],
     });
   // Copies that differ need a winner first: comparing one of them with your library says nothing.
   const differ = !!s.dupes?.differ;

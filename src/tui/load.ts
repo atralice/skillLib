@@ -72,7 +72,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     "update available": {},
     "edited locally": { edited: true },
     "edited locally, update available": { edited: true },
-    "folder missing": { missing: true },
+    // sync restores it from your library, unless the library doesn't have it (a teammate's skill, another library).
+    "folder missing": { missing: true, ...(s.latest === null && { library: "missing" as const }) },
     "not in library": { library: "missing" },
   };
   const other: Partial<Record<ProjectSkill["state"], Partial<LocalSkill>>> = {
@@ -88,6 +89,10 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
   const state = git ? git.of(relativeTo(root, s.path)) : null;
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
   const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
+  // Agents only a link in a folder git tracks would reach, while git doesn't share the real copy: never linked (see linkEverywhere).
+  const blind = s.state === "folder missing" ? [] : s.visibility.filter((v) => v.paths === 0).map((v) => v.id);
+  const uncommitted = blind.length ? linkEverywhere(root, s.name, s.location, { dryRun: true }).uncommitted : [];
+  const unshared = blind.filter((id) => uncommitted.includes(harness(id).projectDirs[0]!));
   return {
     name: s.name,
     source: "lib",
@@ -96,6 +101,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
     ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
+    ...(unshared.length && { unshared }),
     git: state,
   };
 }
@@ -372,7 +378,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     link: (repo, name, allow = false) => {
       const r = linkIn(repo, name, allow);
       const message = linkSaid(name, r);
-      if (!r.blocked.length || allow) return message;
+      if (!r.blocked.length || allow) return r.created.length ? message : failed(message);
       return { message: `${message}; not linked in ${r.blocked.join(", ")}: git tracks ${r.blocked.length === 1 ? "it" : "them"}`, then: allowTracked([{ repo, name, blocked: r.blocked }]) };
     },
     track: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),

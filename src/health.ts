@@ -1,9 +1,11 @@
 import { lstatSync } from "node:fs";
 import { basename } from "node:path";
-import { allowTrackedLinks, enabledHarnesses, keptGlobal, readConfig } from "./config.js";
+import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo } from "./git.js";
-import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isGitTracked, isLink, librarySkillDir, linkAll, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, type ProjectSkill } from "./library.js";
+import { HARNESSES, type HarnessId } from "./harnesses.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type ProjectSkill } from "./library.js";
+import { tildify } from "./output.js";
+import { libraryDir } from "./paths.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
@@ -104,7 +106,8 @@ export function findIssues(
         label: "Remove the link",
         run: () => {
           const r = unloadGlobal(skill.path);
-          return r.ok ? `Removed broken link ${skill.name}` : `${skill.name}: ${r.reason}`;
+          if (!r.ok) throw new Error(`${skill.name}: ${r.reason}`);
+          return `Removed broken link ${skill.name}`;
         },
       },
     });
@@ -264,7 +267,11 @@ export function findIssues(
       detail: `${global.plans.map((p) => p.name).join(", ")}: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable from Health.`,
       fix: {
         label: "Keep one copy of each",
-        run: () => `${plural(applyAll(global.plans, "go").skills, "global skill")} now have one copy`,
+        run: () => {
+          const r = applyAll(global.plans, "go");
+          if (!r.skills) throw new Error("No global skill changed");
+          return `${plural(r.skills, "global skill")} now have one copy`;
+        },
       },
     });
   }
@@ -301,6 +308,7 @@ export function findIssues(
       run: () => {
         const results = skills.map((m) => ({ m, ...linkGlobal(m.path, blindOf(m)) }));
         const skipped = results.flatMap((r) => r.skipped);
+        if (!results.some((r) => r.linked.length)) throw new Error(`Nothing linked${skipped.length ? `; skipped ${skipped.join(", ")} (a different skill has that name)` : ""}`);
         return `Linked ${plural(results.filter((r) => r.linked.length).length, "global skill")} for ${agentNames(missing)}${skipped.length ? `; skipped ${skipped.join(", ")} (a different skill has that name)` : ""}`;
       },
     };
@@ -325,22 +333,66 @@ export function findIssues(
   for (const root of projects) {
     const where = basename(root);
     const status = statuses.get(root)!;
-    const behind = status.filter((s) => s.state === "update available" || s.state === "folder missing");
-    if (behind.length > 0) {
+    // sync restores a missing folder from your library: a skill the library doesn't have can't come back that way.
+    const restorable = status.filter((s) => s.state === "folder missing" && s.latest !== null);
+    if (restorable.length > 0) {
       issues.push({
         id: `sync:${root}`,
         severity: "problem",
-        title: `${where}: ${plural(behind.length, "skill")} out of date`,
-        detail: behind.map((s) => s.name).join(", "),
+        title: `${where}: ${plural(restorable.length, "skill")} in skilllib.json not installed`,
+        detail: `${restorable.map((s) => s.name).join(", ")}: the folder is missing`,
         fix: {
           label: "Sync the project",
           run: () => {
             const changes = syncProject(root);
-            return `${where}: ${changes.filter((c) => c.action !== "skipped").length} updated`;
+            const done = changes.filter((c) => c.action !== "skipped");
+            const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
+            if (!done.length) throw new Error(`${where}: nothing restored${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
+            return `${where}: restored ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
           },
         },
       });
     }
+    for (const s of status.filter((s) => s.state === "folder missing" && s.latest === null))
+      issues.push({
+        id: `unavailable:${root}:${s.name}`,
+        severity: "problem",
+        title: `${s.name}: pinned in ${where}'s skilllib.json, but not in your library`,
+        detail: `Its folder is missing, and your library (${tildify(libraryDir())}) has no copy to restore: import it, or set SKILLLIB_HOME to the library that has it.`,
+        // Editing skilllib.json is the team's call: a choice, never run by `doctor --fix`.
+        choices: [
+          {
+            label: "Remove it from skilllib.json",
+            hint: `${where} stops pinning it`,
+            run: () => {
+              const r = removeSkill(root, s.name);
+              if (r.action !== "removed") throw new Error(`${s.name}: ${r.reason}`);
+              return `${s.name}: removed from ${where}'s skilllib.json`;
+            },
+          },
+        ],
+      });
+    // A newer library version changes what skilllib.json pins: a choice (sync only reinstalls the pinned versions).
+    const behind = status.filter((s) => s.state === "update available");
+    if (behind.length > 0)
+      issues.push({
+        id: `update:${root}`,
+        severity: "suggestion",
+        title: `${where}: ${plural(behind.length, "skill")} out of date`,
+        detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
+        choices: [
+          {
+            label: "Update to the newest versions",
+            run: () => {
+              const changes = updateProject(root, behind.map((s) => s.name));
+              const done = changes.filter((c) => c.action !== "skipped");
+              const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
+              if (!done.length) throw new Error(`${where}: nothing updated${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
+              return `${where}: updated ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
+            },
+          },
+        ],
+      });
 
     // One real copy per skill, plus only the links your agents need.
     const tidy = planProjectTidy(root);
@@ -349,6 +401,7 @@ export function findIssues(
       const visible = tidy.plans.flatMap((p) => gitVisibleSteps(p, git).map((s) => describeStep(s, root)));
       const run = (mode: "keep" | "go") => () => {
         const r = applyAll(tidy.plans, mode);
+        if (!r.skills) throw new Error(`${where}: nothing tidied${r.held ? `; left ${plural(r.held, "change")} git would see` : ""}`);
         return `${where}: tidied ${plural(r.skills, "skill")}${r.held ? `; left ${plural(r.held, "change")} git would see` : ""}`;
       };
       issues.push({
@@ -371,18 +424,30 @@ export function findIssues(
     issues.push(...tidy.conflicts.map(conflictIssue));
 
     // Skills some of your agents can't reach here: links fix that (nothing is copied or moved).
-    const partial = status.filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0));
+    const blindHere = status
+      .filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0))
+      .map((s) => ({ s, would: linkEverywhere(root, s.name, s.location, { dryRun: true }) }));
+    // Only links into folders git tracks would help, and git doesn't share the real copy: those links would be
+    // broken for teammates, so skilllib never adds them (see linkEverywhere). Committing it comes first.
+    for (const { s, would } of blindHere.filter(({ would: w }) => !w.created.length && !w.blocked.length && w.uncommitted.length))
+      issues.push({
+        id: `uncommitted:${root}:${s.name}`,
+        severity: "suggestion",
+        title: `${s.name} in ${where}: ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))} can't use it until it's committed`,
+        detail: `Git tracks ${would.uncommitted.join(", ")}, but not ${s.location}/${s.name}: a link there would be broken for teammates. Commit it, then link it (\`skilllib link --allow-tracked\`, or from Health).`,
+      });
+    const partial = blindHere.filter(({ would }) => would.created.length || would.blocked.length).map(({ s }) => s);
     if (partial.length) {
       const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
-      const tracked = readConfig().agentsDirOk?.includes(root)
-        ? []
-        : [...new Set(missing.map((id) => harness(id).projectDirs[0]!))].filter((dir) => isGitTracked(root, dir));
+      const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         const r = linkAll(root, { allowTracked });
-        return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks it)` : ""}${
+        const notes = `${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks it)` : ""}${
           r.uncommitted.length ? `; ${r.uncommitted.join(", ")} not linked into folders git tracks (not committed, so teammates would get broken links)` : ""
         }`;
+        if (!r.linked.length) throw new Error(`${where}: nothing linked${notes}`);
+        return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${notes}`;
       };
       issues.push({
         id: `usable:${root}`,
@@ -396,7 +461,10 @@ export function findIssues(
         ...(tracked.length
           ? {
               choices: [
-                { label: "Add links, but not where git tracks the folder", hint: `skips ${tracked.join(", ")}`, run: run(false) },
+                // Only when some link goes where git doesn't track: otherwise this one would link nothing.
+                ...(blindHere.some(({ would }) => would.created.length)
+                  ? [{ label: "Add links, but not where git tracks the folder", hint: `skips ${tracked.join(", ")}`, run: run(false) }]
+                  : []),
                 { label: "Add links everywhere", hint: `remembered for ${where}; git will see them`, run: run(true) },
               ],
             }
