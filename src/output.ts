@@ -1,5 +1,5 @@
 import { sep } from "node:path";
-import { homedir } from "node:os";
+import { userHome } from "./paths.js";
 
 let jsonMode = false;
 
@@ -30,7 +30,7 @@ export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 
 /** Home-relative path for display. */
 export function tildify(path: string): string {
-  const home = homedir();
+  const home = userHome();
   return path === home || path.startsWith(home + sep) ? "~" + path.slice(home.length) : path;
 }
 

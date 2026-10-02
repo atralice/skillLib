@@ -595,3 +595,10 @@ test("a plugin the repo's settings turn on loads only there, and can be turned o
   w = loadWorld();
   expect(usable(w, "app").filter((u) => u.source === "plugin").map((u) => u.where)).toEqual(["pt@mk"]);
 });
+
+test("installing the skilllib skill over a folder that isn't skilllib's fails, and says where", () => {
+  setHarnesses(["claude-code"]);
+  writeFileSync(join(mkdirSync(join(tmp, ".claude", "skills", "skilllib"), { recursive: true })!, "SKILL.md"), "mine\n");
+  const r = loadWorld().ops.installAgentSkill();
+  expect(r).toEqual(failed("skilllib skill: ~/.claude/skills/skilllib already exists and isn't skilllib's"));
+});

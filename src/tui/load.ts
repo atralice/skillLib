@@ -606,7 +606,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     },
     installAgentSkill: () => {
       const r = installAgentSkill();
-      return r.ok ? `Your agents can now use skilllib (${r.dirs.map(tildify).join(", ")})` : `skilllib skill: ${r.reason}`;
+      return r.ok ? `Your agents can now use skilllib (${r.dirs.map(tildify).join(", ")})` : failed(`skilllib skill: ${r.reason}`);
     },
     removeAgentSkill: () => {
       const removed = removeAgentSkill();
