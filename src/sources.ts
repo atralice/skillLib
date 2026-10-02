@@ -39,8 +39,9 @@ function readJson<T>(path: string): T | null {
   }
 }
 
+/** `npx skills` keeps its lock file in ~/.agents, wherever CLAUDE_CONFIG_DIR points. */
 function skillsShLock(): Record<string, { source?: string }> {
-  return readJson<{ skills?: Record<string, { source?: string }> }>(join(resolve(claudeDir(), ".."), ".agents", ".skill-lock.json"))?.skills ?? {};
+  return readJson<{ skills?: Record<string, { source?: string }> }>(join(userHome(), ".agents", ".skill-lock.json"))?.skills ?? {};
 }
 
 /** Skills `npx skills add` installed into a project (not globally), by name. */
