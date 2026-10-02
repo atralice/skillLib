@@ -22,7 +22,7 @@ export type Dupes = {
 
 export type LocalSkill = {
   name: string;
-  /** lib: tracked in skilllib.json · repo: the team's, in .agents/skills · untracked: only on this machine. */
+  /** lib: tracked in skilllib.json · repo: the team's (in .agents/skills, or committed to git), never removed · untracked: only on this machine. */
   source: "lib" | "repo" | "untracked";
   /** Project folder holding the real copy, e.g. ".claude/skills". */
   dir: string;

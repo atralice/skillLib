@@ -78,6 +78,9 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     "repo skill, in library": { source: "repo", library: "same" },
     "repo skill, differs from library": { source: "repo", library: "differs" },
   };
+  const state = git ? git.of(relativeTo(root, s.path)) : null;
+  // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
+  const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
   return {
     name: s.name,
     source: "lib",
@@ -85,8 +88,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     path: s.path,
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
-    ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : other[s.state]),
-    git: git ? git.of(relativeTo(root, s.path)) : null,
+    ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
+    git: state,
   };
 }
 
@@ -296,7 +299,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     remove: (repo, name) => {
       const s = find(repo, name);
       if (!s) return `${name} isn't in ${repo}`;
-      if (s.state.startsWith("repo skill")) return `${name} is the repo's own (committed by your team): skilllib doesn't delete it`;
+      const committed = !s.managed && ["committed", "changed"].includes(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)) ?? "");
+      if (s.state.startsWith("repo skill") || committed) return `${name} is the repo's own (committed by your team): skilllib doesn't delete it`;
       if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
     },

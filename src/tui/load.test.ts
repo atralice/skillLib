@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
@@ -273,6 +273,26 @@ test("linking for every agent asks before linking into a folder git tracks", () 
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
   expect(issue(w, "blind:notes")).toBeUndefined();
+});
+
+test("a skill the repo commits in .claude/skills is the team's: a plugin with its name is turned off, never the copy removed", () => {
+  fakePlugin();
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".claude", "skills", "lint"));
+  writeSkill(join(repo, ".claude", "skills", "scratch"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".claude/skills/lint");
+  git("commit", "-qm", "lint");
+  const w = loadWorld();
+  expect(local(w, "lint").local!.source).toBe("repo");
+  expect(local(w, "scratch").local!.source).toBe("untracked");
+  expect(issue(w, "twice-p:lint")!.fixes.map((f) => f.label)).toEqual(["Turn the plugin off in app only"]);
+  expect(issue(w, "local:lint")).toBeUndefined();
+  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+  expect(existsSync(join(repo, ".claude", "skills", "lint", "SKILL.md"))).toBe(true);
+  // Only on this machine: removable, and backed up.
+  expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
 });
 
 test("a repo copy of a skill you keep global is the extra one", () => {

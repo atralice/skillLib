@@ -414,6 +414,8 @@ function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
 function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return w.library.map((l): Item => {
     const repos = w.projects.filter((p) => p.skills.some((s) => s.name === l.name));
+    // A repo's own copy (committed by the team) is never removed from here.
+    const removable = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source !== "repo"));
     const uses = W.totalUses(w, l.name);
     const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => rs.map((r) => said(w.ops.add(r, l.name))).join(" · ") };
     const delFix = W.deleteLibraryFix(w, [l.name]);
@@ -444,13 +446,13 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
         b.issues(issues);
         b.actions([
           fixOption(addFix),
-          ...(repos.length
+          ...(removable.length
             ? [
                 fixOption({
                   label: "Remove from repos…",
                   preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
                   run: () => "",
-                  candidates: () => repos.map((p) => p.name),
+                  candidates: () => removable.map((p) => p.name),
                   pickRepos: (w, rs) => rs.map((r) => said(w.ops.remove(r, l.name))).join(" · "),
                 }),
               ]
