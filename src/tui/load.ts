@@ -259,7 +259,8 @@ function remoteLabel(url: string): string | undefined {
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
   if (c.action === "removed") return `Removed ${c.name} from ${repo}`;
-  return `${c.action === "installed" ? "Added" : "Updated"} ${c.name}${c.to ? ` v${c.to}` : ""} in ${repo}`;
+  const done = `${c.action === "installed" ? "Added" : c.action === "reset" ? "Reset" : "Updated"} ${c.name}${c.to ? ` v${c.to}` : ""} in ${repo}`;
+  return c.backedUp ? `${done} (your edits are in Settings › Backups)` : done;
 }
 
 function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
@@ -280,10 +281,13 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       return w.ops.link(repo, name, true);
     },
   });
-  /** Local edits in the way: offer to go ahead and lose them. */
-  const orForce = (c: Change, repo: string, label: string, force: () => Change): Result =>
+  /** Local edits in the way: offer to go ahead anyway (`lost`: the edits aren't backed up). */
+  const orForce = (c: Change, repo: string, label: string, force: () => Change, lost = true): Result =>
     c.action === "skipped" && c.reason?.includes("edits")
-      ? { message: said(c, repo), then: { label, preview: `Your edits to ${c.name} in ${repo} are lost.`, run: () => said(force(), repo) } }
+      ? {
+          message: said(c, repo),
+          then: { label, preview: lost ? `Your edits to ${c.name} in ${repo} are lost.` : `Your edits to ${c.name} in ${repo} go to Settings › Backups.`, run: () => said(force(), repo) },
+        }
       : said(c, repo);
   const toLibrary = (path: string) => {
     const r = importSkill(path, { force: true });
@@ -305,7 +309,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     },
     update: (repo, name) => {
       const c = updateProject(rootOf(repo), [name])[0];
-      return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!) : `${name} is up to date`;
+      return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!, false) : `${name} is up to date`;
     },
     saveEdits: (repo, name) => {
       const s = find(repo, name)!;

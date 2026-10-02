@@ -122,7 +122,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     if (dep) {
       primary = reals.find((r) => rel(r.dir) === (dep.dir ?? PROJECT_SKILLS_DIR));
       if (!primary) continue; // folder missing: sync's job
-    } else if (chosen) {
+    } else if (chosen && reals.some((r) => r.dir === chosen)) {
       primary = reals.find((r) => r.dir === chosen);
     } else {
       // The copy teammates get (committed); then, for a skill `npx skills` installed, its own
@@ -190,8 +190,10 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
     const reals = entries.filter((e) => !e.link);
     if (reals.length < 2) continue;
     hashReals(reals);
-    const primary = reals.find((r) => r.dir === keep[name]) ?? reals.find((r) => r.dir === agents) ?? reals[0]!;
-    if (!keep[name] && reals.some((r) => r.hash !== primary.hash)) {
+    // A `keep` folder with no copy picks nothing: differing copies stay a conflict.
+    const kept = reals.find((r) => r.dir === keep[name]);
+    const primary = kept ?? reals.find((r) => r.dir === agents) ?? reals[0]!;
+    if (!kept && reals.some((r) => r.hash !== primary.hash)) {
       report.conflicts.push(conflictOf(name, null, reals, enabled, globalReadsOf));
       continue;
     }
@@ -268,6 +270,20 @@ export function describeStep(step: TidyStep, root: string | null): string {
 
 /** Folder label for a conflict copy: ".claude/skills" in a repo, "~/.agents/skills" globally. */
 export function copyLabel(conflict: Conflict, dir: string): string {
-  return conflict.root ? relativeTo(conflict.root, dir) : dir.replace(userHome(), "~");
+  return folderLabel(conflict.root, dir);
+}
+
+/** ".claude/skills" in a repo, "~/.agents/skills" for a global folder. */
+export function folderLabel(root: string | null, dir: string): string {
+  return root ? relativeTo(root, dir) : dir.replace(userHome(), "~");
+}
+
+/**
+ * Where a skill is, in a repo's skill folders (or the global ones when `root` is null):
+ * every folder holding it, and those holding a real copy (the ones `keep` can pick).
+ */
+export function foldersOf(root: string | null, name: string): { all: string[]; real: string[] } {
+  const entries = entriesOf(root ? ALL_PROJECT_DIRS.map((d) => join(root, d)) : globalSkillDirs(), name);
+  return { all: entries.map((e) => e.dir), real: entries.filter((e) => !e.link).map((e) => e.dir) };
 }
 

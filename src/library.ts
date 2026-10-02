@@ -7,6 +7,7 @@ import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
+import { tildify } from "./output.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
 export type LibrarySkill = { name: string; description: string; dir: string };
@@ -325,19 +326,23 @@ export function linkAll(root: string, { allowTracked = false } = {}): { linked: 
 
 export type Change = {
   name: string;
-  action: "installed" | "updated" | "removed" | "skipped";
+  /** reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`). */
+  action: "installed" | "updated" | "reset" | "removed" | "skipped";
   reason?: string;
   from?: number;
   to?: number;
   /** Harness folders a link couldn't be written to because git tracks them. */
   blocked?: string[];
+  /** Where overwritten local edits went (~/.skilllib/edit-backup/…); `skilllib restore` puts them back. */
+  backedUp?: string;
 };
 
 /**
  * Installs a library skill version (default: the newest) into the project and
  * records it as a dependency. The real copy goes in the first folder your
  * harnesses need (see installDirs); the others get links. Existing installs
- * keep their recorded folders. Refuses to clobber local edits unless forced.
+ * keep their recorded folders. Refuses to clobber local edits unless forced;
+ * forced, content the library doesn't have goes to ~/.skilllib/edit-backup first.
  */
 export function addSkill(
   root: string,
@@ -364,9 +369,11 @@ export function addSkill(
     };
   }
 
+  let backedUp: string | undefined;
   if (local !== target.hash || isLink(to)) {
     mkdirSync(join(root, primary), { recursive: true });
     if (isLink(to)) unlinkSync(to);
+    else if (local !== null && !knownContent) backedUp = stash(to, "edit-backup");
     copySkill(versionDir(name, target.version), to);
   }
 
@@ -397,10 +404,11 @@ export function addSkill(
   writeManifest(root, manifest);
   return {
     name,
-    action: recorded || local !== null ? "updated" : "installed",
+    action: !recorded && local === null ? "installed" : backedUp && recorded?.version === target.version ? "reset" : "updated",
     ...(recorded ? { from: recorded.version } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),
+    ...(backedUp ? { backedUp } : {}),
   };
 }
 
@@ -426,7 +434,8 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
 
 /**
  * Installs exactly the versions skilllib.json records (like `npm ci`):
- * restores missing folders and reverts nothing that was edited.
+ * restores missing folders and reverts nothing that was edited (forced, it
+ * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
 export function syncProject(root: string, { force = false } = {}): Change[] {
   const { skills } = readManifest(root);
@@ -437,7 +446,9 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
     const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
     if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
     const change = addSkill(root, name, { force: true, version: pinned });
-    return change.action === "skipped" ? [change] : [{ ...change, action: local === null ? "installed" : "updated" }];
+    // Only skipped when the library has no version of it: a teammate's skill, or another machine's library.
+    if (change.action === "skipped") return [{ ...change, reason: `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it` }];
+    return [{ ...change, action: local === null ? "installed" : change.action }];
   });
 }
 
@@ -636,7 +647,8 @@ export function listBackups(): Backup[] {
         return [{ name, kind, path: join(dir, entry), movedAt: `${match[2]} ${match[3]}:${match[4]}`, from }];
       });
     })
-    .sort((a, b) => b.movedAt.localeCompare(a.movedAt));
+    // By the entry's full timestamp (movedAt shows minutes only): `restore <name>` takes the newest.
+    .sort((a, b) => b.path.slice(-24).localeCompare(a.path.slice(-24)));
 }
 
 /**
