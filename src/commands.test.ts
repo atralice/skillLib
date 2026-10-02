@@ -236,9 +236,16 @@ describe("what the plain commands say", () => {
   });
 });
 
-test("paths under $HOME show as ~ even when $HOME has a trailing slash (#51)", () => {
-  process.env.HOME = `${tmp}/`;
-  const repo = join(tmp, "Projects", "web");
-  mkdirSync(join(repo, ".git"), { recursive: true });
-  expect(cli(repo, "status").out).toContain("~/Projects/web");
+test("paths under $HOME show as ~ even when $HOME has a trailing slash and goes through a symlink (#51)", () => {
+  const link = join(tmpdir(), `skilllib-home-link-${process.pid}-${Date.now()}`);
+  symlinkSync(tmp, link, "junction");
+  try {
+    mkdirSync(join(tmp, ".agents", "skills", "theirs"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "theirs", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    process.env.HOME = `${link}/`;
+    process.env.USERPROFILE = `${link}/`;
+    expect(cli(tmp, "global").out).toContain("~/.agents/skills/theirs");
+  } finally {
+    rmSync(link, { force: true, recursive: false });
+  }
 });
