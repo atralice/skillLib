@@ -92,7 +92,7 @@ The dashboard for one repo: everything agents can use in it, one row per skill.
 
 - **Action rows:** `+ Add a skill…`, `✦ Fix N issues automatically…` (only when there are some), `⋯ <repo>…` (open its folder, hide it, a review prompt for its skills).
 - **Columns:** severity · Skill · Source · Uses (Claude Code, 30 days, this repo) · the worst issue in a few words.
-- **Source tags:** `lib v2` (from your library, `accent`) · `repo` (committed by the team) and `untracked` (only on this machine), both `blue` · `global` / `global ✓` (kept on purpose), `yellow` · `⧉ vercel` (a plugin, `magenta`) · `claude.ai`, `cursor` (`muted`).
+- **Source tags:** `lib v2` (from your library, `accent`) · `repo` (committed by the team) and `untracked` (only on this machine), both `blue` · `global` / `global ✓` (kept on purpose), `yellow` · `⧉ vercel` (a plugin, `magenta`) · `◆ skilllib` (skilllib's own skill, `accent`) · `claude.ai`, `cursor` (`muted`).
 - **One row per skill**, even when it loads from several places. The row shows the repo's copy first, then yours, then vendors' (`COPY_RANK`); the details list every copy under *Loaded from*.
 - **Tabs:** All · Issues · Local · Global · Plugins · Vendor, each with its count. The Issues count is yellow when it isn't zero.
 - **Order:** worst issue first, then most used, then name. The order is fixed when a view opens and doesn't change after a fix, so rows stay under the cursor. It's re-sorted once when usage arrives (usage loads after the first paint because reading transcripts is slow).
@@ -133,6 +133,7 @@ Everything that loads in every repo: your global folders, plugins, claude.ai ski
 - **Tabs:** as a repo's, without Local.
 - **Issues:** broken links, loaded twice (a global copy and a plugin, or two global copies), and *Not reviewed* for each of your global skills you haven't decided about.
 - **Vendor skills** can't be changed from here, except a Claude Code plugin, which can be replaced (below). Their actions say where to turn them off.
+- **The skilllib skill** (`◆ skilllib`, in the Global tab): out of date, its row offers the update; its action removes it (`skilllib agent-skill remove`).
 
 | | |
 |---|---|

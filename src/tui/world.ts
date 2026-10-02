@@ -7,7 +7,7 @@ import type { GitState } from "../git.js";
 import { harness, type HarnessId } from "../harnesses.js";
 import { matchScore } from "../search.js";
 
-export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system";
+export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
 
 /** Same-name copies that should be one real copy plus links (see tidy.ts). */
@@ -44,8 +44,8 @@ export type LocalSkill = {
 
 export type MachineSkill = {
   name: string;
-  /** system: a machine-wide folder an admin manages (/etc/codex/skills). */
-  source: "global" | "plugin" | "claude.ai" | "cursor" | "system";
+  /** system: a machine-wide folder an admin manages (/etc/codex/skills) · skilllib: skilllib's own skill (`where`: its global folder). */
+  source: "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
   /** Global folder, plugin id, or where a vendor skill comes from. */
   where: string;
   /** Where it was installed from, e.g. an `npx skills` repo. */
@@ -167,6 +167,8 @@ export type Ops = {
   copy(text: string, what: string): Result;
   /** Installs (or refreshes) the skilllib skill in the global folders your agents read. */
   installAgentSkill(): Result;
+  /** Removes the skilllib skill from the global folders it was installed in. */
+  removeAgentSkill(): Result;
 };
 
 export type World = {
@@ -233,7 +235,7 @@ export type Issue = {
 export const SEVERITY_RANK: Record<Severity, number> = { problem: 0, warning: 1, hint: 2 };
 
 export function filterOf(source: Source): Exclude<Filter, "all"> {
-  return source === "lib" || source === "repo" || source === "untracked" ? "local" : source === "global" ? "global" : source === "plugin" ? "plugins" : "vendor";
+  return source === "lib" || source === "repo" || source === "untracked" ? "local" : source === "global" || source === "skilllib" ? "global" : source === "plugin" ? "plugins" : "vendor";
 }
 
 export function project(w: World, name: string): Project {
@@ -361,11 +363,13 @@ export function globalFixes(m: MachineSkill): Fix[] {
  */
 export function machineActions(m: MachineSkill): Fix[] {
   if (m.broken) return []; // its issue already offers "Remove the link"
-  return m.source === "global" ? globalFixes(m) : [];
+  return m.source === "global" ? globalFixes(m) : m.source === "skilllib" ? [removeAgentSkillFix()] : [];
 }
 
 /** Issues on skills that load everywhere, independent of any project. */
 export function machineIssues(w: World, m: MachineSkill): Issue[] {
+  // skilllib's own skill: only whether it's current for every agent you use.
+  if (m.source === "skilllib") return [agentSkillIssue(w)].flatMap((i) => (i ? [i] : []));
   if (m.broken)
     return [
       {
@@ -629,6 +633,16 @@ export function agentSkillFix(w: World): Fix {
   };
 }
 
+/** Takes the skilllib skill out of your global folders (`skilllib agent-skill remove`). */
+export function removeAgentSkillFix(): Fix {
+  return {
+    label: "Remove the skilllib skill",
+    preview:
+      "Removes it from ~/.claude/skills and ~/.agents/skills, where skilllib put it. Your agents then stop using skilllib to answer which skills they can use. Settings › skilllib skill puts it back.",
+    run: (w) => w.ops.removeAgentSkill(),
+  };
+}
+
 /** Your agents don't have the skilllib skill. Installing adds a global skill, so it's your call; refreshing it isn't. */
 export function agentSkillIssue(w: World): Issue | null {
   // No agents picked yet: there's nowhere to put it.
@@ -784,6 +798,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
   if (m?.source === "claude.ai") return [{ key: "claude.ai", label: "claude.ai skills" }];
   if (m?.source === "cursor") return [{ key: "cursor", label: "Cursor built-ins" }];
   if (m?.source === "system") return [{ key: `system:${m.where}`, label: m.where }];
+  if (m?.source === "skilllib") return [];
   if (m) {
     const origin = originGroup(m.origin);
     return [...(origin ? [origin] : []), ...byTime("global", m.installed), ...byWord("global", m.name)];

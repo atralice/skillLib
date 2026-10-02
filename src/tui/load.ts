@@ -5,7 +5,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { agentSkillState, installAgentSkill } from "../agentSkill.js";
+import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
@@ -130,8 +130,8 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   const global = s.kind === "global" || s.kind === "skills.sh";
   return {
     name: s.name,
-    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : "cursor",
-    where: global ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
+    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : s.kind === "skilllib" ? "skilllib" : "cursor",
+    where: global || s.kind === "skilllib" ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
     ...(s.kind === "skills.sh" ? { origin: `npx skills: ${s.origin}` } : {}),
     path: s.path,
     links: s.links,
@@ -594,6 +594,10 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     installAgentSkill: () => {
       const r = installAgentSkill();
       return r.ok ? `Your agents can now use skilllib (${r.dirs.map(tildify).join(", ")})` : `skilllib skill: ${r.reason}`;
+    },
+    removeAgentSkill: () => {
+      const removed = removeAgentSkill();
+      return removed.length ? `Removed the skilllib skill (${removed.map(tildify).join(", ")})` : failed("The skilllib skill isn't installed");
     },
     repoInfo: (repo) => {
       if (!info.has(repo)) {

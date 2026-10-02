@@ -72,8 +72,11 @@ describe("the skilllib skill for agents", () => {
     // One skill, loaded by both agents, and not offered for cleanup.
     const ours = machineSkills().filter((m) => m.name === "skilllib");
     expect(ours).toHaveLength(1);
-    expect(ours[0]).toMatchObject({ kind: "built-in", origin: "skilllib", movable: false, harnesses: ["claude-code", "codex"] });
+    expect(ours[0]).toMatchObject({ kind: "skilllib", origin: "skilllib", movable: false, harnesses: ["claude-code", "codex"] });
     expect(findIssues([], machineSkills(), new Set()).map((i) => i.id)).not.toContain("agent-skill");
+    // status --json says it's skilllib's own, from its folder (not a built-in an agent bundles).
+    const global = JSON.parse(cli("status", "--json")).global as { source: string; from: string; skills: string[] }[];
+    expect(global.find((g) => g.skills.includes("skilllib"))).toMatchObject({ source: "skilllib", from: "~/.claude/skills" });
 
     expect(removeAgentSkill()).toEqual([real, link]);
     expect(existsSync(real) || existsSync(link)).toBe(false);

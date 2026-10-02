@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── Fix automatically (6 of 6) ──────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ Decisions are never listed here: they stay with you.                                   │
-│   ◈ Global          14   ││ ▌ [x] stripe-payments: Codex can't see it → Link it for every agent                    │
+│   ◈ Global          15   ││ ▌ [x] stripe-payments: Codex can't see it → Link it for every agent                    │
 │   ✓ Health          19   ││   [x] react-patterns: Update available: v1 → v2 → Update to v2                         │
 │   Projects ───────────── ││   [x] seo-meta: Listed in skilllib.json but the folder is missing → Restore it (sync)  │
 │ ▌ ◆ web-app          ✕   ││   [x] testing-guide: More copies or links in this repo than your agents need → Keep o… │

@@ -11,9 +11,11 @@ import { readSkillInfo, skillDirsIn } from "./skills.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
+ * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor)
  * - system: a machine-wide folder an admin manages (/etc/codex/skills)
+ * - skilllib: skilllib's own skill, which `skilllib agent-skill install` puts in your global folders
  */
-export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system";
+export type SourceKind = "global" | "skills.sh" | "claude.ai" | "plugin" | "built-in" | "system" | "skilllib";
 
 export type SourcedSkill = {
   name: string;
@@ -124,7 +126,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
     const locked = lock[e.name]?.source;
     if (existsSync(join(e.path, OWN_SKILL_MARKER))) {
       // The skill that teaches agents to use skilllib: deliberately global, so not yours to clean up.
-      skills.push({ name: e.name, kind: "built-in", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
+      skills.push({ name: e.name, kind: "skilllib", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
       continue;
     }
     skills.push({

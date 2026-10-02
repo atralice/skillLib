@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { agentSkillIssue, deleteLibraryFix, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
+import { agentSkillIssue, deleteLibraryFix, followUp, issuesOf, machineActions, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -440,6 +440,27 @@ test("the skilllib skill installs from Health for every agent you use", () => {
   const own = w.machine.filter((m) => m.name === "skilllib");
   expect(own.length).toBeGreaterThan(0);
   expect(own.flatMap((m) => [m.source === "global" ? "global" : "", ...machineIssues(w, m).map((i) => i.id)]).filter(Boolean)).toEqual([]);
+});
+
+test("Global shows the skilllib skill as skilllib's own: update it when it's old, or remove it", () => {
+  setHarnesses(["claude-code", "codex"]);
+  let w = loadWorld();
+  w.ops.installAgentSkill();
+  w = loadWorld();
+  const own = () => w.machine.find((m) => m.name === "skilllib")!;
+  expect(own()).toMatchObject({ source: "skilllib", where: "~/.claude/skills", agents: ["claude-code", "codex"] });
+  expect(machineActions(own()).map((f) => f.label)).toEqual(["Remove the skilllib skill"]);
+
+  // An old copy: its row says so, and offers the update.
+  writeFileSync(join(tmp, ".claude", "skills", "skilllib", "SKILL.md"), "old\n");
+  w = loadWorld();
+  expect(w.agentSkill).toBe("outdated");
+  expect(machineIssues(w, own()).flatMap((i) => i.fixes.map((f) => f.label))).toEqual(["Update the skilllib skill"]);
+
+  expect(said(machineActions(own())[0]!.run(w))).toBe("Removed the skilllib skill (~/.claude/skills/skilllib, ~/.agents/skills/skilllib)");
+  w = loadWorld();
+  expect(w.agentSkill).toBe("missing");
+  expect(w.machine.some((m) => m.name === "skilllib")).toBe(false);
 });
 
 test("a repo copy of a skill you keep global is the extra one", () => {

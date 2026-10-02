@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── Settings ────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││   Agents ───────────────────────────────────────────────────────────────────────────── │
-│   ◈ Global          14   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
+│   ◈ Global          15   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
 │   ✓ Health          19   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
 │   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
 │   ◆ web-app          ✕   ││   [ ] ℤ Zed                         .agents/skills                                     │
