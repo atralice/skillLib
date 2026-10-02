@@ -110,6 +110,34 @@ describe("--json", () => {
     expect(JSON.parse(cli("list", "--json"))).toEqual({ inThisProject: ["stripe"], skills: [{ name: "terraform", description: "Terraform infra" }] });
   });
 
+  test("status lists subfolders' skills and global skills as this repo's plugin settings load them", () => {
+    setHarnesses(["claude-code", "codex"]);
+    skill(join(project, "packages", "web", ".claude", "skills", "web-skill"));
+    skill(join(project, "packages", "api", ".agents", "skills", "api-skill"));
+    const market = join(tmp, ".claude", "plugins", "marketplaces", "mkt", "plugins");
+    skill(join(market, "repoplug", "skills", "repo-plug-skill"));
+    skill(join(market, "myplug", "skills", "my-plug-skill"));
+    writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "myplug@mkt": true } }));
+    const pluginSkills = () =>
+      JSON.parse(cli("status", "--json"))
+        .global.filter((g: { source: string }) => g.source === "plugin")
+        .flatMap((g: { skills: string[] }) => g.skills);
+    expect(pluginSkills()).toEqual(["my-plug-skill"]);
+
+    // The repo turns one plugin on and, in its local settings, the user's off.
+    mkdirSync(join(project, ".claude"), { recursive: true });
+    writeFileSync(join(project, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "repoplug@mkt": true } }));
+    writeFileSync(join(project, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "myplug@mkt": false } }));
+    const status = JSON.parse(cli("status", "--json"));
+    expect(status.global.filter((g: { source: string }) => g.source === "plugin")).toEqual([
+      { source: "plugin", from: "repoplug@mkt", agents: ["claude-code"], skills: ["repo-plug-skill"] },
+    ]);
+    expect(status.nested).toEqual([
+      { source: "repo", dir: "packages/api/.agents/skills", git: "new", agents: ["codex"], skills: ["api-skill"] },
+      { source: "local", dir: "packages/web/.claude/skills", git: "new", agents: ["claude-code"], skills: ["web-skill"] },
+    ]);
+  });
+
   test("a skilllib.json above the git root belongs to another checkout", () => {
     writeFileSync(join(tmp, "skilllib.json"), JSON.stringify({ skills: {} }));
     expect(JSON.parse(cli("status", "--json")).project).toBe(project.replace(tmp, "~"));
