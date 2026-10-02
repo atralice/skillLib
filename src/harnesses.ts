@@ -43,9 +43,11 @@ const home = userHome;
  * - Grok (user guide, Skills; checked with `grok inspect` on 1.0.41): .grok/skills and
  *   .agents/skills from the working folder up to the repo root, plus ~/.grok/skills
  *   (GROK_HOME) and ~/.agents/skills. By default it also reads .claude/skills,
- *   ~/.claude/skills, .cursor/skills and ~/.cursor/skills. It does not read
- *   .codex/skills, and it ignores CLAUDE_CONFIG_DIR. compat.codex.skills does not
- *   enable .codex discovery. Bundled skills live in ~/.grok/bundled/skills.
+ *   ~/.claude/skills, .cursor/skills and ~/.cursor/skills. Same name once: a project
+ *   folder beats a home folder, and inside each the order is .grok, .agents, .claude,
+ *   .cursor. It does not read .codex/skills, and it ignores CLAUDE_CONFIG_DIR.
+ *   compat.codex.skills does not enable .codex discovery. Bundled skills live in
+ *   ~/.grok/bundled/skills.
  */
 export const HARNESSES: Harness[] = [
   {
