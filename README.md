@@ -389,6 +389,17 @@ A command exits 1 when it couldn't do all you asked: a skill skipped (not in the
 
 The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so an agent usually answers "which skills can you use here?" in one step.
 
+**TypeScript types.** The package ships a type for each command's JSON (`StatusJson`, `ListJson`, `ChangesJson`, `DoctorJson`…). It has types only, no runtime API:
+
+```ts
+import { execFileSync } from "node:child_process";
+import type { StatusJson } from "skilllib";
+
+const status: StatusJson = JSON.parse(execFileSync("skilllib", ["status", "--json"], { encoding: "utf-8" }));
+```
+
+A field is only removed or changed in a major version.
+
 ## Files
 
 | Path | What |
