@@ -1,17 +1,18 @@
 ╭── ◆ skilllib ────────────╮╭── Settings ────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││   Agents ───────────────────────────────────────────────────────────────────────────── │
 │   ◈ Global          15   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
-│   ✓ Health          19   ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
-│   Projects ───────────── ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
-│   ◆ web-app          ✕   ││   [ ] ℤ Zed                         .agents/skills                                     │
-│     api-server       ✕   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
-│     docs-site        ·   ││   Project folders ──────────────────────────────────────────────────────────────────── │
-│     mobile-app       ⚠   ││   ~/Projects                        scanned for git repos                              │
-│     billing              ││   + Add a folder…                                                                      │
-│     blog                 ││   Backups ──────────────────────────────────────────────────────────────────────────── │
-│     cli-tools            ││   No backups yet                    anything skilllib removes lands here               │
-│     dotfiles             ││                                                                                        │
-│     design-system        │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│   ⧉ Plugins         7    ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
+│   ✓ Health          19   ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
+│   Projects ───────────── ││   [ ] ℤ Zed                         .agents/skills                                     │
+│   ◆ web-app          ✕   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
+│     api-server       ✕   ││   Project folders ──────────────────────────────────────────────────────────────────── │
+│     docs-site        ·   ││   ~/Projects                        scanned for git repos                              │
+│     mobile-app       ⚠   ││   + Add a folder…                                                                      │
+│     billing              ││   Backups ──────────────────────────────────────────────────────────────────────────── │
+│     blog                 ││   No backups yet                    anything skilllib removes lands here               │
+│     cli-tools            ││                                                                                        │
+│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
+│     design-system        │
 │     e2e-tests            │
 │     infra                │
 │     landing              │
@@ -22,7 +23,6 @@
 │    ───────────────────── │
 │ ▌ ⚙ Settings             │
 │   ? Help                 │
-│                          │
 │                          │
 │                          │
 │                          │

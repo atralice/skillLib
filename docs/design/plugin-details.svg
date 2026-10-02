@@ -17,7 +17,7 @@
 <text x="1004.3" y="73.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="92.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">◈ Global          </text>
-<text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">14  </text>
+<text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">15  </text>
 <text x="245.6" y="92.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Plugin              Scope              Brings       On   Uses  Issue              </text>
 <text x="1004.3" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
@@ -38,7 +38,6 @@
 <text x="51.7" y="130.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
 <text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">19  </text>
 <text x="245.6" y="130.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="130.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <text x="287.8" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
 <text x="304.6" y="130.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">react-kit        </text>
 <text x="447.9" y="130.0" fill="#e8e8e8" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">⬡  </text>
@@ -51,6 +50,7 @@
 <text x="34.9" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">  Projects </text>
 <text x="127.6" y="149.0" fill="#4b5578" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">─────────────</text>
 <text x="245.6" y="149.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="270.9" y="149.0" fill="#5a6275" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <text x="287.8" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
 <text x="304.6" y="149.0" fill="#d7dae0" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">stripe-tools     </text>
 <text x="447.9" y="149.0" fill="#d97757" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">✻  </text>
@@ -121,13 +121,13 @@
 <text x="51.7" y="320.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  design-system        </text>
 <text x="245.6" y="320.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs">╭──</text>
-<text x="279.3" y="320.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="210.8" lengthAdjust="spacingAndGlyphs"> react-kit@cursor-public </text>
-<text x="490.1" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">─────────────────────────────────────────────────────────────╮</text>
+<text x="279.3" y="320.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs"> stripe-tools@acme </text>
+<text x="439.5" y="320.0" fill="#8b9dff" xml:space="preserve" textLength="573.2" lengthAdjust="spacingAndGlyphs">───────────────────────────────────────────────────────────────────╮</text>
 <text x="18.0" y="339.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="339.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  e2e-tests            </text>
 <text x="245.6" y="339.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="210.8" lengthAdjust="spacingAndGlyphs">React patterns for Cursor</text>
+<text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="261.3" lengthAdjust="spacingAndGlyphs">Stripe helpers for the API team</text>
 <text x="1004.3" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="358.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="358.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  infra                </text>
@@ -139,72 +139,72 @@
 <text x="245.6" y="377.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="270.9" y="377.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
-<text x="287.8" y="377.0" fill="#e5e7eb" xml:space="preserve" textLength="505.8" lengthAdjust="spacingAndGlyphs">Repeats your react-patterns: Cursor lists both while it's on</text>
-<text x="793.6" y="377.0" fill="#5a6275" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">  · your call</text>
+<text x="287.8" y="377.0" fill="#e5e7eb" xml:space="preserve" textLength="236.0" lengthAdjust="spacingAndGlyphs">Repeats your stripe-payments</text>
+<text x="523.8" y="377.0" fill="#5a6275" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">  · your call</text>
 <text x="1004.3" y="377.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="396.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="396.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  marketing-site       </text>
 <text x="245.6" y="396.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="270.9" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">  ▸ </text>
-<rect x="321.5" y="382.0" width="354.1" height="19" fill="#2a3350"/>
-<text x="321.5" y="396.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="354.1" lengthAdjust="spacingAndGlyphs">Turn it off in Cursor (Settings › Plugins)</text>
+<rect x="321.5" y="382.0" width="345.6" height="19" fill="#2a3350"/>
+<text x="321.5" y="396.0" fill="#e5e7eb" font-weight="bold" xml:space="preserve" textLength="345.6" lengthAdjust="spacingAndGlyphs">Replace stripe-tools with library skills…</text>
 <text x="1004.3" y="396.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="415.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="415.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  playground           </text>
 <text x="245.6" y="415.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="321.5" y="415.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
 <text x="1004.3" y="415.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="434.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="434.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  scripts              </text>
 <text x="245.6" y="434.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
-<text x="346.8" y="434.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Open its folder</text>
-<text x="473.2" y="434.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="498.5" y="434.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
+<text x="270.9" y="434.0" fill="#5eb8f7" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">· </text>
+<text x="287.8" y="434.0" fill="#e5e7eb" xml:space="preserve" textLength="640.7" lengthAdjust="spacingAndGlyphs">Its skills weren't used in 30 days (Claude Code); it also brings MCP servers</text>
+<text x="928.4" y="434.0" fill="#5a6275" xml:space="preserve" textLength="67.4" lengthAdjust="spacingAndGlyphs">  · you…</text>
 <text x="1004.3" y="434.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="453.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
 <text x="245.6" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="321.5" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
 <text x="1004.3" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="60.1" y="472.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
 <text x="245.6" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Skills      </text>
-<text x="372.1" y="472.0" fill="#e5e7eb" xml:space="preserve" textLength="252.9" lengthAdjust="spacingAndGlyphs">react-patterns · react-testing</text>
+<text x="321.5" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Uninstall</text>
 <text x="1004.3" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
 <text x="245.6" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Also brings </text>
-<text x="372.1" y="491.0" fill="#5a6275" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">nothing else</text>
 <text x="1004.3" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="510.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
 <text x="245.6" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Installed   </text>
-<text x="372.1" y="510.0" fill="#e5e7eb" xml:space="preserve" textLength="379.3" lengthAdjust="spacingAndGlyphs">in Cursor (whether it's on is only in Cursor)</text>
-<text x="751.4" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">   v0.3.0</text>
-<text x="827.3" y="510.0" fill="#5a6275" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs">   from cursor-publ…</text>
+<text x="270.9" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
+<text x="346.8" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Open its folder</text>
+<text x="473.2" y="510.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="498.5" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
 <text x="1004.3" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="529.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Folder      </text>
-<text x="372.1" y="529.0" fill="#5a6275" xml:space="preserve" textLength="396.2" lengthAdjust="spacingAndGlyphs">~/.claude/plugins/cache/cursor-public/react-kit</text>
 <text x="1004.3" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="270.9" y="548.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Skills      </text>
+<text x="372.1" y="548.0" fill="#e5e7eb" xml:space="preserve" textLength="429.9" lengthAdjust="spacingAndGlyphs">stripe-payments (unused) · stripe-webhooks (unused)</text>
 <text x="1004.3" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
+<text x="270.9" y="567.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Also brings </text>
+<text x="372.1" y="567.0" fill="#e5e7eb" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">MCP servers</text>
 <text x="1004.3" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="586.0" fill="#4b5578" xml:space="preserve" textLength="236.0" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯</text>
 <text x="254.0" y="586.0" fill="#8b9dff" xml:space="preserve" textLength="758.7" lengthAdjust="spacingAndGlyphs">╰────────────────────────────────────────────────────────────────────────────────────────╯</text>

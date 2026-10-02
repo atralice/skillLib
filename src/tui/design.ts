@@ -27,7 +27,7 @@ export const SCREENS: Screen[] = [
   { name: "repo-picker", steps: ["up", "up", "up", "enter", "right", "right", "enter"] },
   { name: "your-skills", steps: ["up", "up", "up", "up", "enter"] },
   { name: "plugins", steps: ["up", "up", "enter"] },
-  { name: "plugin-details", steps: ["up", "up", "enter", "down", "right"] },
+  { name: "plugin-details", steps: ["up", "up", "enter", "down down", "right"] },
   { name: "health", steps: ["up", "enter"] },
   { name: "settings", steps: [Array(16).fill("down").join(" "), "enter"] },
   { name: "help", steps: ["?"] },

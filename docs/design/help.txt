@@ -1,19 +1,20 @@
 ╭── ◆ skilllib ────────────╮╭── Keys  any key closes ────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││ a-z 0-9 -   filter the pane you're in (initials work: cfw finds cloudflare-workers)    │
 │   ◈ Global          15   ││ ↑ ↓         move                                                                       │
-│   ✓ Health          19   ││ enter  →    one pane deeper: Places → list → details (and applies the chosen fix)      │
-│   Projects ───────────── ││ space       apply the ★ recommended fix (or show the choices when it's your call)      │
-│ ▌ ◆ web-app          ✕   ││ tab  ⇧tab   next / previous tab: All · Issues · Local · Global · Plugins · Vendor      │
-│     api-server       ✕   ││             under 80 columns there's no Places pane: ← → switch places instead         │
-│     docs-site        ·   ││ esc  ←      one pane back (esc clears a filter first)                                  │
-│     mobile-app       ⚠   ││ ctrl+r      read everything again from disk                                            │
-│     billing              ││ ctrl+c      quit                                                                       │
-│     blog                 ││                                                                                        │
-│     cli-tools            ││ ✕ problem · ⚠ warning · · hint · ★ recommended fix · "your call" = a decision, never   │
-│     dotfiles             ││ auto-fixed                                                                             │
-│     design-system        ││ Source: lib = from your library · repo = committed by the team · untracked = only on   │
-│     e2e-tests            ││ this machine                                                                           │
-│     infra                ││ Usage counts Claude Code sessions only: other agents don't record skill use.           │
+│   ⧉ Plugins         7    ││ enter  →    one pane deeper: Places → list → details (and applies the chosen fix)      │
+│   ✓ Health          19   ││ space       apply the ★ recommended fix (or show the choices when it's your call)      │
+│   Projects ───────────── ││ tab  ⇧tab   next / previous tab: All · Issues · Local · Global · Plugins · Vendor      │
+│ ▌ ◆ web-app          ✕   ││             under 80 columns there's no Places pane: ← → switch places instead         │
+│     api-server       ✕   ││ esc  ←      one pane back (esc clears a filter first)                                  │
+│     docs-site        ·   ││ ctrl+r      read everything again from disk                                            │
+│     mobile-app       ⚠   ││ ctrl+c      quit                                                                       │
+│     billing              ││                                                                                        │
+│     blog                 ││ ✕ problem · ⚠ warning · · hint · ★ recommended fix · "your call" = a decision, never   │
+│     cli-tools            ││ auto-fixed                                                                             │
+│     dotfiles             ││ Source: lib = from your library · repo = committed by the team · untracked = only on   │
+│     design-system        ││ this machine                                                                           │
+│     e2e-tests            ││ Usage counts Claude Code sessions only: other agents don't record skill use.           │
+│     infra                ││                                                                                        │
 │     landing              ││                                                                                        │
 │     marketing-site       ││                                                                                        │
 │     playground           ││                                                                                        │
@@ -22,7 +23,6 @@
 │    ───────────────────── ││                                                                                        │
 │   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││                                                                                        │
-│                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │
 │                          ││                                                                                        │

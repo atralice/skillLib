@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── Plugins ─────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 7   Issues 4                                                                      │
-│   ◈ Global          14   ││     Plugin              Scope              Brings       On   Uses  Issue               │
+│   ◈ Global          15   ││     Plugin              Scope              Brings       On   Uses  Issue               │
 │ ▌ ⧉ Plugins         7    ││ ▌ ⚠ frontend-design  ✻  user               1 skill      on      –  Repeats 1 of yours  │
 │   ✓ Health          19   ││   ⚠ react-kit        ⬡  –                  2 skills     ?       –  Repeats 1 of yours  │
 │   Projects ───────────── ││   ⚠ stripe-tools     ✻  project api-server 2 skills +1  on      –  Repeats 1 of yours  │
