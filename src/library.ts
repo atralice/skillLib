@@ -104,7 +104,8 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  */
 function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
   const wanted = installDirs(enabledHarnesses());
-  const untracked = ALL_PROJECT_DIRS.find((d) => existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
+  // .grok/skills is the team's folder. Adopting it would make add overwrite it and remove delete it.
+  const untracked = ALL_PROJECT_DIRS.find((d) => d !== GROK_SKILLS_DIR && existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
   const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? wanted[0]!);
   return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
 }
@@ -321,13 +322,20 @@ export function linkEverywhere(root: string, name: string, location: string, { a
   return result;
 }
 
-/** Removes every symlink to this skill in the project's harness folders. Never touches real folders. */
-export function unlinkEverywhere(root: string, name: string): string[] {
+/**
+ * Removes symlinks to this skill in the project's harness folders. Never touches a real folder.
+ * A link in .grok/skills stays unless it already dangles, or it points at `removing` (the copy
+ * about to go away). Leaving that link would make Grok load a path that no longer exists.
+ */
+export function unlinkEverywhere(root: string, name: string, removing?: string): string[] {
+  const gone = removing ? realpathOrNull(removing) : null;
   return ALL_PROJECT_DIRS.filter((dir) => {
-    // .grok/skills is the team's folder: skilllib never writes there, including removing a link.
-    if (dir === GROK_SKILLS_DIR) return false;
     const link = join(root, dir, name);
     if (!isLink(link)) return false;
+    if (dir === GROK_SKILLS_DIR) {
+      const target = realpathOrNull(link);
+      if (target !== null && target !== gone) return false;
+    }
     unlinkSync(link);
     return true;
   });
@@ -596,7 +604,7 @@ export function stash(dir: string, bucket: string): string {
  * The folder goes to the trash, restorable from Settings like everything skilllib removes.
  */
 export function removeUntracked(root: string, name: string, path: string): string {
-  unlinkEverywhere(root, name);
+  unlinkEverywhere(root, name, path);
   return stash(path, "trash");
 }
 

@@ -17,26 +17,25 @@ function localAgents(s: SampleSkill, enabled: HarnessId[]): HarnessId[] {
   return enabled.filter((a) => reads.has(a));
 }
 
+const GLOBAL_READERS: Record<string, HarnessId[]> = {
+  "~/.agents/skills": READS_AGENTS,
+  "~/.codex/skills": ["codex", "cursor"],
+  "~/.grok/skills": ["grok"],
+};
+
+const VENDOR_READERS: Record<Exclude<MachineSkill["source"], "global" | "skilllib">, HarnessId[]> = {
+  cursor: ["cursor"],
+  grok: ["grok"],
+  plugin: ["claude-code", "cursor"],
+  "claude.ai": READS_CLAUDE,
+  system: READS_CLAUDE,
+};
+
 function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   if (m.broken) return [];
   // skilllib's own skill: in ~/.claude/skills with a link in ~/.agents/skills, so every agent.
   if (m.source === "skilllib") return enabled;
-  const reads: HarnessId[] =
-    m.source === "global"
-      ? m.where === "~/.agents/skills"
-        ? READS_AGENTS
-        : m.where === "~/.codex/skills"
-          ? ["codex", "cursor"]
-          : m.where === "~/.grok/skills"
-            ? ["grok"]
-            : READS_CLAUDE
-      : m.source === "cursor"
-        ? ["cursor"]
-        : m.source === "grok"
-          ? ["grok"]
-          : m.source === "plugin"
-            ? ["claude-code", "cursor"]
-            : READS_CLAUDE; // claude.ai reaches Claude Code, Cursor and Grok
+  const reads = m.source === "global" ? (GLOBAL_READERS[m.where] ?? READS_CLAUDE) : VENDOR_READERS[m.source];
   return enabled.filter((a) => reads.includes(a));
 }
 

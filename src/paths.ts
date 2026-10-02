@@ -31,9 +31,9 @@ export function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR ?? join(userHome(), ".claude");
 }
 
-/** Grok's config dir, honoring GROK_HOME like Grok does. */
+/** Grok's config dir, honoring GROK_HOME like Grok does (it treats an empty one as unset). */
 export function grokDir(): string {
-  return process.env.GROK_HOME ?? join(userHome(), ".grok");
+  return process.env.GROK_HOME?.trim() || join(userHome(), ".grok");
 }
 
 /** Codex's config dir, honoring CODEX_HOME like Codex does (it treats an empty one as unset). */

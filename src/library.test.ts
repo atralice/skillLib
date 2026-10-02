@@ -469,6 +469,47 @@ describe("harnesses", () => {
     expect(projectStatus(project).find((s) => s.name === "only-codex")?.visibility).toEqual([{ id: "grok", paths: 1 }]);
   });
 
+  test("add and remove leave a skill committed in .grok/skills where the team put it", () => {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    setHarnesses(["claude-code", "grok"]);
+    writeSkill(join(project, ".grok", "skills", "alpha"), "v1");
+    git("init", "-q");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "team");
+
+    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", to: 1 });
+    expect(readManifest(project).skills.alpha?.dir).toBeUndefined();
+    expect(readFileSync(join(project, ".grok", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+
+    expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed" });
+    expect(existsSync(local("alpha"))).toBe(false);
+    expect(readFileSync(join(project, ".grok", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+  });
+
+  test("removing a copy drops a .grok link that points at it or already dangles, and leaves a real .grok folder", async () => {
+    const { removeUntracked, unlinkEverywhere } = await import("./library.js");
+    setHarnesses(["claude-code", "grok"]);
+    const copy = local("mine");
+    writeSkill(copy, "only here");
+    mkdirSync(join(project, ".grok", "skills"), { recursive: true });
+    symlinkSync(copy, join(project, ".grok", "skills", "mine"));
+    writeSkill(join(project, ".grok", "skills", "team"), "stays");
+
+    removeUntracked(project, "mine", copy);
+    expect(existsSync(copy)).toBe(false);
+    expect(() => lstatSync(join(project, ".grok", "skills", "mine"))).toThrow();
+    expect(readFileSync(join(project, ".grok", "skills", "team", "SKILL.md"), "utf-8")).toContain("stays");
+
+    const elsewhere = join(project, ".agents", "skills", "other");
+    writeSkill(elsewhere, "kept");
+    symlinkSync(elsewhere, join(project, ".grok", "skills", "other"));
+    symlinkSync(join(project, "missing"), join(project, ".grok", "skills", "gone"));
+    expect(unlinkEverywhere(project, "other")).toEqual([]);
+    expect(lstatSync(join(project, ".grok", "skills", "other")).isSymbolicLink()).toBe(true);
+    expect(unlinkEverywhere(project, "gone")).toEqual([".grok/skills"]);
+    expect(() => lstatSync(join(project, ".grok", "skills", "gone"))).toThrow();
+  });
+
   test("a nested .grok/skills copy is a repo skill only Grok loads", () => {
     setHarnesses(["claude-code", "grok"]);
     writeSkill(join(project, "packages", "web", ".grok", "skills", "web-flow"), "w");
