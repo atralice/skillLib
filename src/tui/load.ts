@@ -162,6 +162,7 @@ function pluginOf(p: InstalledPlugin, repoOf: (path: string) => string | undefin
     on: p.on,
     ...(p.version ? { version: p.version } : {}),
     ...(p.update ? { update: p.update } : {}),
+    ...(p.settingsOnly ? { settingsOnly: true as const } : {}),
     description: p.description,
     path: p.root,
     skills: p.skills.map((path) => ({ name: basename(path), path })),
@@ -171,7 +172,7 @@ function pluginOf(p: InstalledPlugin, repoOf: (path: string) => string | undefin
 
 /** What plugins.ts needs to act on a plugin. */
 function refOf(p: Plugin): PluginRef {
-  return { id: p.id, scope: p.scope === "claude.ai" ? null : p.scope, ...(p.projectPath ? { projectPath: p.projectPath } : {}), synced: p.scope === "claude.ai" };
+  return { id: p.id, scope: p.scope === "claude.ai" ? null : p.scope, ...(p.projectPath ? { projectPath: p.projectPath } : {}), synced: p.scope === "claude.ai", ...(p.settingsOnly ? { settingsOnly: true as const } : {}) };
 }
 
 /** tidy.ts's plans and conflicts, per skill; `root` null for your global folders. */
@@ -208,7 +209,8 @@ export function loadWorld(): World {
   });
   const kept = keptGlobal();
   // Cursor plugins: reported only (Cursor's plugin state can't be read).
-  const cursorPlugin = new Map(agents.includes("cursor") ? cursorPluginSkills().map((s) => [s.name, s.plugin]) : []);
+  const cursorList = agents.includes("cursor") ? cursorPlugins() : [];
+  const cursorPlugin = new Map(cursorPluginSkills(cursorList).map((s) => [s.name, s.plugin]));
   const globalDupes = dupesOf(planGlobalTidy({ enabled: agents }), null);
   const sourced = machineSkills(agents);
   const machine = sourced.map((s) => {
@@ -246,7 +248,7 @@ export function loadWorld(): World {
   });
   const backups = [...listBackups(), ...pluginBackups()].sort((a, b) => b.movedAt.localeCompare(a.movedAt));
   const repoOf = (path: string) => projects.find((p) => real(p.path) === real(path))?.name;
-  const plugins = [...installedPlugins(), ...(agents.includes("cursor") ? cursorPlugins() : [])].map((p) => pluginOf(p, repoOf));
+  const plugins = [...installedPlugins(), ...cursorList].map((p) => pluginOf(p, repoOf));
   return {
     agents,
     cwd: cwd ? names.get(cwd)! : null,
@@ -277,12 +279,10 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
   for (const use of await scanUsage(30)) {
     const root = projectOf(use.cwd);
     const repo = root ? repoOf.get(root) : undefined;
-    // A plugin's skill is recorded as "plugin:skill"; it counts for the skill, as in `skilllib usage`.
-    const skill = use.skill.split(":").pop()!;
     const day = 29 - Math.round((today - midnight(Date.parse(use.at))) / 86_400_000);
     if (!repo || day < 0 || day > 29) continue;
-    (usage[repo] ??= {})[skill] = (usage[repo][skill] ?? 0) + 1;
-    ((days[repo] ??= {})[skill] ??= new Array<number>(30).fill(0))[day]! += 1;
+    (usage[repo] ??= {})[use.skill] = (usage[repo][use.skill] ?? 0) + 1;
+    ((days[repo] ??= {})[use.skill] ??= new Array<number>(30).fill(0))[day]! += 1;
   }
   return { usage, days };
 }

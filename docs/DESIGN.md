@@ -146,7 +146,7 @@ Every plugin installed, on or off, one row per install (a plugin can be installe
 
 ![Plugins](design/plugins.svg)
 
-- **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, by skill name) · the worst issue.
+- **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, its skills as `plugin:skill`) · the worst issue.
 - **Tabs:** All · Issues.
 - **Issues** are all *your call* (turning plugins on or off and updating them changes code that runs in your sessions, so "fix all" never does): *Repeats N of yours*, *Unused 30 days*, *Update to vN*.
 - **Actions:** Turn it on / off · Update to vN · Replace *plugin* with library skills… · Uninstall · Open its folder · Review prompt. A synced plugin can't be uninstalled; a Cursor plugin only says to turn it off in Cursor.

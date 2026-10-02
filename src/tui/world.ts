@@ -108,6 +108,8 @@ export type Plugin = {
   version?: string;
   /** A newer version in its marketplace ("newer" when only the commit differs). */
   update?: string;
+  /** Turned on in your settings with no install record: it can't be uninstalled or updated, only turned off. */
+  settingsOnly?: true;
   description: string;
   path: string;
   skills: { name: string; path: string }[];
@@ -803,9 +805,14 @@ export function pluginName(p: Plugin): string {
   return p.id.split("@")[0]!;
 }
 
-/** Claude Code uses of a plugin's skills in the last 30 days, everywhere. */
-export function pluginUses(w: World, p: Plugin): number {
-  return p.skills.reduce((n, s) => n + totalUses(w, s.name), 0);
+/** Claude Code records a plugin's skill as "plugin:skill"; your own skill by that name is counted apart. */
+export function pluginSkillKey(p: Plugin, skill: string): string {
+  return `${pluginName(p)}:${skill}`;
+}
+
+/** Claude Code uses of a plugin's skills in the last 30 days, in one repo or everywhere. */
+export function pluginUses(w: World, p: Plugin, repo?: string): number {
+  return p.skills.reduce((n, s) => n + (repo ? (w.usage[repo]?.[pluginSkillKey(p, s.name)] ?? 0) : totalUses(w, pluginSkillKey(p, s.name))), 0);
 }
 
 /** Where a plugin is installed, in a few words: "user", "project web-app", "claude.ai". */
@@ -835,7 +842,7 @@ export function replacePluginFix(p: Plugin): Fix {
       .join(" "),
     run: () => "",
     allowNone: true,
-    preticked: (w) => w.projects.filter((x) => names.some((n) => (w.usage[x.name]?.[n] ?? 0) > 0)).map((x) => x.name),
+    preticked: (w) => w.projects.filter((x) => pluginUses(w, p, x.name) > 0).map((x) => x.name),
     pickRepos: (w, repos) => w.ops.replacePlugin(p, repos),
   };
 }
@@ -917,7 +924,7 @@ export function pluginIssues(w: World, p: Plugin): Issue[] {
         title: `Its skills weren't used in 30 days (Claude Code)${p.parts.length ? `; it also brings ${p.parts.join(", ")}` : ""}`,
         short: "Unused 30 days",
         decision: true,
-        fixes: [pluginSwitchFix(p, false), ...(p.scope === "claude.ai" ? [] : [uninstallPluginFix(p)])],
+        fixes: [pluginSwitchFix(p, false), ...(p.scope === "claude.ai" || p.settingsOnly ? [] : [uninstallPluginFix(p)])],
       });
   }
   if (p.update)

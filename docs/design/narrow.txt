@@ -19,6 +19,6 @@
 │   ⚠ testing-guide    lib v3            –  Extra copies                     │
 │   · my-scratchpad    untracked         –  Only in this repo                │
 │     ▸ commit + 1 more · installed together 2026-09-20 (2)                  │
-│     ▸ ⧉ vercel plugin (2)                                                  │
+│     pr-review        global ✓          4                                   │
 ╰────────────────────────────────────────────────────────────────────────────╯
 type to filter · space ★ fix · enter actions · tab tabs · esc all projects · ?

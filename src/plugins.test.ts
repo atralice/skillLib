@@ -350,6 +350,19 @@ test.skipIf(process.platform === "win32")("an update that needs a confirmation i
   expect(readFileSync(join(tmp, "calls"), "utf-8")).not.toContain("-y");
 });
 
+test("a plugin turned on in your settings with no install record is listed from where Claude Code loads it", () => {
+  installs();
+  // Its marketplace is the plugin ("source": "./"): skills at the marketplace's root.
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "solo", "skills", "tidy"));
+  const settings = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { ...settings.enabledPlugins, "solo@solo": true } }));
+  const solo = installedPlugins().find((p) => p.id === "solo@solo")!;
+  expect(solo).toMatchObject({ on: true, settingsOnly: true, root: join(tmp, ".claude", "plugins", "marketplaces", "solo") });
+  expect(solo.skills.map((d) => d.split(/[\\/]/).pop())).toEqual(["tidy"]);
+  expect(uninstallPlugin(solo).ok).toBe(false);
+  expect(updatePlugin(solo).ok).toBe(false);
+});
+
 test("a synced plugin can't be uninstalled or updated from here", () => {
   installs();
   const rail = installedPlugins().find((p) => p.synced)!;

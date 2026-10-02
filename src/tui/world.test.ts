@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
+import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
 
 const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
@@ -203,6 +203,8 @@ test("plugin issues are always your call: fix-all never turns plugins on or off,
     ["frontend-design@claude-plugins-official", "Repeats 1 of yours", true],
     ["frontend-design@claude-plugins-official", "Unused 30 days", true],
     ["stripe-tools@acme", "Repeats 1 of yours", true],
+    // Your own stripe-payments is used, but not the plugin's (stripe-tools:stripe-payments).
+    ["stripe-tools@acme", "Unused 30 days", true],
     ["react-kit@cursor-public", "Repeats 1 of yours", true],
   ]);
   // Off plugins load nothing: no duplicates, nothing unused.
@@ -219,4 +221,21 @@ test("turning a plugin off takes its skills out of what loads everywhere; on bri
   expect(loaded()).toEqual([]);
   pluginSwitchFix(vercel(), true).run(w);
   expect(loaded()).toEqual(["vercel-deploy", "vercel-env", "nextjs"]);
+});
+
+test("a plugin's uses are its own (plugin:skill), per repo too", () => {
+  const w = sampleWorld();
+  const byId = (id: string) => w.plugins.find((p) => p.id === id)!;
+  expect(pluginUses(w, byId("vercel@claude-plugins-official"))).toBe(5);
+  expect(pluginUses(w, byId("vercel@claude-plugins-official"), "web-app")).toBe(5);
+  expect(pluginUses(w, byId("vercel@claude-plugins-official"), "api-server")).toBe(0);
+  // Claude Code records both railway installs as railway:use-railway, so they share a count.
+  expect(pluginUses(w, byId("railway@synced"))).toBe(2);
+  expect(replacePluginFix(byId("railway@claude-plugins-official")).preticked!(w)).toEqual(["api-server"]);
+});
+
+test("a plugin only turned on in your settings can be turned off, not uninstalled", () => {
+  const w = sampleWorld();
+  const p = { ...w.plugins.find((x) => x.id === "frontend-design@claude-plugins-official")!, settingsOnly: true as const };
+  expect(pluginIssues(w, p).find((i) => i.short === "Unused 30 days")!.fixes.map((f) => f.label)).toEqual(["Turn it off"]);
 });

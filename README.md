@@ -194,7 +194,7 @@ Plugins are a big part of what agents load (one plugin can bring dozens of skill
 | Scope | `user` (every repo) · `project` / `local` and the repo it's installed in · `claude.ai` (synced from your account) |
 | Brings | Its skills, and `+N` for the other kinds of things it brings: commands, agents, hooks, MCP servers |
 | On | `on` · `off` · `?` for Cursor, which keeps that in its own database |
-| Uses | Claude Code uses of its skills, last 30 days, counted by skill name |
+| Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart; two installs of one plugin share a count |
 | Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** · **Update to vN** |
 
 Every plugin issue is *your call*: turning plugins on or off, or updating them, changes code that runs in your sessions, so **Fix automatically** never does it.

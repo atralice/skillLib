@@ -117,9 +117,8 @@
 <text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>
 <text x="245.6" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="287.8" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  use-railway        </text>
-<text x="464.8" y="282.0" fill="#c792ea" xml:space="preserve" textLength="118.0" lengthAdjust="spacingAndGlyphs">⧉ railway     </text>
-<text x="582.8" y="282.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">    2 </text>
+<text x="287.8" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  create-rule        </text>
+<text x="464.8" y="282.0" fill="#8a93a6" xml:space="preserve" textLength="168.6" lengthAdjust="spacingAndGlyphs">cursor            – </text>
 <text x="1004.3" y="282.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="301.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="301.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  dotfiles             </text>

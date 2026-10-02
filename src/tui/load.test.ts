@@ -264,6 +264,7 @@ function fakePlugin() {
   mkdirSync(join(plugin, "commands"), { recursive: true });
   writeFileSync(join(plugin, "commands", "check.md"), "Check the code.\n");
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "tools@mk": true } }));
+  writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "tools@mk": [{ scope: "user", installPath: plugin, version: "1.0.0" }] } }));
 }
 
 /** A `claude` command that records what it was asked, or no `claude` at all. It's a shell script, so the tests that run it skip Windows. */

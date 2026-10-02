@@ -552,7 +552,7 @@ function pluginItems(w: W.World, skillW: number, ui: Ui): Item[] {
           fixOption(W.pluginSwitchFix(p, !p.on)),
           ...(p.update ? [fixOption(W.updatePluginFix(p))] : []),
           ...(n ? [fixOption(W.replacePluginFix(p))] : []),
-          ...(p.scope === "claude.ai" ? [] : [fixOption(W.uninstallPluginFix(p))]),
+          ...(p.scope === "claude.ai" || p.settingsOnly ? [] : [fixOption(W.uninstallPluginFix(p))]),
         ];
     return {
       key: p.key,
@@ -586,7 +586,7 @@ function pluginItems(w: W.World, skillW: number, ui: Ui): Item[] {
         b.line();
         const label = (t: string) => [t.padEnd(12), color.muted] as Seg;
         const uses = (n: number) => (n ? `${n} use${n === 1 ? "" : "s"}` : "unused");
-        const skills = p.skills.map((s) => (cursor || !w.days ? s.name : `${s.name} (${uses(W.totalUses(w, s.name))})`));
+        const skills = p.skills.map((s) => (cursor || !w.days ? s.name : `${s.name} (${uses(W.totalUses(w, W.pluginSkillKey(p, s.name)))})`));
         wrap(skills.join(" · ") || "none", width - 16, 4).forEach((l, i) => b.line(label(i ? "" : "Skills"), [l, color.text]));
         b.line(label("Also brings"), [p.parts.join(", ") || "nothing else", p.parts.length ? color.text : color.faint]);
         const installed = cursor
@@ -1402,6 +1402,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   else if (modal?.kind === "repos") {
     const repos = (modal.only ?? world.projects.map((p) => p.name)).filter((r) => !modal.query || W.matches(r, modal.query));
     const name = current?.name ?? "";
+    // A plugin's uses are its skills' uses.
+    const usedHere = (r: string) => (current?.plugin ? W.pluginUses(world, current.plugin, r) : (world.usage[r]?.[name] ?? 0));
     // What confirming does, above the repos to pick.
     const pickerLines = wrap(modal.fix.preview, columns - 6, 4);
     body = (
@@ -1428,7 +1430,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           cells: [
             { text: modal.picked.has(r) ? "[x] " : "[ ] ", width: 4, color: modal.picked.has(r) ? color.green : color.faint },
             { text: r, width: 20 },
-            { text: world.usage[r]?.[name] ? `used ${world.usage[r]![name]}× here` : "", grow: true, color: color.faint },
+            { text: usedHere(r) ? `used ${usedHere(r)}× here` : "", grow: true, color: color.faint },
           ],
         }))}
       />

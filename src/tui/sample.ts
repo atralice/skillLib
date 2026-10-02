@@ -83,8 +83,8 @@ function spread(usage: World["usage"]): NonNullable<World["days"]> {
 export function sampleWorld(): World {
   const emptyRepos = ["billing", "blog", "cli-tools", "dotfiles", "design-system", "e2e-tests", "infra", "landing", "marketing-site", "playground", "scripts", "status-page"];
   const usage: World["usage"] = {
-    "web-app": { "stripe-payments": 11, "react-patterns": 9, "api-conventions": 6, "deploy-preview": 4, "release-notes": 2, "commit-style": 8, "vercel-deploy": 3, nextjs: 5, "pr-review": 4 },
-    "api-server": { "stripe-payments": 3, "api-conventions": 7, "commit-style": 5, "use-railway": 2 },
+    "web-app": { "stripe-payments": 11, "react-patterns": 9, "api-conventions": 6, "deploy-preview": 4, "release-notes": 2, "commit-style": 8, "vercel-deploy": 3, "vercel:nextjs": 5, "pr-review": 4 },
+    "api-server": { "stripe-payments": 3, "api-conventions": 7, "commit-style": 5, "railway:use-railway": 2 },
     "docs-site": { "writing-style": 6, "mdx-tips": 1, "brand-voice": 2 },
     "mobile-app": { "react-patterns": 2, "commit-style": 1 },
   };
