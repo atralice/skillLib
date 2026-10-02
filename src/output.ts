@@ -1,5 +1,5 @@
 import { sep } from "node:path";
-import { userHome } from "./paths.js";
+import { realPath, userHome } from "./paths.js";
 
 let jsonMode = false;
 
@@ -30,8 +30,10 @@ export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 
 /** Home-relative path for display. */
 export function tildify(path: string): string {
-  const home = userHome();
-  return path === home || path.startsWith(home + sep) ? "~" + path.slice(home.length) : path;
+  // $HOME as given, then without symlinks (the folder you're in comes back that way).
+  for (const home of new Set([userHome(), realPath(userHome())]))
+    if (path === home || path.startsWith(home + sep)) return "~" + path.slice(home.length);
+  return path;
 }
 
 export function truncate(s: string, max: number): string {

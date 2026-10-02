@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, setHarnesses, setHidden } from "./config.js";
@@ -43,6 +43,22 @@ afterEach(() => {
 });
 
 describe("commands that need a project", () => {
+  test("$HOME through a symlink is still your home folder, even when it's a git repo (#51)", () => {
+    const link = join(tmpdir(), `skilllib-home-link-${process.pid}-${Date.now()}`);
+    symlinkSync(tmp, link, "junction");
+    try {
+      process.env.HOME = link;
+      process.env.USERPROFILE = link;
+      mkdirSync(join(tmp, ".git")); // a dotfiles repo
+      const r = cli(tmp, "add", "alpha");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("Your home folder isn't a project");
+      expect(existsSync(join(tmp, "skilllib.json"))).toBe(false);
+    } finally {
+      rmSync(link, { force: true, recursive: false });
+    }
+  });
+
   const needProject = [["status"], ["add", "alpha"], ["remove", "alpha"], ["sync"], ["update"], ["outdated"], ["link"], ["tidy"]];
 
   test("refuse outside a git repo, and write nothing", () => {

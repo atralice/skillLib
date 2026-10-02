@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, skilllibHome, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, skilllibHome, userHome } from "./paths.js";
 import { versionForHash } from "./versions.js";
 
 /**
@@ -107,7 +107,8 @@ export function knownProjects(): string[] {
  * like a project but isn't one; every session would otherwise count as "in" it.
  */
 export function isProjectCandidate(root: string): boolean {
-  return resolve(root) !== resolve(userHome());
+  // Real paths: the folder you're in comes back without symlinks, while $HOME may go through one (#51).
+  return realPath(root) !== realPath(userHome());
 }
 
 export function rememberProjects(roots: string[]) {
