@@ -274,6 +274,7 @@ describe("harnesses", () => {
   test("won't write links into a git-tracked folder without consent", () => {
     execFileSync("git", ["init", "-q"], { cwd: project });
     writeSkill(local("team"), "t");
+    writeSkill(join(project, ".agents", "skills", "other"), "o");
     execFileSync("git", ["add", "."], { cwd: project });
     setHarnesses(["claude-code", "codex"]);
 
@@ -281,6 +282,19 @@ describe("harnesses", () => {
     expect(existsSync(local("alpha"))).toBe(false);
     expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "updated" });
     expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
+  });
+
+  test("add never links a copy git doesn't share into a folder git tracks, even when allowed (as link does)", () => {
+    execFileSync("git", ["init", "-q"], { cwd: project });
+    writeSkill(local("team"), "t"); // .claude/skills is tracked; .agents/skills, where the real copy goes, isn't
+    execFileSync("git", ["add", "."], { cwd: project });
+    setHarnesses(["claude-code", "codex"]);
+
+    const c = addSkill(project, "alpha", { allowTracked: true });
+    expect(c).toMatchObject({ action: "installed", uncommitted: [".claude/skills"] });
+    expect(c.blocked).toBeUndefined();
+    expect(existsSync(local("alpha"))).toBe(false);
+    expect(readManifest(project).skills.alpha?.links).toBeUndefined();
   });
 
   test("never links a skill git doesn't share into a folder git tracks, even when allowed", async () => {

@@ -1,6 +1,6 @@
-╭── ◆ skilllib ────────────╮╭── Skills  4/21 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 21   Issues 8   Local 9   Global 6   Plugins 3   Vendor 3                         │
-│   ◈ Global          14   ││     Skill              Source         Uses  Issue                                      │
+╭── ◆ skilllib ────────────╮╭── Skills  4/22 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     7    ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3                         │
+│   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
 │   ✓ Health          19   ││   + Add a skill…                                                                       │
 │   Projects ───────────── ││   ✦ Fix 6 issues automatically…                                                        │
 │ ▌ ◆ web-app          ✕   ││   ⋯ web-app…                                                                           │

@@ -95,6 +95,7 @@ function tag(u: W.Usable, w: W.World): Seg {
   if (s) return [s.source, color.blue];
   if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
   if (u.source === "plugin") return [`⧉ ${u.where.split("@")[0]}`, color.magenta];
+  if (u.source === "skilllib") return ["◆ skilllib", color.accent];
   return [u.source, color.muted];
 }
 
@@ -167,7 +168,7 @@ const GIT_LABEL: Record<NonNullable<W.LocalSkill["git"]>, string> = { committed:
 // ─── Screens' data ──────────────────────────────────────
 
 /** Which copy a skill's row shows when it loads from several places: the repo's, then yours, then vendors'. */
-const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
+const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, skilllib: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
 
 /** Copies grouped by name, the copy to show first. */
 function byName(copies: W.Usable[]): W.Usable[][] {
@@ -252,7 +253,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       const b = builder(u.name);
       for (const l of wrap(w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
       b.line();
-      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
+      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" || u.source === "skilllib" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
       else b.issues(issues);
       b.actions(actions, width);
       b.line();
@@ -261,7 +262,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       b.line(["Loaded from", color.accent]);
       for (const c of copies) {
         const s = c.local;
-        const path = s ? `${s.dir}/${c.name}` : c.source === "global" ? `${c.where}/${c.name}` : c.where;
+        const path = s ? `${s.dir}/${c.name}` : c.source === "global" || c.source === "skilllib" ? `${c.where}/${c.name}` : c.where;
         const extra = s ? (s.missing ? "missing" : s.git ? GIT_LABEL[s.git] : "") : "";
         const [ct, cc] = c === u ? ["", undefined] : tag(c, w);
         b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
@@ -421,7 +422,7 @@ function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
   return [
     ...W.machineActions(m).map(fixOption),
     ...(m.source === "plugin" ? [fixOption(W.replacePluginFix(w, m.where))] : []),
-    ...(m.source === "global" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
+    ...(m.source === "global" || m.source === "skilllib" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
     ...(m.source === "global" && !m.broken ? [{ label: "Edit SKILL.md", action: () => ui.edit(`${m.path}/SKILL.md`) }] : []),
     reviewOption(w, m.name, ui),
   ];
@@ -433,7 +434,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
     // A repo's own copy (committed by the team) is never removed from here.
     const removable = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source !== "repo"));
     const uses = W.totalUses(w, l.name);
-    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.add(r, l.name))) };
+    const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => w.ops.addTo(rs, [l.name]) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
     const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
@@ -494,10 +495,10 @@ function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui)), ...agentSkillItems(w, nameW)];
 }
 
-/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's. */
+/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's, unless Global already has its row. */
 function agentSkillItems(w: W.World, nameW: number): Item[] {
   const issue = W.agentSkillIssue(w);
-  if (!issue) return [];
+  if (!issue || w.machine.some((m) => m.source === "skilllib")) return [];
   const sev = SEV[issue.severity];
   return [
     {
@@ -588,7 +589,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const flagged = [
     ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
     ...world.machine.flatMap((m) => W.machineIssues(world, m).map((issue) => ({ key: `Global:${m.name}`, issue }))),
-    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "agent-skill", issue }] : [])),
+    // The skilllib skill's issue is on its Global row when it has one (see agentSkillItems).
+    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "Global:skilllib", issue }] : [])),
   ];
   const healthCount = new Set(flagged.map((f) => f.key)).size;
   const healthWorst = W.worst(flagged.map((f) => f.issue));
@@ -766,7 +768,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               preview: `Install these ${n(libs.length)} into the repos you pick.`,
               run: () => "",
               preticked: () => [],
-              pickRepos: (w, repos) => (repos.forEach((r) => libs.forEach((l) => w.ops.add(r, l.name))), `Added ${n(libs.length)} to ${repos.join(", ")}`),
+              pickRepos: (w, repos) => w.ops.addTo(repos, libs.map((l) => l.name)),
             }),
           ]
         : []),

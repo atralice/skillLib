@@ -3,8 +3,8 @@
 │ Folder    ~/Projects/web-app         Remote    github.com/atralice/web-app │
 │ Branch    main                       Manifest  skilllib.json ✓ committed   │
 ╰────────────────────────────────────────────────────────────────────────────╯
-╭── Skills  4/21 ────────────────────────────────────────────────────────────╮
-│  All 21   Issues 8   Local 9   Global 6   Plugins 3   Vendor 3             │
+╭── Skills  4/22 ────────────────────────────────────────────────────────────╮
+│  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3             │
 │     Skill            Source         Uses  Issue                            │
 │   + Add a skill…                                                           │
 │   ✦ Fix 6 issues automatically…                                            │

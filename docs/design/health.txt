@@ -1,6 +1,6 @@
 ╭── ◆ skilllib ────────────╮╭── To fix  2/20 ────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 19                                                                                │
-│   ◈ Global          14   ││     Skill              Where            Issue                                          │
+│   ◈ Global          15   ││     Skill              Where            Issue                                          │
 │ ▌ ✓ Health          19   ││   ✦ Fix 11 issues automatically…                                                       │
 │   Projects ───────────── ││ ▌ ✕ commit-style       Global           Copies differ                                  │
 │   ◆ web-app          ✕   ││   ✕ stripe-payments    web-app          Loaded twice                                   │

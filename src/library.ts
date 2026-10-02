@@ -372,6 +372,8 @@ export type Change = {
   to?: number;
   /** Harness folders a link couldn't be written to because git tracks them. */
   blocked?: string[];
+  /** Harness folders git tracks, left without a link because git doesn't share the real copy (teammates would get a broken link). */
+  uncommitted?: string[];
   /** Where overwritten local edits went (~/.skilllib/edit-backup/…); `skilllib restore` puts them back. */
   backedUp?: string;
 };
@@ -418,6 +420,8 @@ export function addSkill(
 
   const links: string[] = [];
   const blocked: string[] = [];
+  const uncommitted: string[] = [];
+  let shared: boolean | undefined;
   for (const dir of linkDirs) {
     const link = join(root, dir, name);
     if (isLink(link) && realpathOrNull(link) === realpathOrNull(to)) {
@@ -425,9 +429,16 @@ export function addSkill(
       continue;
     }
     if (entryExists(link)) continue;
-    if (!allowTracked && !recorded?.links?.includes(dir) && isGitTracked(root, dir) && !readConfig().agentsDirOk?.includes(root)) {
-      blocked.push(dir);
-      continue;
+    // A new link in a folder git tracks, as linkEverywhere: never when git doesn't share the real copy, else with your consent.
+    if (!recorded?.links?.includes(dir) && isGitTracked(root, dir)) {
+      if (!(shared ??= sharedByGit(root, primary, name))) {
+        uncommitted.push(dir);
+        continue;
+      }
+      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+        blocked.push(dir);
+        continue;
+      }
     }
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
@@ -447,6 +458,7 @@ export function addSkill(
     ...(recorded ? { from: recorded.version } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),
+    ...(uncommitted.length ? { uncommitted } : {}),
     ...(backedUp ? { backedUp } : {}),
   };
 }

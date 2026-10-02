@@ -94,6 +94,11 @@ function printChanges(root: string, changes: Change[], args: Args) {
     if (c.blocked?.length) {
       warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
     }
+    if (c.uncommitted?.length) {
+      warn(
+        `${c.name}: git tracks ${c.uncommitted.join(", ")} here but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`,
+      );
+    }
     if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
       const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : "↑");
