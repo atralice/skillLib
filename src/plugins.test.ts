@@ -411,3 +411,30 @@ test.skipIf(process.platform === "win32")("the claude command is looked for agai
     expect(claudeBinary()).toBe(join(tmp, ".local", "bin", "claude"));
   });
 });
+
+test.skipIf(process.platform === "win32")("a plugin that was off when it was uninstalled is restored off", () => {
+  installs();
+  fakeClaude();
+  const b = installedPlugins().find((p) => p.id === "b@mk")!;
+  expect(b.on).toBe(false);
+  withPath("/usr/bin:/bin", () => {
+    expect(uninstallPlugin(b).ok).toBe(true);
+    const backup = pluginBackups().find((x) => x.from === "b@mk")!;
+    expect(restorePlugin(backup)).toEqual({ ok: true, to: "Claude Code plugins (user, off as it was)" });
+  });
+  expect(readFileSync(join(tmp, "calls"), "utf-8").trim().split("\n").map((l) => l.split(" ").slice(1).join(" "))).toEqual([
+    "plugin uninstall b@mk --keep-data --scope user",
+    "plugin install b@mk --scope user",
+    "plugin disable b@mk --scope user",
+  ]);
+});
+
+test.skipIf(process.platform === "win32")("an update that finds nothing newer says so", () => {
+  installs();
+  const bin = join(tmp, ".local", "bin");
+  mkdirSync(bin, { recursive: true });
+  const line = JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "up_to_date", oldVersion: "1.0.0", newVersion: "1.0.0" });
+  writeFileSync(join(bin, "claude"), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.284 (Claude Code)"; exit 0; fi\necho '${line}'\n`);
+  chmodSync(join(bin, "claude"), 0o755);
+  withPath("/usr/bin:/bin", () => expect(updatePlugin(installedPlugins()[0]!)).toEqual({ ok: true, message: "a@mk is already the newest version (1.0.0)" }));
+});

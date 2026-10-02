@@ -235,14 +235,14 @@ export function claudeBinary(): string | null {
  * Runs the Claude Code CLI; its own commands keep its settings and caches right. The app waits
  * for it, so switching and uninstalling get 20 seconds; installs and updates download, and get 2 minutes.
  */
-function claude(args: string[], cwd?: string, bin = claudeBinary()): { ok: true } | { ok: false; reason: string } {
+function claude(args: string[], cwd?: string, bin = claudeBinary()): { ok: true; out: string } | { ok: false; reason: string } {
   // A project install whose folder is gone: say so first, rather than a spawn error that reads like a missing CLI.
   if (cwd && !existsSync(cwd)) return { ok: false, reason: `${cwd} no longer exists; run \`claude ${args.join(" ")}\` in the project's new folder, or remove the install with /plugin` };
   if (!bin) return { ok: false, reason: `Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude); run \`claude ${args.join(" ")}\` yourself` };
   const slow = args[1] === "install" || args[1] === "update";
   try {
-    execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: slow ? 120_000 : 20_000, encoding: "utf-8" });
-    return { ok: true };
+    const out = execFileSync(bin, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: slow ? 120_000 : 20_000, encoding: "utf-8" });
+    return { ok: true, out };
   } catch (err) {
     const e = err as { stderr?: string; stdout?: string; message?: string };
     return { ok: false, reason: `${(e.stderr || e.stdout || e.message || "failed").trim().split("\n").slice(-1)[0]!} (ran ${bin})` };
@@ -353,9 +353,11 @@ export function uninstallPlugin(p: PluginRef): { ok: boolean; message: string } 
   if (p.synced) return { ok: false, message: `${p.id} is synced from your claude.ai account: remove it there, or turn it off here` };
   if (p.settingsOnly) return { ok: false, message: `${p.id} isn't installed, only turned on in your settings: turn it off instead` };
   if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin uninstall ${p.id} --scope ${p.scope}\` there` };
+  // Whether it was on, so restoring it puts it back as it was (installing turns a plugin on).
+  const wasOn = enabledPlugins(p.projectPath)[p.id] === true;
   const r = claude(["plugin", "uninstall", p.id, "--keep-data", "--scope", p.scope ?? "user"], p.projectPath);
   if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}` };
-  recordRemovedPlugin(p.id, p.scope ?? "user", p.projectPath);
+  recordRemovedPlugin(p.id, p.scope ?? "user", p.projectPath, wasOn);
   return { ok: true, message: `${p.id} is uninstalled${whereOf(p)} (Settings › Backups reinstalls it)` };
 }
 
@@ -366,17 +368,26 @@ export function uninstallPlugin(p: PluginRef): { ok: boolean; message: string } 
 export function updatePlugin(p: PluginRef): { ok: boolean; message: string } {
   if (p.synced) return { ok: false, message: `${p.id} is synced from your claude.ai account: it updates from there` };
   if (p.settingsOnly) return { ok: false, message: `${p.id} isn't installed, only turned on in your settings: install it with /plugin to update it` };
-  const r = claude(["plugin", "update", p.id, ...(p.scope ? ["--scope", p.scope] : [])], p.projectPath);
-  return r.ok
-    ? { ok: true, message: `${p.id} is updated${whereOf(p)}; Claude Code uses the new version after a restart` }
-    : { ok: false, message: `${p.id}: ${r.reason}; to update it yourself, run \`claude plugin update ${p.id}\`${p.projectPath ? ` in ${p.projectPath}` : ""}` };
+  const r = claude(["plugin", "update", p.id, ...(p.scope ? ["--scope", p.scope] : []), "--json"], p.projectPath);
+  if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}; to update it yourself, run \`claude plugin update ${p.id}\`${p.projectPath ? ` in ${p.projectPath}` : ""}` };
+  // `--json` prints one result line: say what really happened (it may already be the newest).
+  let result: { updateOutcome?: string; oldVersion?: string; newVersion?: string } = {};
+  try {
+    result = JSON.parse(r.out.trim().split("\n").pop() ?? "{}");
+  } catch {
+    // An older claude without --json output: the exit code is all there is.
+  }
+  if (result.updateOutcome === "up_to_date") return { ok: true, message: `${p.id} is already the newest version${result.newVersion ? ` (${result.newVersion})` : ""}${whereOf(p)}` };
+  const versions = result.oldVersion && result.newVersion ? ` from ${result.oldVersion} to ${result.newVersion}` : "";
+  return { ok: true, message: `${p.id} is updated${versions}${whereOf(p)}; Claude Code uses the new version after a restart` };
 }
 
 function removedFile(): string {
   return join(skilllibHome(), "plugin-backup.json");
 }
 
-type Removed = { id: string; scope: string; projectPath?: string; at: string };
+/** `on`: whether it was on when it was uninstalled (missing in older records: put back on). */
+type Removed = { id: string; scope: string; projectPath?: string; on?: boolean; at: string };
 
 /**
  * Keeps your skills and removes the plugin that duplicates them. Every skill
@@ -399,15 +410,15 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
     : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
-  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath);
+  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath, true);
   return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? "removed" : "turned off"}${saved}` };
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
-export function recordRemovedPlugin(id: string, scope: string, projectPath?: string) {
+export function recordRemovedPlugin(id: string, scope: string, projectPath?: string, on = true) {
   const list = readJson<Removed[]>(removedFile()) ?? [];
   mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, ...(projectPath ? { projectPath } : {}), at: new Date().toISOString() }], null, 2) + "\n");
+  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, ...(projectPath ? { projectPath } : {}), on, at: new Date().toISOString() }], null, 2) + "\n");
 }
 
 /** Plugins skilllib removed, as Health backups. */
@@ -428,9 +439,14 @@ export function restorePlugin(backup: Backup): { ok: true; to: string } | { ok: 
   const projectPath = rest.join(":") || undefined;
   const r = claude(["plugin", "install", backup.from, "--scope", scope], projectPath);
   if (!r.ok) return r;
-  const left = (readJson<Removed[]>(removedFile()) ?? []).filter((x) => !(x.id === backup.from && (x.projectPath ?? undefined) === projectPath && x.scope === scope));
-  writeFileSync(removedFile(), JSON.stringify(left, null, 2) + "\n");
-  return { ok: true, to: `Claude Code plugins (${scope}${projectPath ? ` in ${basename(projectPath)}` : ""})` };
+  const records = readJson<Removed[]>(removedFile()) ?? [];
+  const same = (x: Removed) => x.id === backup.from && (x.projectPath ?? undefined) === projectPath && x.scope === scope;
+  // Installing turns it on: one that was off when it was uninstalled goes back off.
+  const wasOff = records.filter(same).pop()?.on === false;
+  const off = wasOff ? claude(["plugin", "disable", backup.from, "--scope", scope], projectPath) : null;
+  writeFileSync(removedFile(), JSON.stringify(records.filter((x) => !same(x)), null, 2) + "\n");
+  const where = `Claude Code plugins (${scope}${projectPath ? ` in ${basename(projectPath)}` : ""}${wasOff ? (off?.ok ? ", off as it was" : ", but it's on: turn it off from Plugins") : ""})`;
+  return { ok: true, to: where };
 }
 
 /**
