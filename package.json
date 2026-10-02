@@ -1,7 +1,7 @@
 {
   "name": "skilllib",
   "version": "1.9.0",
-  "description": "Manage your agent skills like dependencies. One library for all your skills; each repo gets only the ones it needs, and every agent can see them. Works with Claude Code, Cursor, Codex and Zed.",
+  "description": "Manage your agent skills like dependencies. One library for all your skills; each repo gets only the ones it needs, and every agent can see them. Works with Claude Code, Cursor, Codex, Zed and Grok.",
   "keywords": [
     "agent-skills",
     "skills",
@@ -11,6 +11,7 @@
     "cursor",
     "codex",
     "zed",
+    "grok",
     "ai-agents",
     "skills-manager",
     "cli",

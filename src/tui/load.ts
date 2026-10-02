@@ -138,7 +138,7 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   const global = s.kind === "global" || s.kind === "skills.sh";
   return {
     name: s.name,
-    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : s.kind === "skilllib" ? "skilllib" : "cursor",
+    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : s.kind === "skilllib" ? "skilllib" : s.origin === "Grok" ? "grok" : "cursor",
     where: global || s.kind === "skilllib" ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
     ...(s.kind === "skills.sh" ? { origin: `npx skills: ${s.origin}` } : {}),
     path: s.path,
@@ -641,7 +641,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     },
     copy: (text, what) => {
       const r = copyText(text);
-      return r.copied ? `Copied ${what}: paste it into Claude Code, Cursor or Codex` : `Couldn't reach the clipboard; ${what} is in ${tildify(r.savedTo)}`;
+      return r.copied ? `Copied ${what}: paste it into Claude Code, Cursor, Codex or Grok` : `Couldn't reach the clipboard; ${what} is in ${tildify(r.savedTo)}`;
     },
     installAgentSkill: () => {
       const r = installAgentSkill();

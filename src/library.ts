@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -121,7 +121,7 @@ export function isGitTracked(root: string, dir: string): boolean {
 
 /**
  * Every skill in a project, managed or not. Reads every folder a supported
- * harness loads (.claude, .agents, .cursor, .codex skills); a link into
+ * harness loads (.claude, .agents, .cursor, .codex, .grok skills); a link into
  * another of those folders is the same skill and reported once.
  */
 export function projectStatus(root: string): ProjectSkill[] {
@@ -180,7 +180,7 @@ export function projectStatus(root: string): ProjectSkill[] {
     unmanaged.push({
       name,
       managed: false,
-      state: unmanagedState(name, real, location === AGENTS_SKILLS_DIR, source),
+      state: unmanagedState(name, real, isRepoSkillLocation(location), source),
       version: null,
       latest: latestVersion(name)?.version ?? null,
       location,
@@ -193,7 +193,7 @@ export function projectStatus(root: string): ProjectSkill[] {
   return [...managed, ...unmanaged].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills). */
+/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills or .grok/skills). */
 function unmanagedState(name: string, real: string, committed: boolean, source: string | undefined): SkillState {
   if (source) return "from npx skills";
   const latest = latestVersion(name);
@@ -205,10 +205,12 @@ function unmanagedState(name: string, real: string, committed: boolean, source: 
 
 /** Nested skill folders and who reads them (Zed reads only the worktree root). */
 const NESTED_READERS: [string, HarnessId[]][] = [
-  [PROJECT_SKILLS_DIR, ["claude-code", "cursor"]],
-  [AGENTS_SKILLS_DIR, ["codex", "cursor"]],
-  [".cursor/skills", ["cursor"]],
+  [PROJECT_SKILLS_DIR, ["claude-code", "cursor", "grok"]],
+  [AGENTS_SKILLS_DIR, ["codex", "cursor", "grok"]],
+  [".cursor/skills", ["cursor", "grok"]],
   [".codex/skills", ["codex", "cursor"]],
+  // Cursor reads nested .grok/skills too, but skilllib doesn't count it: that folder stays Grok's.
+  [".grok/skills", ["grok"]],
 ];
 
 /** Folders never searched for nested skills: dependencies and build output. */
@@ -244,7 +246,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
           found.push({
             name,
             managed: false,
-            state: unmanagedState(name, path, skillsDir === AGENTS_SKILLS_DIR, undefined),
+            state: unmanagedState(name, path, isRepoSkillLocation(skillsDir), undefined),
             version: null,
             latest: latestVersion(name)?.version ?? null,
             location,
@@ -322,6 +324,8 @@ export function linkEverywhere(root: string, name: string, location: string, { a
 /** Removes every symlink to this skill in the project's harness folders. Never touches real folders. */
 export function unlinkEverywhere(root: string, name: string): string[] {
   return ALL_PROJECT_DIRS.filter((dir) => {
+    // .grok/skills is the team's folder: skilllib never writes there, including removing a link.
+    if (dir === GROK_SKILLS_DIR) return false;
     const link = join(root, dir, name);
     if (!isLink(link)) return false;
     unlinkSync(link);

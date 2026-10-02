@@ -5,8 +5,8 @@
 import { harness, type HarnessId } from "../harnesses.js";
 import type { LocalSkill, MachineSkill, Ops, Plugin, Project, RepoInfo, World } from "./world.js";
 
-const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor"];
-const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed"];
+const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor", "grok"];
+const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed", "grok"];
 
 /** Sample skills remember whether they're linked into the other folder, to work out which agents see them. */
 type SampleSkill = LocalSkill & { linked: boolean };
@@ -22,7 +22,21 @@ function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   // skilllib's own skill: in ~/.claude/skills with a link in ~/.agents/skills, so every agent.
   if (m.source === "skilllib") return enabled;
   const reads: HarnessId[] =
-    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : m.where === "~/.codex/skills" ? ["codex", "cursor"] : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
+    m.source === "global"
+      ? m.where === "~/.agents/skills"
+        ? READS_AGENTS
+        : m.where === "~/.codex/skills"
+          ? ["codex", "cursor"]
+          : m.where === "~/.grok/skills"
+            ? ["grok"]
+            : READS_CLAUDE
+      : m.source === "cursor"
+        ? ["cursor"]
+        : m.source === "grok"
+          ? ["grok"]
+          : m.source === "plugin"
+            ? ["claude-code", "cursor"]
+            : READS_CLAUDE; // claude.ai reaches Claude Code, Cursor and Grok
   return enabled.filter((a) => reads.includes(a));
 }
 
