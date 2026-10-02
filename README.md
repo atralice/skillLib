@@ -130,8 +130,8 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global |
-| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`) |
+| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global. Your call: stopping a global skill changes every repo, so the fix names the repos that used it |
+| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`, a local-only file git ignores). Cursor ignores repo settings, so once the repo turns the plugin off, only replacing the plugin helps there |
 | **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
 | **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
 | ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
@@ -227,7 +227,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
 | **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
-| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there, or remove your copy from that repo. If the repo commits its copy, it's the team's: skilllib never offers to remove it. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. |
+| A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there (in its `.claude/settings.local.json`, which skilllib makes git ignore; without the `claude` command, skilllib writes the file itself), or remove your copy from that repo. If the repo commits its copy, it's the team's: skilllib never offers to remove it. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. Cursor ignores repo settings: after a repo turns the plugin off, Cursor still lists both there, and only turning the plugin off or removing it changes that. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
 | A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
 | A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |

@@ -1,7 +1,7 @@
 ╭── ◆ skilllib ────────────╮╭── Loads everywhere  3/11 ──────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     7    ││  All 14   Issues 7   Global 7   Plugins 4   Vendor 3                                   │
 │ ▌ ◈ Global          14   ││     Skill              Source         Uses  Issue                                      │
-│   ✓ Health          19   ││   ✦ Fix 4 issues automatically…                                                        │
+│   ✓ Health          19   ││   ✦ Fix 3 issues automatically…                                                        │
 │   Projects ───────────── ││   ⧉ Review prompt for your 6 global skills…                                            │
 │   ◆ web-app          ✕   ││ ▌ ✕ ▸ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
 │     api-server       ✕   ││   ✕ old-helper         global            –  Broken link                                │

@@ -3,8 +3,8 @@
 │ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and │
 │ proration.                                                                 │
 │                                                                            │
-│ ✕ Loaded twice: also global in ~/.claude/skills                            │
-│   ▸ ★ Keep this repo's copy, stop loading it globally                      │
+│ ✕ Loaded twice: also global in ~/.claude/skills  · your call               │
+│   ▸   Keep this repo's copy, stop loading it globally                      │
 │       Keep it global, remove it from this repo                             │
 │ ⚠ Codex can't see it                                                       │
 │     ★ Link it for every agent                                              │

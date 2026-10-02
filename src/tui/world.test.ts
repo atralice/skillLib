@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, agentSkillIssue, assignGroups, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, usable, type World } from "./world.js";
+import { addRows, agentSkillIssue, assignGroups, failed, isFailure, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
 
 const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
@@ -142,4 +142,40 @@ test("the skilllib skill: Health offers it when your agents don't have it, and i
   // No agents picked: nowhere to install it.
   w.agents = [];
   expect(agentSkillIssue(w)).toBeNull();
+});
+
+test("stopping a global skill from loading changes every repo: a decision that names the repos that use it", () => {
+  const w = sampleWorld();
+  // api-server uses stripe-payments without a copy of its own: it would lose it.
+  const api = w.projects.find((p) => p.name === "api-server")!;
+  api.skills = api.skills.filter((s) => s.name !== "stripe-payments");
+  const stripe = usable(w, "web-app").find((u) => u.local && u.name === "stripe-payments")!;
+  const twice = issuesOf(w, "web-app", stripe).find((i) => i.id === "twice-g:stripe-payments")!;
+  expect(twice.decision).toBe(true);
+  expect(twice.fixes[0]!.preview).toContain("Every other repo stops seeing it, and api-server used it in the last 30 days.");
+  // Keeping the plugin's copy instead of yours changes what every repo runs too.
+  const frontend = w.machine.find((m) => m.name === "frontend-design" && m.source === "global")!;
+  expect(machineIssues(w, frontend).find((i) => i.id === "dup-plugin:frontend-design")!.decision).toBe(true);
+});
+
+test("fix all says what it held back and why, and what failed", () => {
+  const w = sampleWorld();
+  const fix = (r: Result): Fix => ({ label: "", preview: "", run: () => r });
+  const ask = fix({ message: "shared-skill: held back .claude/skills/shared-skill: duplicate copy → link, because git tracks it", then: fix("done") });
+  expect(runAll(w, [fix("a"), fix("b")])).toBe("Applied 2 fixes (anything removed is in Settings › Backups)");
+  const held = runAll(w, [fix("a"), ask]);
+  expect(isFailure(held)).toBe(false);
+  expect(said(held)).toBe(
+    "Applied 1 of 2 fixes (anything removed is in Settings › Backups) · shared-skill: held back .claude/skills/shared-skill: duplicate copy → link, because git tracks it (fix it on its own to go ahead)",
+  );
+  const broken: Fix = {
+    label: "",
+    preview: "",
+    run: () => {
+      throw new Error("x: gone");
+    },
+  };
+  const bad = runAll(w, [fix(failed("y: nope")), broken]);
+  expect(isFailure(bad)).toBe(true);
+  expect(said(bad)).toBe("Applied 0 of 2 fixes · couldn't: y: nope; x: gone");
 });

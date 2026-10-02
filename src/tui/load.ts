@@ -46,7 +46,7 @@ import { libraryOrigins, machineSkills, recordOrigin, setPluginEnabled, skillsLo
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import type { Dupes, Fix, LocalSkill, MachineSkill, Ops, Project, RepoInfo, Result, World } from "./world.js";
+import { failed, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Project, type RepoInfo, type Result, type World } from "./world.js";
 
 /** Home-relative path for labels. */
 export function tildify(p: string): string {
@@ -279,6 +279,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
   const info = new Map<string, RepoInfo>();
 
+  /** A change; failed if it was skipped. */
+  const result = (c: Change, repo: string): Result => (c.action === "skipped" ? failed(said(c, repo)) : said(c, repo));
   /** The folder holding a tracked skill's real copy in a repo. */
   const copyDir = (repo: string, name: string) => readManifest(rootOf(repo)).skills[name]?.dir ?? PROJECT_SKILLS_DIR;
   /**
@@ -286,11 +288,11 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
    * a link would break for teammates: it says so instead of asking.
    */
   const withLinks = (c: Change, repo: string, name: string): Result => {
-    if (!c.blocked?.length) return said(c, repo);
+    if (!c.blocked?.length) return result(c, repo);
     const copy = copyDir(repo, name);
     if (!sharedByGit(rootOf(repo), copy, name))
       return `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${c.blocked.length === 1 ? "it" : "them"} and ${copy}/${name} isn't committed, so teammates would get broken links`;
-    return { message: said(c, repo), then: allowTracked([{ repo, name, blocked: c.blocked }]) };
+    return { message: `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${c.blocked.length === 1 ? "it" : "them"}`, then: allowTracked([{ repo, name, blocked: c.blocked }]) };
   };
   /** Asks to add the links git-tracked folders held back: skills by repo, with the folders each one missed. */
   const allowTracked = (held: { repo: string; name: string; blocked: string[] }[]): Fix => {
@@ -329,9 +331,9 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     c.action === "skipped" && c.reason?.includes("edits")
       ? {
           message: said(c, repo),
-          then: { label, preview: lost ? `Your edits to ${c.name} in ${repo} are lost.` : `Your edits to ${c.name} in ${repo} go to Settings › Backups.`, run: () => said(force(), repo) },
+          then: { label, preview: lost ? `Your edits to ${c.name} in ${repo} are lost.` : `Your edits to ${c.name} in ${repo} go to Settings › Backups.`, run: () => result(force(), repo) },
         }
-      : said(c, repo);
+      : result(c, repo);
   const toLibrary = (path: string) => {
     const r = importSkill(path, { force: true });
     return r.status === "unchanged" ? `${r.name} is already the same in your library` : `${r.name} v${latestVersion(r.name)?.version} is in your library`;
@@ -341,15 +343,15 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     add: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),
     remove: (repo, name) => {
       const s = find(repo, name);
-      if (!s) return `${name} isn't in ${repo}`;
+      if (!s) return failed(`${name} isn't in ${repo}`);
       const committed = !s.managed && ["committed", "changed"].includes(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)) ?? "");
-      if (s.state.startsWith("repo skill") || committed) return `${name} is the repo's own (committed by your team): skilllib doesn't delete it`;
+      if (s.state.startsWith("repo skill") || committed) return failed(`${name} is the repo's own (committed by your team): skilllib doesn't delete it`);
       if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
     },
     restore: (repo, name) => {
       const c = syncProject(rootOf(repo)).find((x) => x.name === name);
-      return c ? said(c, repo) : `${name} is already in place`;
+      return c ? result(c, repo) : `${name} is already in place`;
     },
     update: (repo, name) => {
       const c = updateProject(rootOf(repo), [name])[0];
@@ -370,7 +372,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     link: (repo, name, allow = false) => {
       const r = linkIn(repo, name, allow);
       const message = linkSaid(name, r);
-      return r.blocked.length && !allow ? { message, then: allowTracked([{ repo, name, blocked: r.blocked }]) } : message;
+      if (!r.blocked.length || allow) return message;
+      return { message: `${message}; not linked in ${r.blocked.join(", ")}: git tracks ${r.blocked.length === 1 ? "it" : "them"}`, then: allowTracked([{ repo, name, blocked: r.blocked }]) };
     },
     track: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),
     importLocal: (repo, name) => {
@@ -387,10 +390,9 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       if (!plan) return `${name}: nothing to tidy`;
       const r = applyTidy(plan, { git: allowGit ? "go" : "keep" });
       const steps = (list: typeof r.applied) => list.map((s) => describeStep(s, root)).join(", ");
-      const message = r.applied.length ? `${name}: ${steps(r.applied)}` : `${name}: nothing changed yet`;
-      if (!r.held.length) return message;
+      if (!r.held.length) return r.applied.length ? `${name}: ${steps(r.applied)}` : `${name}: nothing changed`;
       return {
-        message,
+        message: `${name}: ${r.applied.length ? `${steps(r.applied)}; ` : ""}held back ${steps(r.held)}, because git tracks it`,
         then: {
           label: "Also change what git tracks",
           preview: `${steps(r.held)}: these changes will show in git status in ${repo}. Replaced copies go to Settings › Backups.`,
@@ -401,18 +403,19 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     unloadGlobal: (m) => {
       if (!m.broken && !latestVersion(m.name)) importSkill(m.path);
       const r = unloadGlobal(m.path, m.links);
-      return r.ok ? `${m.name} no longer loads globally (in Settings › Backups)` : `${m.name}: ${r.reason}`;
+      return r.ok ? `${m.name} no longer loads globally (in Settings › Backups)` : failed(`${m.name}: ${r.reason}`);
     },
     deleteGlobal: (m) => {
       const r = deleteGlobal(m.path, m.links);
-      return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : `${m.name}: ${r.reason}`;
+      return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : failed(`${m.name}: ${r.reason}`);
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
     linkGlobal: (m, agents) => {
       const r = linkGlobal(m.path, agents);
       const linked = r.linked.map(tildify).join(", ");
       const skipped = r.skipped.length ? `; ${r.skipped.map(tildify).join(", ")} already holds a different skill` : "";
-      return `${m.name}: ${linked ? `linked ${linked}` : "nothing linked"}${skipped}`;
+      const message = `${m.name}: ${linked ? `linked ${linked}` : "nothing linked"}${skipped}`;
+      return !linked && skipped ? failed(message) : message;
     },
     moveGlobal: (skills, repos, group) => {
       const moved: string[] = [];
@@ -468,31 +471,31 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
       const text = [summary, ...blindNotes, ...notes].filter(Boolean).join("; ") || "Nothing moved";
       const askable = held.filter((h) => h.shared);
+      if (!moved.length && notes.length) return failed(text);
       return askable.length ? { message: text, then: allowTracked(askable) } : text;
     },
     createSkill: (name) => {
       const r = createSkill(name, "");
-      return r.ok ? `Created ${name} in your library: edit its SKILL.md from Your skills` : `${name}: ${r.reason}`;
+      return r.ok ? `Created ${name} in your library: edit its SKILL.md from Your skills` : failed(`${name}: ${r.reason}`);
     },
     pluginOffHere: (repo, id) => {
       const root = rootOf(repo);
       const plugin = claudePlugins(skillsLoadedIn(root, machineSkills()), root).find((p) => p.id === id);
-      if (!plugin) return `${id} isn't on in ${repo}`;
+      if (!plugin) return failed(`${id} isn't on in ${repo}`);
       const r = turnOffIn(plugin, root);
-      if (!r.ok) throw new Error(r.message);
-      return r.message;
+      return r.ok ? r.message : failed(r.message);
     },
     replacePlugin: (id, repos) => {
       const skills = machineSkills().filter((s) => s.kind === "plugin" && s.origin === id && !s.broken);
       // Copies in (recording "plugin: <id>" as their origin); a different library skill by the same name stops it.
       const clashes = skills.filter((s) => importSkill(s.path).status === "exists").map((s) => s.name);
-      if (clashes.length) return `${id} kept: your library has different ${clashes.join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`;
+      if (clashes.length) return failed(`${id} kept: your library has different ${clashes.join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
       const skipped = repos.flatMap((r) => skills.flatMap((s) => {
         const c = addSkill(rootOf(r), s.name);
         return c.action === "skipped" ? [`${s.name} in ${r} (${c.reason})`] : [];
       }));
       // Only remove the plugin once every repo you picked has its skills.
-      if (skipped.length) return `${id} kept: not added ${skipped.join(", ")}`;
+      if (skipped.length) return failed(`${id} kept: not added ${skipped.join(", ")}`);
       const copied = `${skills.length} skill${skills.length === 1 ? " from " + id + " is" : "s from " + id + " are"} in your library${repos.length ? ` and in ${repos.join(", ")}` : ""}`;
       // Claude Code does the removing: uninstall (keeping its data, so a reinstall brings it back as it was),
       // or, when it can't (plugins synced from claude.ai), turn it off on this machine.
@@ -517,7 +520,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       try {
         setPluginEnabled(id, false);
       } catch (e) {
-        return `${copied}; couldn't turn ${id} off (${why}; ${(e as Error).message}): turn it off with /plugin`;
+        return failed(`${copied}; couldn't turn ${id} off (${why}; ${(e as Error).message}): turn it off with /plugin`);
       }
       return `${copied}; turned ${id} off in ~/.claude/settings.json (${why})${synced ? "" : `: finish with /plugin uninstall ${id}`}`;
     },
@@ -531,13 +534,13 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
         from.push([...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
       }
       const r = deleteLibrarySkill(name);
-      if (!r.ok) return `${name}: ${r.reason}`;
+      if (!r.ok) return failed(`${name}: ${r.reason}`);
       return `Deleted ${name} from your library${from.length ? ` and from ${from.join(", ")}` : ""} (in Settings › Backups)`;
     },
     restoreBackup: (i) => {
       const b = backups[i]!;
       const r = b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b);
-      return r.ok ? `Restored ${b.name} to ${tildify(r.to)}` : `${b.name}: ${r.reason}`;
+      return r.ok ? `Restored ${b.name} to ${tildify(r.to)}` : failed(`${b.name}: ${r.reason}`);
     },
     setAgents: (ids) => (setHarnesses(ids), "Saved your agents"),
     installVersion: (repo, name, version) => withLinks(addSkill(rootOf(repo), name, { version, force: true }), repo, name),

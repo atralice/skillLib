@@ -8,7 +8,7 @@ import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
-import { agentSkillIssue, deleteLibraryFix, issuesOf, machineIssues, replacePluginFix, usable, type World } from "./world.js";
+import { agentSkillIssue, deleteLibraryFix, followUp, issuesOf, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -105,7 +105,7 @@ test("moving to a repo that commits Claude Code's folder asks before linking, an
 
   let w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
-  if (typeof r === "string") throw new Error(`expected a follow-up: ${r}`);
+  if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
   expect(r.message).toBe("2 skills now load only in app; Claude Code can't see them in app: git tracks .claude/skills");
   expect(r.then.label).toBe("Also link them in .claude/skills");
   expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(false);
@@ -282,11 +282,12 @@ test("tidying asks before changing what git tracks", () => {
   const fix = issue(w, "copies:notes")!.fixes[0]!;
   expect(fix.preview).toContain("Git would see");
   const r = fix.run(w);
-  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
-  expect(r.message).toBe("notes: nothing changed yet");
+  const then = followUp(r);
+  if (!then) throw new Error(`expected a question, got: ${said(r)}`);
+  expect(said(r)).toBe("notes: held back .claude/skills/notes: duplicate copy → link, because git tracks it");
   const links = () => [".claude", ".agents"].filter((d) => isLink(join(repo, d, "skills", "notes")));
   expect(links()).toEqual([]);
-  r.then.run(w);
+  then.run(w);
   expect(links()).toEqual([".claude"]);
 });
 
@@ -327,8 +328,8 @@ test("linking for every agent asks before linking into a folder git tracks", () 
   git("commit", "-qm", "skills");
   let w = loadWorld();
   const r = issue(w, "blind:notes")!.fixes[0]!.run(w);
-  if (typeof r === "string") throw new Error(`expected a question, got: ${r}`);
-  expect(r.message).toBe("notes: nothing to link");
+  if (typeof r === "string" || !("then" in r)) throw new Error(`expected a question, got: ${typeof r === "string" ? r : r.message}`);
+  expect(r.message).toBe("notes: nothing to link; not linked in .claude/skills: git tracks it");
   expect(r.then.preview).toContain(".claude/skills is committed in app");
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(false);
   r.then.run(w);
@@ -351,7 +352,7 @@ test("a skill the repo commits in .claude/skills is the team's: a plugin with it
   expect(local(w, "scratch").local!.source).toBe("untracked");
   expect(issue(w, "twice-p:lint")!.fixes.map((f) => f.label)).toEqual(["Turn the plugin off in app only"]);
   expect(issue(w, "local:lint")).toBeUndefined();
-  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+  expect(w.ops.remove("app", "lint")).toEqual({ message: "lint is the repo's own (committed by your team): skilllib doesn't delete it", failed: true });
   expect(existsSync(join(repo, ".claude", "skills", "lint", "SKILL.md"))).toBe(true);
   // Only on this machine: removable, and backed up.
   expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
@@ -371,7 +372,7 @@ test("a skill `npx skills add` put in the repo isn't a library skill; committed,
   expect(local(w, "lint").local!.source).toBe("repo");
   expect(local(w, "fmt").local!.source).toBe("untracked");
   expect(local(w, "lint").local!.version).toBeUndefined();
-  expect(w.ops.remove("app", "lint")).toBe("lint is the repo's own (committed by your team): skilllib doesn't delete it");
+  expect(w.ops.remove("app", "lint")).toEqual({ message: "lint is the repo's own (committed by your team): skilllib doesn't delete it", failed: true });
 });
 
 test("the skilllib skill installs from Health for every agent you use", () => {
@@ -408,6 +409,30 @@ test("a skill also in a Cursor plugin is reported", () => {
   const found = issue(loadWorld(), "cursor-plugin:notes")!;
   expect(found.title).toBe("Also in the Cursor plugin kit: Cursor lists both while it's on");
   expect(found.decision).toBe(true);
+});
+
+test("a plugin the repo turned off for Claude Code still collides in Cursor: said so, with only the choices that change something", () => {
+  setHarnesses(["claude-code", "cursor"]);
+  const dir = join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt");
+  writeSkill(join(dir, "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "pt@mk": [{ scope: "user", installPath: dir }] } }));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  writeSkill(join(repo, ".claude", "skills", "alpha"));
+  const before = issue(loadWorld(), "twice-p:alpha")!;
+  expect(before.fixes.map((f) => f.label)).toContain("Turn the plugin off in app only");
+  expect(before.fixes.find((f) => f.label.includes("only"))!.preview).toContain("Cursor ignores repo settings, so it still lists both.");
+
+  writeFileSync(join(repo, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "pt@mk": false } }));
+  const found = issue(loadWorld(), "twice-p:alpha")!;
+  expect(found.title).toBe("Same name as a skill in plugin pt@mk: Claude Code has it off in app, but Cursor ignores repo settings and lists both");
+  expect(found.decision).toBe(true);
+  expect(found.fixes.map((f) => f.label)).toEqual(["Replace pt with library skills…"]);
+});
+
+test("a failed action is a failure, not a message", () => {
+  const w = loadWorld();
+  expect(w.ops.remove("app", "nope")).toEqual({ message: "nope isn't in app", failed: true });
+  expect(w.ops.pluginOffHere("app", "pt@mk")).toEqual({ message: "pt@mk isn't on in app", failed: true });
 });
 
 test("repo names stay unique however deep folders clash", () => {
