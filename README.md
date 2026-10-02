@@ -342,7 +342,7 @@ skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
 
-Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders; skills that aren't committed are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
+Flags: `--force` (overwrite local edits), `--allow-tracked` (link into git-tracked folders; skills git doesn't share are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 

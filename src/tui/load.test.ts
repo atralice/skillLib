@@ -124,6 +124,22 @@ test("moving to a repo that commits Claude Code's folder asks before linking, an
   expect(isLink(join(repo, ".claude", "skills", "tool-c"))).toBe(true);
 });
 
+test("moving to a repo that commits only Claude Code's folder names who can't see it, without offering a link that would break", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  writeSkill(join(repo, ".claude", "skills", "team"));
+  git("add", ".");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, ".agents", "skills", "tool-a"));
+
+  const w = loadWorld();
+  expect(w.ops.moveGlobal(w.machine, ["app"])).toBe(
+    "tool-a now loads only in app; Claude Code can't see it in app: .agents/skills isn't committed, so a link in .claude/skills would break for teammates",
+  );
+});
+
 test("linking never puts an uncommitted skill in a folder git tracks, and doesn't ask to", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
