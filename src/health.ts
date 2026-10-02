@@ -143,7 +143,7 @@ export function findIssues(
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
     const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
     return [
-      { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it", run: () => orThrow(turnOffIn(plugin, root)) },
+      { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it; in .claude/settings.local.json, a local-only file", run: () => orThrow(turnOffIn(plugin, root)) },
       // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
       ...(names.length && allManaged
         ? [
