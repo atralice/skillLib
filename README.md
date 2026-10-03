@@ -143,7 +143,7 @@ What skilllib flags:
 
 ### Adding and removing skills
 
-- **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`, and goes into the repo when you close it) or copy a prompt for an agent to write it.
+- **+ Add a skill…** searches your library. Tick several with `space` and add them in one go; a plugin's skills (e.g. ponytail and its `ponytail-*` commands) sit under one row that ticks or adds them all. Its last rows create a new skill (it opens in `$EDITOR`, and goes into the repo when you close it) or copy a prompt for an agent to write it.
 - **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link. Grok reads `.agents/skills` and, by default, `.claude/skills`, so it never needs its own copy.
   - Claude Code, with or without Cursor or Grok: `.claude/skills/<name>`.
   - Cursor, Codex, Zed or Grok without Claude Code: `.agents/skills/<name>`.

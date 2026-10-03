@@ -1,5 +1,5 @@
 ╭── ◆ skilllib ────────────╮╭── Keys  any key closes ────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││ a-z 0-9 -   filter the pane you're in (initials work: cfw finds cloudflare-workers)    │
+│   ▤ Your skills     10   ││ a-z 0-9 -   filter the pane you're in (initials work: cfw finds cloudflare-workers)    │
 │   ◈ Global          15   ││ ↑ ↓         move                                                                       │
 │   ⧉ Plugins         7    ││ enter  →    one pane deeper: Places → list → details (and applies the chosen fix)      │
 │   ✓ Health          19   ││ space       apply the ★ recommended fix (or show the choices when it's your call)      │

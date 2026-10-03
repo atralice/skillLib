@@ -969,6 +969,11 @@ function originGroup(origin: string | undefined): GroupKey | null {
 
 const word = (name: string) => name.split(/[-_.]/)[0]!;
 
+/** A library skill's origin. A plugin's namesake (ponytail of ponytail@…) imported without one shares its siblings'. */
+function libraryOrigin(w: World, l: LibrarySkill | undefined): string | undefined {
+  return l && (l.origin ?? w.library.find((x) => x.origin?.match(/^plugin: ([^@]+)@/)?.[1] === l.name)?.origin);
+}
+
 /**
  * Groups a skill could be in, strongest signal first: where it came from (a plugin, an
  * `npx skills` repo, claude.ai, Cursor), then when it arrived (folders created the same
@@ -979,7 +984,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
   const byWord = (family: string, name: string): GroupKey[] => (word(name).length >= 3 ? [{ key: `word:${family}:${word(name)}`, label: `${word(name)}-*` }] : []);
   // Library folders are created when skilllib imports them, often many at once: their time says nothing.
   if (!("source" in u)) {
-    const origin = originGroup(u.origin);
+    const origin = originGroup(libraryOrigin(w, u));
     return [...(origin ? [origin] : []), ...byWord("library", u.name)];
   }
   const m = u.machine;
@@ -994,8 +999,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
     return [...(origin ? [origin] : []), ...byTime("global", m.installed), ...byWord("global", m.name)];
   }
   if (u.local?.source === "lib") {
-    const l = w.library.find((x) => x.name === u.name);
-    const origin = originGroup(l?.origin);
+    const origin = originGroup(libraryOrigin(w, w.library.find((x) => x.name === u.name)));
     return [...(origin ? [origin] : []), ...byWord("local", u.name)];
   }
   return byWord("local", u.name);
@@ -1040,6 +1044,10 @@ export type AddRow = {
   create?: boolean;
   /** Hands the writing to an agent; changes nothing here. */
   agent?: boolean;
+  /** Library skills this row adds (one, or a group's when more): what space ticks. */
+  members?: string[];
+  /** A member shown under its group's row. */
+  inGroup?: boolean;
   run?: (w: World) => Result;
   /** Runs once the new skill's SKILL.md has been edited: installing it then puts in what you wrote, not the template. */
   afterEdit?: (w: World) => Result;
@@ -1047,7 +1055,8 @@ export type AddRow = {
 
 /**
  * The add box for `target` (a repo, or your library when null): library skills the repo
- * doesn't have yet, then "create" and "write with an agent" for the name you typed.
+ * doesn't have yet, related ones under a row that adds them all (a plugin's skills, say),
+ * then "create" and "write with an agent" for the name you typed.
  * Only the library for now; GitHub and skills.sh come later.
  */
 export function addRows(w: World, target: string | null, q: string): AddRow[] {
@@ -1055,11 +1064,34 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
   const taken = new Set(target ? project(w, target).skills.map((s) => s.name) : []);
   const loaded = new Set(target ? usable(w, target).map((u) => u.name) : []);
   const hit = (name: string, description: string) => !q || matches(name, q) || (q.length >= 3 && description.toLowerCase().includes(q));
-  const library: AddRow[] = target
-    ? w.library
-        .filter((l) => !taken.has(l.name) && hit(l.name, w.descriptions[l.name] ?? ""))
-        .map((l) => ({ key: `lib:${l.name}`, name: l.name, note: `v${l.latest}`, description: w.descriptions[l.name] ?? "", run: (w) => w.ops.add(target, l.name) }))
-    : [];
+  // Grouped over the whole library, so a group doesn't change as you type or as the repo gets some of it.
+  const groups = assignGroups(w.library.map((l) => groupCandidates(w, l)));
+  const shown = w.library.map((l, i) => ({ l, g: groups[i] })).filter(({ l }) => !taken.has(l.name) && hit(l.name, w.descriptions[l.name] ?? ""));
+  const skillRow = (l: LibrarySkill, inGroup: boolean): AddRow => ({
+    key: `lib:${l.name}`,
+    name: l.name,
+    note: `v${l.latest}`,
+    description: w.descriptions[l.name] ?? "",
+    members: [l.name],
+    ...(inGroup ? { inGroup } : {}),
+    run: (w) => w.ops.add(target!, l.name),
+  });
+  const library: AddRow[] = [];
+  const done = new Set<string>();
+  for (const { l, g } of target ? shown : []) {
+    if (done.has(l.name)) continue;
+    const members = g ? shown.filter((x) => x.g?.key === g.key).map((x) => x.l) : [l];
+    members.forEach((m) => done.add(m.name));
+    if (members.length < 2) {
+      library.push(skillRow(l, false));
+      continue;
+    }
+    const names = members.map((m) => m.name);
+    library.push(
+      { key: `group:${g!.key}`, name: groupLabel(g!, names), note: `${names.length} skills`, description: names.join(", "), members: names, run: (w) => w.ops.addTo([target!], names) },
+      ...members.map((m) => skillRow(m, true)),
+    );
+  }
   const exists = q !== "" && (loaded.has(q) || w.library.some((l) => l.name === q));
   const where = target ? ` for ${target}` : "";
   const fresh: AddRow[] = exists

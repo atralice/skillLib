@@ -31,7 +31,7 @@ test("keeping the repo copy unloads the global one and clears the duplicate", ()
 test("add box: library skills not usable here yet, then create", () => {
   const w = sampleWorld();
   const names = (q: string) => addRows(w, "web-app", q).filter((r) => !r.header && !r.create && !r.agent).map((r) => r.name);
-  expect(names("")).toEqual(["mdx-tips", "sql-migrations"]);
+  expect(names("")).toEqual(["mdx-tips", "sql-migrations", "⧉ lean plugin", "lean", "lean-review", "lean-audit"]);
   expect(names("sql")).toEqual(["sql-migrations"]);
   expect(addRows(w, "web-app", "stripe-payments").filter((r) => !r.header)).toEqual([]);
   // Created first; it goes into the repo only after you've edited it, so the repo never gets the template.
@@ -41,6 +41,23 @@ test("add box: library skills not usable here yet, then create", () => {
   create.afterEdit!(w);
   expect(usable(w, "web-app").some((u) => u.name === "gql-schema" && u.source === "lib")).toBe(true);
   expect(addRows(w, null, "brand-new").find((r) => r.create)!.afterEdit).toBeUndefined();
+});
+
+test("add box: a plugin's skills under one row that adds them all, its namesake included", () => {
+  const w = sampleWorld();
+  const group = addRows(w, "web-app", "").find((r) => r.members?.length! > 1)!;
+  expect(group.members).toEqual(["lean", "lean-review", "lean-audit"]);
+  expect(group.note).toBe("3 skills");
+  group.run!(w);
+  expect(usable(w, "web-app").filter((u) => u.name.startsWith("lean")).map((u) => u.source)).toEqual(["lib", "lib", "lib"]);
+  // What's left of a group once the repo has some of it: one skill is just a skill.
+  const w2 = sampleWorld();
+  w2.ops.addTo(["web-app"], ["lean", "lean-review"]);
+  const rows = addRows(w2, "web-app", "");
+  expect(rows.some((r) => r.members?.length! > 1)).toBe(false);
+  expect(rows.find((r) => r.name === "lean-audit")!.inGroup).toBeUndefined();
+  // Searching narrows the group, never regroups it.
+  expect(addRows(sampleWorld(), "web-app", "lean-").find((r) => r.members?.length! > 1)!.members).toEqual(["lean-review", "lean-audit"]);
 });
 
 test("Global only offers fixes that act on global skills, never on a repo", () => {
@@ -102,6 +119,9 @@ test("related skills group by source, then install time, then first word", () =>
   expect(members("time:global:2026-09-20 10:00")).toEqual(["commit-style", "stripe-payments", "frontend-design"]);
   // One of a kind stays on its own: no group of one.
   expect(groups[machine.findIndex((u) => u.name === "create-rule")]).toBeUndefined();
+  // In your library, a plugin's namesake imported without an origin still groups with the plugin's skills.
+  const lib = assignGroups(w.library.map((l) => groupCandidates(w, l)));
+  expect(w.library.filter((_, i) => lib[i]?.key === "plugin:lean@lean").map((l) => l.name)).toEqual(["lean", "lean-review", "lean-audit"]);
   expect(groupLabel({ key: "time:global:x", label: "installed together 2026-09-20" }, ["cloudflare", "cloudflare-one", "wrangler"])).toBe("cloudflare + 2 more · installed together 2026-09-20");
 });
 
