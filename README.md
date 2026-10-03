@@ -9,7 +9,7 @@ and every agent you use can see them.
 [![npm](https://img.shields.io/npm/v/skilllib?color=8b9dff&label=npm)](https://www.npmjs.com/package/skilllib)
 [![license](https://img.shields.io/badge/license-MIT-6bcb77)](LICENSE)
 ![node](https://img.shields.io/badge/node-%E2%89%A522-5eb8f7)
-![agents](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Zed-c792ea)
+![agents](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Zed%20%C2%B7%20Grok-c792ea)
 
 ```bash
 npx skilllib
@@ -23,7 +23,7 @@ npx skilllib
 
 ## The problem
 
-[Agent skills](https://code.claude.com/docs/en/skills) (folders with a `SKILL.md`) are one of the best ways to teach Claude Code, Cursor, Codex and Zed how *you* work. But they pile up quickly:
+[Agent skills](https://code.claude.com/docs/en/skills) (folders with a `SKILL.md`) are one of the best ways to teach Claude Code, Cursor, Codex, Zed and Grok how *you* work. But they pile up quickly:
 
 - **`npx skills add`** drops skills into `~/.agents/skills`.
 - **Plugins** bring their own.
@@ -35,7 +35,7 @@ A few weeks later:
 
 - **🌍 Global skills load everywhere.** Everything in `~/.claude/skills` or `~/.agents/skills` loads in **every repo, in every session**. Your agent reads the name and description of your Stripe skill while fixing Terraform in your infra repo. That costs context, and skills fire when they shouldn't.
 - **👯 Duplicates.** The same skill arrives through `npx skills` *and* a plugin *and* a copy in the repo, and your agent sees it twice.
-- **🙈 Each agent looks somewhere else.** Claude Code reads `.claude/skills`; Codex and Zed read `.agents/skills`; Cursor reads both. The skills your team committed to `.agents/skills` are invisible to Claude Code.
+- **🙈 Each agent looks somewhere else.** Claude Code reads `.claude/skills`; Codex and Zed read `.agents/skills`; Cursor reads both. Grok reads `.grok/skills` and `.agents/skills`, and by default the Claude and Cursor folders too. The skills your team committed to `.agents/skills` are invisible to Claude Code.
 - **🧟 Copies drift.** You improved a skill in one repo; the other five still have the old version.
 - **🤷 No overview.** Which skills does this repo actually have? Where did each one come from? Is it committed, or only on my laptop? Does anyone use it?
 
@@ -53,8 +53,8 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
   - which agents load it
   - whether it's committed to git or gitignored
   - how often it was used
-- **💬 Talk to your agents about your skills.** Ask Claude Code, Cursor or Codex "which skills can you use here, and where do they come from?" or "which of my skills should this repo use?". They answer with skilllib.
-- **✦ Ask an agent.** Copy a ready-made prompt with all of that data, and let Claude Code, Cursor or Codex tell you what to keep, move or delete.
+- **💬 Talk to your agents about your skills.** Ask Claude Code, Cursor, Codex or Grok "which skills can you use here, and where do they come from?" or "which of my skills should this repo use?". They answer with skilllib.
+- **✦ Ask an agent.** Copy a ready-made prompt with all of that data, and let Claude Code, Cursor, Codex or Grok tell you what to keep, move or delete.
 - **🛟 Nothing is lost.** Every removal goes to a backup you can restore with one key.
 
 Everything runs locally: no server, no account, no network calls.
@@ -72,7 +72,7 @@ It needs **Node.js 22+** and works on macOS and Linux. Windows support is newer:
 
 On first run, skilllib asks two things:
 
-1. **Which agents you use:** Claude Code, Cursor, Codex, Zed. The ones installed on your machine are pre-selected.
+1. **Which agents you use:** Claude Code, Cursor, Codex, Zed, Grok. The ones installed on your machine are pre-selected.
 2. **Where your projects live**, e.g. `~/Projects`. It finds every git repo in there, and rescans each time it opens.
 
 Then a good first session looks like this:
@@ -117,7 +117,7 @@ The list shows everything agents can use in the repo, one row per skill, even wh
 
 | Column | Meaning |
 |---|---|
-| Source | `lib v2`: from your library · `repo`: committed by your team · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` |
+| Source | `lib v2`: from your library · `repo`: committed by your team (`.agents/skills` or `.grok/skills`) · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` · `grok` |
 | Uses | Claude Code uses in this repo, last 30 days |
 | Issue | The worst of its issues; the details show them all |
 
@@ -144,9 +144,9 @@ What skilllib flags:
 ### Adding and removing skills
 
 - **+ Add a skill…** searches your library. Its last rows create a new skill (it opens in `$EDITOR`, and goes into the repo when you close it) or copy a prompt for an agent to write it.
-- **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link.
-  - Claude Code (with or without Cursor): `.claude/skills/<name>`.
-  - Cursor, Codex or Zed without Claude Code: `.agents/skills/<name>`.
+- **Adding** copies the newest version into the fewest folders your agents read, and records it in `skilllib.json`. Agents pick it up in their next session. The layout matches `npx skills`' symlink option: the real copy lives in `.agents/skills`, which nearly every agent reads, and Claude Code gets a link. Grok reads `.agents/skills` and, by default, `.claude/skills`, so it never needs its own copy.
+  - Claude Code, with or without Cursor or Grok: `.claude/skills/<name>`.
+  - Cursor, Codex, Zed or Grok without Claude Code: `.agents/skills/<name>`.
   - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
 - **Remove from repo** deletes that copy and its links; your library keeps it. An untracked copy goes to Settings › Backups instead. If you edited a tracked skill here, skilllib asks first, and the edits go to Settings › Backups.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
@@ -220,7 +220,7 @@ Not sure what to keep? **Review prompt** puts a ready-to-paste prompt on your cl
 - duplicates
 - your project list, so the agent can check each repo's stack
 
-Paste it into Claude Code, Cursor or Codex. You get back **keep global / move to projects / delete / turn off at the vendor** for each skill, as a table plus JSON.
+Paste it into Claude Code, Cursor, Codex or Grok. You get back **keep global / move to projects / delete / turn off at the vendor** for each skill, as a table plus JSON.
 
 It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at the top of Global (all your global skills).
 
@@ -279,10 +279,10 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 | Where | Examples | Who sees it |
 |---|---|---|
-| **The repo** | `.claude/skills`, `.agents/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
+| **The repo** | `.claude/skills`, `.agents/skills`, `.grok/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
 | **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide |
-| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills` | **Every repo** |
-| **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin) | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
+| **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills`, `~/.grok/skills` | **Every repo** |
+| **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin), Grok's bundled skills | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
 
 ### ✻ Claude Code · [docs](https://code.claude.com/docs/en/skills)
@@ -310,7 +310,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 - **Where it looks.**
   - Project: `.agents/skills` and `.cursor/skills`, including nested ones, which apply only to files inside them.
   - Your home folder: `~/.agents/skills` and `~/.cursor/skills`.
-  - For compatibility: `.claude/skills`, `.codex/skills`, `.grok/skills` and the same three in your home folder. The setting **Include Third-Party Plugins, Skills, and Other Configs** (on by default) turns these on, and it also imports your enabled Claude Code plugins. It always uses your home folder: `CLAUDE_CONFIG_DIR` and `CODEX_HOME` don't apply. skilllib leaves `.grok/skills` alone: it's Grok's folder, and skilllib can't tell what Grok needs.
+  - For compatibility: `.claude/skills`, `.codex/skills`, `.grok/skills` and the same three in your home folder. The setting **Include Third-Party Plugins, Skills, and Other Configs** (on by default) turns these on, and it also imports your enabled Claude Code plugins. It always uses your home folder: `CLAUDE_CONFIG_DIR` and `CODEX_HOME` don't apply. skilllib still doesn't install into `.grok/skills` or tidy it for Cursor. That folder is where a team commits skills for Grok, and a copy that lives only there stays invisible to Cursor in skilllib.
   - Also marketplace plugins and Cursor's built-ins (`~/.cursor/skills-cursor`). Cloud Agents only see `~/.cursor/skills`.
   - It finds every `SKILL.md` up to 10 folders deep. It skips dot folders, `node_modules`, `dist` and `build`, and Codex's bundled skill names (like `skill-creator`) under `.codex/skills`.
 - **How it uses them.** Descriptions decide relevance, and the full content loads on use; `/` runs one. `paths:` globs limit a skill to matching files, and `disable-model-invocation: true` makes it manual.
@@ -335,6 +335,18 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 - **Where it looks.** `<worktree>/.agents/skills` (trusted worktrees only) and `~/.agents/skills`, nothing else (verified in its source, October 2026). Only direct child folders count, and on a name collision the project's skill wins.
 - **How it uses them.** The agent sees a catalog of names and descriptions; `/` or `@skill` runs one. Changes apply without a restart.
 
+### ✶ Grok · user guide, Skills
+
+- **Where it looks.** Higher priority wins, and the same name is kept once. A project folder beats a home folder. Inside each, the order is `.grok`, then `.agents`, then `.claude`, then `.cursor`. It walks from the working folder up to the repo root:
+  1. `.grok/skills`, then `.agents/skills`, then `.claude/skills` and `.cursor/skills` (those two are on by default)
+  2. `~/.grok/skills` (`GROK_HOME` moves `~/.grok`), then `~/.agents/skills`, then `~/.claude/skills` and `~/.cursor/skills`
+  3. `~/.grok/bundled/skills` (a project or user skill with the same name overrides these)
+
+  It also reads claude.ai skills under `~/.claude/skills/synced`. It does **not** read `.codex/skills`, and it ignores `CLAUDE_CONFIG_DIR`. Turn a compat folder off with `[compat.claude] skills` or `[compat.cursor] skills` in `~/.grok/config.toml` (`GROK_CLAUDE_SKILLS_ENABLED` / `GROK_CURSOR_SKILLS_ENABLED`). The order above was checked with `grok inspect` on Grok 1.0.41 (October 2026).
+- **How it uses them.** The description decides relevance; `/name` runs one, and Grok can pick one itself. `disable-model-invocation: true` keeps it manual. Project skills in an untrusted folder are skipped.
+- **Installs.** skilllib does not write `.grok/skills` or `~/.grok/skills`. Grok already reads `.agents/skills`, and `.claude/skills` while Claude compatibility is on, so the fewest-folder install reaches it. A skill your team committed in `.grok/skills` stays the repo's own: skilllib can copy it into your library and leaves that folder in place. Adding that library skill back writes a second copy in the usual install folder (`.claude/skills` when Claude Code is enabled, otherwise `.agents/skills`). Grok still runs the team's `.grok/skills` copy. Claude Code runs the library copy. With `[compat.claude] skills = false`, Grok stops reading `.claude/skills`; skilllib still counts that folder as visible to Grok.
+- **Limits.** No per-repo switch for a global skill. Plugins (`~/.grok/plugins`) stay off until named in `~/.grok/config.toml`, and skilllib doesn't list them yet.
+
 ---
 
 ## Command line
@@ -345,7 +357,7 @@ Everything the app does also works as a command, for scripts and CI:
 skilllib                        open the app (prints `status` when piped)
 skilllib scan [folder...]       add project folders and scan them
 skilllib folders [add|remove]   show or change project folders
-skilllib harnesses [id...]      show or set your agents (claude-code cursor codex zed)
+skilllib harnesses [id...]      show or set your agents (claude-code cursor codex zed grok)
 
 skilllib status                 this repo's skills, which agents load them, and issues
 skilllib add | remove <name>    change this repo's skills
@@ -413,7 +425,7 @@ A field is only removed or changed in a major version.
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
 | `~/.claude/skills/skilllib/` | The skill that lets your agents use skilllib (`agent-skill install`) |
 
-Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, and `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honored.
+Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR` set the editor, `CLAUDE_CONFIG_DIR` is honored for Claude Code, `CODEX_HOME` for Codex, and `GROK_HOME` for Grok. Grok does not honor `CLAUDE_CONFIG_DIR`.
 
 ## FAQ
 
@@ -421,9 +433,10 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 
 **Can I share skills with my team?** Commit `skilllib.json` along with the skill folders (`.agents/skills`, and `.claude/skills` if you use Claude Code). Or keep your library in a git repo and point `SKILLLIB_HOME` at it.
 
-**Why does usage only count Claude Code?** It's the only agent here with local transcripts to read. Cursor doesn't keep them locally, and Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
+**Why does usage only count Claude Code?** It's the only agent whose transcripts skilllib reads. Grok keeps sessions under `~/.grok/sessions`, and Cursor doesn't keep them locally. Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 
 **What's not supported yet?**
+- Grok plugins: they stay off until named in `~/.grok/config.toml`, and skilllib doesn't read that list yet.
 - Turning off Cursor marketplace plugins: skilllib lists them and reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
 - Installing plugins from a marketplace: use `/plugin` in Claude Code. Plugins a repo's own `.claude/settings.json` turns on without installing them aren't listed in Plugins yet.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
@@ -447,7 +460,7 @@ How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 1. Bump `version` in `package.json` and merge to `main`.
 2. Tag and push:
    ```bash
-   git tag v1.9.0 && git push --tags
+   git tag v1.10.0 && git push --tags
    ```
 
 CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.

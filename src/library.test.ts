@@ -426,7 +426,104 @@ describe("harnesses", () => {
     expect(installDirs(["cursor", "codex", "zed"])).toEqual([".agents/skills"]);
     // Claude Code reads only .claude/skills, Codex only .agents/skills: both are unavoidable.
     expect(installDirs(["claude-code", "cursor", "codex", "zed"])).toEqual([".agents/skills", ".claude/skills"]);
+    expect(installDirs(["grok"])).toEqual([".agents/skills"]);
+    expect(installDirs(["claude-code", "grok"])).toEqual([".claude/skills"]);
+    expect(installDirs(["claude-code", "cursor", "codex", "zed", "grok"])).toEqual([".agents/skills", ".claude/skills"]);
     expect(installDirs([])).toEqual([".claude/skills"]);
+  });
+
+  test("Grok reads .claude/skills, so an install is not also linked into .grok/skills", () => {
+    setHarnesses(["claude-code", "grok"]);
+    addSkill(project, "alpha");
+    expect(readManifest(project).skills.alpha?.links ?? []).toEqual([]);
+    expect(existsSync(join(project, ".grok", "skills", "alpha"))).toBe(false);
+    expect(projectStatus(project)[0]?.visibility).toEqual([
+      { id: "claude-code", paths: 1 },
+      { id: "grok", paths: 1 },
+    ]);
+  });
+
+  test("a skill in .grok/skills is a repo skill Grok loads, and Claude gets a link", async () => {
+    const { linkEverywhere } = await import("./library.js");
+    setHarnesses(["claude-code", "grok"]);
+    writeSkill(join(project, ".grok", "skills", "team-flow"), "team");
+
+    expect(projectStatus(project).find((s) => s.name === "team-flow")).toMatchObject({
+      state: "repo skill",
+      location: ".grok/skills",
+      visibility: [
+        { id: "claude-code", paths: 0 },
+        { id: "grok", paths: 1 },
+      ],
+    });
+    expect(linkEverywhere(project, "team-flow", ".grok/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(lstatSync(local("team-flow")).isSymbolicLink()).toBe(true);
+  });
+
+  test("a skill only Grok misses is linked into .agents/skills", async () => {
+    const { linkEverywhere } = await import("./library.js");
+    setHarnesses(["grok"]);
+    writeSkill(join(project, ".codex", "skills", "only-codex"), "x");
+    expect(linkEverywhere(project, "only-codex", ".codex/skills")).toEqual({ created: [".agents/skills"], blocked: [], uncommitted: [] });
+    expect(lstatSync(join(project, ".agents", "skills", "only-codex")).isSymbolicLink()).toBe(true);
+    expect(projectStatus(project).find((s) => s.name === "only-codex")?.visibility).toEqual([{ id: "grok", paths: 1 }]);
+  });
+
+  test("add and remove leave a skill committed in .grok/skills where the team put it", () => {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
+    setHarnesses(["claude-code", "grok"]);
+    writeSkill(join(project, ".grok", "skills", "alpha"), "v1");
+    git("init", "-q");
+    git("add", ".");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "team");
+
+    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", to: 1 });
+    expect(readManifest(project).skills.alpha?.dir).toBeUndefined();
+    expect(readFileSync(join(project, ".grok", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+
+    expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed" });
+    expect(existsSync(local("alpha"))).toBe(false);
+    expect(readFileSync(join(project, ".grok", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+  });
+
+  test("removing a copy drops a .grok link that points at it or already dangles, and leaves a real .grok folder", async () => {
+    const { removeUntracked, unlinkEverywhere } = await import("./library.js");
+    setHarnesses(["claude-code", "grok"]);
+    const copy = local("mine");
+    writeSkill(copy, "only here");
+    mkdirSync(join(project, ".grok", "skills"), { recursive: true });
+    symlinkSync(copy, join(project, ".grok", "skills", "mine"));
+    writeSkill(join(project, ".grok", "skills", "team"), "stays");
+
+    removeUntracked(project, "mine", copy);
+    expect(existsSync(copy)).toBe(false);
+    expect(() => lstatSync(join(project, ".grok", "skills", "mine"))).toThrow();
+    expect(readFileSync(join(project, ".grok", "skills", "team", "SKILL.md"), "utf-8")).toContain("stays");
+
+    const elsewhere = join(project, ".agents", "skills", "other");
+    writeSkill(elsewhere, "kept");
+    symlinkSync(elsewhere, join(project, ".grok", "skills", "other"));
+    symlinkSync(join(project, "missing"), join(project, ".grok", "skills", "gone"));
+    expect(unlinkEverywhere(project, "other")).toEqual([]);
+    expect(lstatSync(join(project, ".grok", "skills", "other")).isSymbolicLink()).toBe(true);
+    expect(unlinkEverywhere(project, "gone")).toEqual([".grok/skills"]);
+    expect(() => lstatSync(join(project, ".grok", "skills", "gone"))).toThrow();
+  });
+
+  test("a nested .grok/skills copy is a repo skill only Grok loads", () => {
+    setHarnesses(["claude-code", "grok"]);
+    writeSkill(join(project, "packages", "web", ".grok", "skills", "web-flow"), "w");
+    expect(nestedSkills(project).map((s) => [s.location, s.name, s.state, s.visibility])).toEqual([
+      [
+        "packages/web/.grok/skills",
+        "web-flow",
+        "repo skill",
+        [
+          { id: "claude-code", paths: 0 },
+          { id: "grok", paths: 1 },
+        ],
+      ],
+    ]);
   });
 
   test("linkAll makes every skill usable by every enabled agent without copying anything", async () => {

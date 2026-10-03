@@ -199,6 +199,14 @@ describe("global tidy", () => {
     expect(planGlobalTidy().plans).toEqual([]);
   });
 
+  test("tidy never rewrites ~/.grok/skills, even when it matches ~/.agents/skills", () => {
+    setHarnesses(["grok"]);
+    writeSkill(g(".agents", "web"), "same");
+    writeSkill(g(".grok", "web"), "same");
+    expect(planGlobalTidy().plans.flatMap((p) => p.steps).filter((s) => s.path.includes(".grok"))).toEqual([]);
+    expect(lstatSync(g(".grok", "web")).isSymbolicLink()).toBe(false);
+  });
+
   test("reports differing copies and leaves Claude Code plugins in skill folders alone", () => {
     setHarnesses(["claude-code", "codex"]);
     writeSkill(g(".claude", "web"), "a");

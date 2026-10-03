@@ -4,7 +4,7 @@ import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
-import { AGENTS_SKILLS_DIR, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, PROJECT_SKILLS_DIR, realPath, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
@@ -69,6 +69,15 @@ function namesIn(dirs: string[]): string[] {
   return [...names].sort();
 }
 
+/** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. */
+const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+
+/** Global folders tidy may rewrite. `~/.grok/skills` is Grok's own folder. */
+function globalTidyDirs(): string[] {
+  const own = realPath(join(grokDir(), "skills"));
+  return globalSkillDirs().filter((d) => realPath(d) !== own);
+}
+
 /**
  * Which copies each agent runs when several folders hold one. Codex doesn't merge
  * same-name skills, so it runs every copy it reads; Cursor runs one, in its own
@@ -107,8 +116,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   let git: GitInfo | null | undefined; // looked up once, only if needed
   const skillsLock = projectSkillsLock(root);
 
-  for (const name of namesIn(ALL_PROJECT_DIRS.map(abs))) {
-    const entries = entriesOf(ALL_PROJECT_DIRS.map(abs), name);
+  for (const name of namesIn(PROJECT_TIDY_DIRS.map(abs))) {
+    const entries = entriesOf(PROJECT_TIDY_DIRS.map(abs), name);
     const external = entries.find((e) => e.link && e.real && !(e.real + sep).startsWith(realpathOrNull(root)! + sep));
     if (external) {
       report.skipped.push({ name, reason: `${rel(external.path)} links outside the repo` });
@@ -182,7 +191,7 @@ function isSkillsDirPlugin(path: string): boolean {
  */
 export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { keep?: Record<string, string>; enabled?: HarnessId[] } = {}): TidyReport {
   const report: TidyReport = { plans: [], conflicts: [], skipped: [] };
-  const dirs = globalSkillDirs();
+  const dirs = globalTidyDirs();
   const agents = join(userHome(), ".agents", "skills");
   for (const name of namesIn(dirs)) {
     const entries = entriesOf(dirs, name);
@@ -289,7 +298,7 @@ export function folderLabel(root: string | null, dir: string): string {
  * every folder holding it, and those holding a real copy (the ones `keep` can pick).
  */
 export function foldersOf(root: string | null, name: string): { all: string[]; real: string[] } {
-  const entries = entriesOf(root ? ALL_PROJECT_DIRS.map((d) => join(root, d)) : globalSkillDirs(), name);
+  const entries = entriesOf(root ? PROJECT_TIDY_DIRS.map((d) => join(root, d)) : globalTidyDirs(), name);
   return { all: entries.map((e) => e.dir), real: entries.filter((e) => !e.link).map((e) => e.dir) };
 }
 

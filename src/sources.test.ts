@@ -47,6 +47,65 @@ test("classifies global, skills.sh, claude.ai, and plugin skills", () => {
   delete process.env.CLAUDE_CONFIG_DIR;
 });
 
+test("Grok loads ~/.grok/skills, bundled skills, and claude.ai skills under ~/.claude", () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-grok-"));
+  const realHome = process.env.HOME;
+  const realGrok = process.env.GROK_HOME;
+  const realClaude = process.env.CLAUDE_CONFIG_DIR;
+  const realSkilllib = process.env.SKILLLIB_HOME;
+  process.env.HOME = dir;
+  process.env.GROK_HOME = join(dir, ".grok");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, ".claude");
+  process.env.SKILLLIB_HOME = join(dir, "skilllib-home");
+  try {
+    setHarnesses(["claude-code", "grok"]);
+
+    skill(join(dir, ".grok", "skills", "personal"));
+    skill(join(dir, ".grok", "bundled", "skills", "review"));
+    skill(join(dir, ".claude", "skills", "mine"));
+    skill(join(dir, ".claude", "skills", "synced", "bucket", "pdf"));
+    // Plugins stay off until named in config; this folder must not show up as loaded.
+    skill(join(dir, ".grok", "plugins", "demo", "skills", "from-plugin"));
+
+    const found = machineSkills().map((s) => [s.kind, s.name, s.origin, s.movable, s.harnesses]);
+    expect(found).toEqual([
+      ["built-in", "review", "Grok", false, ["grok"]],
+      ["claude.ai", "pdf", "claude.ai account", false, ["claude-code", "grok"]],
+      ["global", "mine", "~/.claude/skills (origin unknown)", true, ["claude-code", "grok"]],
+      ["global", "personal", "~/.grok/skills (origin unknown)", true, ["grok"]],
+    ]);
+  } finally {
+    process.env.HOME = realHome;
+    if (realGrok === undefined) delete process.env.GROK_HOME;
+    else process.env.GROK_HOME = realGrok;
+    if (realClaude === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = realClaude;
+    if (realSkilllib === undefined) delete process.env.SKILLLIB_HOME;
+    else process.env.SKILLLIB_HOME = realSkilllib;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an empty GROK_HOME means ~/.grok, never a folder relative to where you run skilllib", () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-grok-home-"));
+  const saved = { HOME: process.env.HOME, GROK_HOME: process.env.GROK_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, SKILLLIB_HOME: process.env.SKILLLIB_HOME };
+  process.env.HOME = dir;
+  process.env.GROK_HOME = "";
+  process.env.CLAUDE_CONFIG_DIR = join(dir, ".claude");
+  process.env.SKILLLIB_HOME = join(dir, "skilllib-home");
+  try {
+    setHarnesses(["grok"]);
+    skill(join(dir, ".grok", "skills", "personal"));
+    expect(machineSkills().map((s) => [s.name, s.harnesses])).toEqual([["personal", ["grok"]]]);
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("reads Codex's /etc/codex/skills as a system folder skilllib never changes", () => {
   const home = join(tmp, "sys-home");
   const realHome = process.env.HOME;

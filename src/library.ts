@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -104,7 +104,8 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  */
 function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
   const wanted = installDirs(enabledHarnesses());
-  const untracked = ALL_PROJECT_DIRS.find((d) => existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
+  // .grok/skills is the team's folder. Adopting it would make add overwrite it and remove delete it.
+  const untracked = ALL_PROJECT_DIRS.find((d) => d !== GROK_SKILLS_DIR && existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
   const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? wanted[0]!);
   return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
 }
@@ -121,7 +122,7 @@ export function isGitTracked(root: string, dir: string): boolean {
 
 /**
  * Every skill in a project, managed or not. Reads every folder a supported
- * harness loads (.claude, .agents, .cursor, .codex skills); a link into
+ * harness loads (.claude, .agents, .cursor, .codex, .grok skills); a link into
  * another of those folders is the same skill and reported once.
  */
 export function projectStatus(root: string): ProjectSkill[] {
@@ -180,7 +181,7 @@ export function projectStatus(root: string): ProjectSkill[] {
     unmanaged.push({
       name,
       managed: false,
-      state: unmanagedState(name, real, location === AGENTS_SKILLS_DIR, source),
+      state: unmanagedState(name, real, isRepoSkillLocation(location), source),
       version: null,
       latest: latestVersion(name)?.version ?? null,
       location,
@@ -193,7 +194,7 @@ export function projectStatus(root: string): ProjectSkill[] {
   return [...managed, ...unmanaged].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills). */
+/** A skill skilllib doesn't manage, compared with the library. `committed`: it's in a folder repos commit (.agents/skills or .grok/skills). */
 function unmanagedState(name: string, real: string, committed: boolean, source: string | undefined): SkillState {
   if (source) return "from npx skills";
   const latest = latestVersion(name);
@@ -205,10 +206,12 @@ function unmanagedState(name: string, real: string, committed: boolean, source: 
 
 /** Nested skill folders and who reads them (Zed reads only the worktree root). */
 const NESTED_READERS: [string, HarnessId[]][] = [
-  [PROJECT_SKILLS_DIR, ["claude-code", "cursor"]],
-  [AGENTS_SKILLS_DIR, ["codex", "cursor"]],
-  [".cursor/skills", ["cursor"]],
+  [PROJECT_SKILLS_DIR, ["claude-code", "cursor", "grok"]],
+  [AGENTS_SKILLS_DIR, ["codex", "cursor", "grok"]],
+  [".cursor/skills", ["cursor", "grok"]],
   [".codex/skills", ["codex", "cursor"]],
+  // Cursor reads nested .grok/skills too, but skilllib doesn't count it: that folder stays Grok's.
+  [".grok/skills", ["grok"]],
 ];
 
 /** Folders never searched for nested skills: dependencies and build output. */
@@ -244,7 +247,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
           found.push({
             name,
             managed: false,
-            state: unmanagedState(name, path, skillsDir === AGENTS_SKILLS_DIR, undefined),
+            state: unmanagedState(name, path, isRepoSkillLocation(skillsDir), undefined),
             version: null,
             latest: latestVersion(name)?.version ?? null,
             location,
@@ -319,11 +322,20 @@ export function linkEverywhere(root: string, name: string, location: string, { a
   return result;
 }
 
-/** Removes every symlink to this skill in the project's harness folders. Never touches real folders. */
-export function unlinkEverywhere(root: string, name: string): string[] {
+/**
+ * Removes symlinks to this skill in the project's harness folders. Never touches a real folder.
+ * A link in .grok/skills stays unless it already dangles, or it points at `removing` (the copy
+ * about to go away). Leaving that link would make Grok load a path that no longer exists.
+ */
+export function unlinkEverywhere(root: string, name: string, removing?: string): string[] {
+  const gone = removing ? realpathOrNull(removing) : null;
   return ALL_PROJECT_DIRS.filter((dir) => {
     const link = join(root, dir, name);
     if (!isLink(link)) return false;
+    if (dir === GROK_SKILLS_DIR) {
+      const target = realpathOrNull(link);
+      if (target !== null && target !== gone) return false;
+    }
     unlinkSync(link);
     return true;
   });
@@ -592,7 +604,7 @@ export function stash(dir: string, bucket: string): string {
  * The folder goes to the trash, restorable from Settings like everything skilllib removes.
  */
 export function removeUntracked(root: string, name: string, path: string): string {
-  unlinkEverywhere(root, name);
+  unlinkEverywhere(root, name, path);
   return stash(path, "trash");
 }
 

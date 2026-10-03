@@ -94,7 +94,7 @@ export function buildReviewPrompt(skills: ReviewSkill[], ctx: ReviewContext): st
 - A skill is a folder with a SKILL.md. Every loaded skill's name and description sit in the agent's context in every session, so each one costs context and can trigger when it shouldn't.
 - "Global" skills load in EVERY repo for the listed agents. Project skills only load inside that repo.
 - I use these agents: ${ctx.harnesses.join(", ") || "(none configured)"}.
-- I manage skills with skilllib, which can: keep a skill global; move it into specific projects (and out of global); delete it (a backup is kept); or leave vendor skills alone. Vendor skills (plugins, claude.ai, Cursor built-ins) can only be turned off at their source.
+- I manage skills with skilllib, which can: keep a skill global; move it into specific projects (and out of global); delete it (a backup is kept); or leave vendor skills alone. Vendor skills (plugins, claude.ai, Cursor built-ins, Grok bundled skills) can only be turned off at their source.
 - Usage counts only cover Claude Code sessions over the last ${ctx.usageDays} days; other agents' usage isn't tracked, so treat "unused" as a strong hint, not proof.
 
 ## My projects

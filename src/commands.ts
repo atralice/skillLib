@@ -665,7 +665,7 @@ export function show(args: Args) {
   info(`\nInstalled in: ${using.map((p) => tildify(p)).join(", ") || "no projects"}`);
 }
 
-/** Show or set the harnesses you use: skilllib harnesses claude-code cursor codex */
+/** Show or set the harnesses you use: skilllib harnesses claude-code cursor codex zed grok */
 export function harnessesCommand(args: Args) {
   const ids = HARNESSES.map((h) => h.id);
   if (args.positional.length) {

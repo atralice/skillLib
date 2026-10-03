@@ -5,14 +5,14 @@ import { error, setJsonMode } from "./output.js";
 import { refreshAgentSkill } from "./agentSkill.js";
 
 const HELP = `
-skilllib — one library of agent skills (Claude Code, Cursor, Codex, Zed), installed per project
+skilllib — one library of agent skills (Claude Code, Cursor, Codex, Zed, Grok), installed per project
 
   skilllib                       Open the interactive app (run it from anywhere)
 
 Set up:
   skilllib scan [folder...]      Add folders that contain your projects and scan them
   skilllib folders [add|remove]  Show or change your project folders
-  skilllib harnesses [id...]     Show or set the agents you use (claude-code cursor codex zed)
+  skilllib harnesses [id...]     Show or set the agents you use (claude-code cursor codex zed grok)
   skilllib import <dir>...       Add skill folders to the library (--force replaces)
   skilllib import --global       Copy your global skills (every agent's folder) into the library
   skilllib global [keep|unkeep <name>...]  Your global skills; mark ones you keep global on purpose

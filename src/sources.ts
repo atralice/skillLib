@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSy
 import { HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, OWN_SKILL_MARKER, realPath, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, realPath, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify as homeRelative } from "./output.js";
 
@@ -12,7 +12,7 @@ import { tildify as homeRelative } from "./output.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
- * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor)
+ * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor, Grok's ~/.grok/bundled/skills)
  * - system: a machine-wide folder an admin manages (/etc/codex/skills)
  * - skilllib: skilllib's own skill, which `skilllib agent-skill install` puts in your global folders
  */
@@ -173,6 +173,22 @@ function tildify(p: string): string {
   return homeRelative(p).replace(/\\/g, "/");
 }
 
+/** Grok's bundled skills (~/.grok/bundled/skills). A same-named user or project skill overrides these. */
+function grokBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
+  if (!enabled.includes("grok")) return [];
+  return skillDirsIn(join(grokDir(), "bundled", "skills")).map((path) => ({
+    name: basename(path),
+    kind: "built-in" as const,
+    origin: "Grok",
+    path,
+    description: readSkillInfo(path).description,
+    movable: false,
+    broken: false,
+    harnesses: ["grok" as const],
+    links: [],
+  }));
+}
+
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */
 function cursorBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   if (!enabled.includes("cursor")) return [];
@@ -190,29 +206,40 @@ function cursorBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
 }
 
 /**
- * Skills synced from claude.ai, in ~/.claude/skills/synced/<bucket>/<skill>.
- * Claude Code loads them from its sync; Cursor, which walks ~/.claude/skills
- * recursively, loads them too.
+ * Skills synced from claude.ai, in <claude-dir>/skills/synced/<bucket>/<skill>.
+ * Claude Code loads them from its sync (CLAUDE_CONFIG_DIR). Cursor walks
+ * ~/.claude/skills, and Grok reads ~/.claude/skills while Claude compatibility
+ * is on. Grok ignores CLAUDE_CONFIG_DIR, so those two trees are merged when
+ * they are the same folder and kept apart when they are not.
  */
 function claudeAiSkills(enabled: HarnessId[]): SourcedSkill[] {
-  const synced = join(claudeDir(), "skills", "synced");
-  const harnesses = harnessesReading(join(claudeDir(), "skills"), enabled);
-  if (!existsSync(synced) || harnesses.length === 0) return [];
-  return readdirSync(synced)
-    .filter((d) => !d.startsWith("."))
-    .flatMap((bucket) =>
-      skillDirsIn(join(synced, bucket)).map((path) => ({
-        name: basename(path),
-        kind: "claude.ai" as const,
-        origin: "claude.ai account",
-        path,
-        description: readSkillInfo(path).description,
-        movable: false,
-        broken: false,
-        harnesses,
-        links: [],
-      })),
-    );
+  const byReal = new Map<string, { dir: string; readers: HarnessId[] }>();
+  for (const skills of [join(claudeDir(), "skills"), join(userHome(), ".claude", "skills")]) {
+    const synced = join(skills, "synced");
+    const real = realpathOrNull(synced);
+    const readers = harnessesReading(skills, enabled);
+    if (!real || readers.length === 0) continue;
+    const entry = byReal.get(real) ?? { dir: synced, readers: [] };
+    for (const id of readers) if (!entry.readers.includes(id)) entry.readers.push(id);
+    byReal.set(real, entry);
+  }
+  return [...byReal.values()].flatMap(({ dir, readers }) =>
+    readdirSync(dir)
+      .filter((d) => !d.startsWith("."))
+      .flatMap((bucket) =>
+        skillDirsIn(join(dir, bucket)).map((path) => ({
+          name: basename(path),
+          kind: "claude.ai" as const,
+          origin: "claude.ai account",
+          path,
+          description: readSkillInfo(path).description,
+          movable: false,
+          broken: false,
+          harnesses: enabled.filter((id) => readers.includes(id)),
+          links: [],
+        })),
+      ),
+  );
 }
 
 type InstalledPlugins = { plugins?: Record<string, { scope?: string; installPath?: string }[]> };
@@ -305,9 +332,11 @@ const byKindAndName = (a: SourcedSkill, b: SourcedSkill) => a.kind.localeCompare
 
 /**
  * Every skill your harnesses load in all projects on this machine, with where
- * it came from. claude.ai and Claude Code plugin skills reach Claude Code and
- * Cursor; plugins are the ones ~/.claude/settings.json turns on (a repo can
- * differ for Claude Code: skillsLoadedIn).
+ * it came from. claude.ai skills reach Claude Code, Cursor, and Grok (from
+ * ~/.claude/skills). Claude Code plugins reach Claude Code and Cursor; they
+ * are the ones ~/.claude/settings.json turns on (a repo can differ for Claude
+ * Code: skillsLoadedIn). Grok plugins stay off until named in config, and
+ * skilllib doesn't list them.
  */
 export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): SourcedSkill[] {
   return [
@@ -315,6 +344,7 @@ export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): Source
     ...claudeAiSkills(enabled),
     ...pluginSkills(enabled),
     ...cursorBuiltInSkills(enabled),
+    ...grokBuiltInSkills(enabled),
     ...systemSkills(enabled),
   ].sort(byKindAndName);
 }
@@ -351,7 +381,7 @@ export function recordOrigin(name: string, origin: string) {
 export function originFor(dir: string): string {
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
-  const project = dir.split(/[\\/]\.(?:claude|agents)[\\/]skills[\\/]/)[0];
+  const project = dir.split(/[\\/]\.(?:claude|agents|grok|cursor|codex)[\\/]skills[\\/]/)[0];
   if (!project || project === dir) return dir;
   const locked = projectSkillsLock(project)[basename(dir)]?.source;
   return locked ? `skills.sh: ${locked}` : `project: ${basename(project)}`;

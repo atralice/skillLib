@@ -7,7 +7,7 @@ import type { GitState } from "../git.js";
 import { harness, type HarnessId } from "../harnesses.js";
 import { matchScore } from "../search.js";
 
-export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
+export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "grok" | "system" | "skilllib";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
 
 /** Same-name copies that should be one real copy plus links (see tidy.ts). */
@@ -22,7 +22,7 @@ export type Dupes = {
 
 export type LocalSkill = {
   name: string;
-  /** lib: tracked in skilllib.json · repo: the team's (in .agents/skills, or committed to git), never removed · untracked: only on this machine. */
+  /** lib: tracked in skilllib.json · repo: the team's (in .agents/skills or .grok/skills, or committed to git), never removed · untracked: only on this machine. */
   source: "lib" | "repo" | "untracked";
   /** Project folder holding the real copy, e.g. ".claude/skills". */
   dir: string;
@@ -54,7 +54,7 @@ export type LocalSkill = {
 export type MachineSkill = {
   name: string;
   /** system: a machine-wide folder an admin manages (/etc/codex/skills) · skilllib: skilllib's own skill (`where`: its global folder). */
-  source: "global" | "plugin" | "claude.ai" | "cursor" | "system" | "skilllib";
+  source: "global" | "plugin" | "claude.ai" | "cursor" | "grok" | "system" | "skilllib";
   /** Global folder, plugin id, or where a vendor skill comes from. */
   where: string;
   /** Where it was installed from, e.g. an `npx skills` repo. */
@@ -986,6 +986,7 @@ export function groupCandidates(w: World, u: Usable | LibrarySkill): GroupKey[] 
   if (m?.source === "plugin") return [{ key: `plugin:${m.where}`, label: `⧉ ${m.where.split("@")[0]} plugin` }];
   if (m?.source === "claude.ai") return [{ key: "claude.ai", label: "claude.ai skills" }];
   if (m?.source === "cursor") return [{ key: "cursor", label: "Cursor built-ins" }];
+  if (m?.source === "grok") return [{ key: "grok", label: "Grok bundled" }];
   if (m?.source === "system") return [{ key: `system:${m.where}`, label: m.where }];
   if (m?.source === "skilllib") return [];
   if (m) {

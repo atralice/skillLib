@@ -5,8 +5,8 @@
 import { harness, type HarnessId } from "../harnesses.js";
 import type { LocalSkill, MachineSkill, Ops, Plugin, Project, RepoInfo, World } from "./world.js";
 
-const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor"];
-const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed"];
+const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor", "grok"];
+const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed", "grok"];
 
 /** Sample skills remember whether they're linked into the other folder, to work out which agents see them. */
 type SampleSkill = LocalSkill & { linked: boolean };
@@ -17,12 +17,25 @@ function localAgents(s: SampleSkill, enabled: HarnessId[]): HarnessId[] {
   return enabled.filter((a) => reads.has(a));
 }
 
+const GLOBAL_READERS: Record<string, HarnessId[]> = {
+  "~/.agents/skills": READS_AGENTS,
+  "~/.codex/skills": ["codex", "cursor"],
+  "~/.grok/skills": ["grok"],
+};
+
+const VENDOR_READERS: Record<Exclude<MachineSkill["source"], "global" | "skilllib">, HarnessId[]> = {
+  cursor: ["cursor"],
+  grok: ["grok"],
+  plugin: ["claude-code", "cursor"],
+  "claude.ai": READS_CLAUDE,
+  system: READS_CLAUDE,
+};
+
 function machineAgents(m: MachineSkill, enabled: HarnessId[]): HarnessId[] {
   if (m.broken) return [];
   // skilllib's own skill: in ~/.claude/skills with a link in ~/.agents/skills, so every agent.
   if (m.source === "skilllib") return enabled;
-  const reads: HarnessId[] =
-    m.source === "global" ? (m.where === "~/.agents/skills" ? READS_AGENTS : m.where === "~/.codex/skills" ? ["codex", "cursor"] : READS_CLAUDE) : m.source === "cursor" ? ["cursor"] : READS_CLAUDE; // plugins and claude.ai reach Cursor too
+  const reads = m.source === "global" ? (GLOBAL_READERS[m.where] ?? READS_CLAUDE) : VENDOR_READERS[m.source];
   return enabled.filter((a) => reads.includes(a));
 }
 

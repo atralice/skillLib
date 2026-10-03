@@ -168,7 +168,7 @@ const GIT_LABEL: Record<NonNullable<W.LocalSkill["git"]>, string> = { committed:
 // ─── Screens' data ──────────────────────────────────────
 
 /** Which copy a skill's row shows when it loads from several places: the repo's, then yours, then vendors'. */
-const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, skilllib: 1, plugin: 2, "claude.ai": 3, cursor: 3, system: 3 };
+const COPY_RANK: Record<W.Source, number> = { lib: 0, repo: 0, untracked: 0, global: 1, skilllib: 1, plugin: 2, "claude.ai": 3, cursor: 3, grok: 3, system: 3 };
 
 /** Copies grouped by name, the copy to show first. */
 function byName(copies: W.Usable[]): W.Usable[][] {
@@ -422,14 +422,24 @@ function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
   return byName(copies).map((g) => skillItem(w, g, mergeIssues(g.map((c) => W.machineIssues(w, c.machine!))), nameW, globalActions(w, g[0]!, ui), null));
 }
 
+/** What to tell the user for a vendor skill. null: this screen already has actions for that source. */
+const AT_SOURCE: Record<Exclude<W.MachineSkill["source"], "system">, string | null> = {
+  global: null,
+  plugin: null,
+  skilllib: null,
+  "claude.ai": "Turn it off in claude.ai › Settings",
+  cursor: "Cursor manages it",
+  grok: "Ships with Grok; a same-named skill of yours overrides it",
+};
+
 /** Global's actions: all on the machine-wide copy (see W.machineActions), plus vendor settings you change at the source. Plugins are managed in Plugins. */
 function globalActions(w: W.World, u: W.Usable, ui: Ui): Option[] {
   const m = u.machine!;
-  const atSource = m.source === "claude.ai" ? "Turn it off in claude.ai › Settings" : m.source === "system" ? `An admin manages ${m.where}` : "Cursor manages it";
+  const atSource = m.source === "system" ? `An admin manages ${m.where}` : AT_SOURCE[m.source];
   return [
     ...W.machineActions(m).map(fixOption),
     ...(m.source === "plugin" ? [{ label: `Open ${m.where.split("@")[0]} in Plugins`, action: () => ui.openInPlugins(m.where) }] : []),
-    ...(m.source === "global" || m.source === "skilllib" || m.source === "plugin" ? [] : [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }]),
+    ...(atSource ? [{ label: atSource, action: () => ui.notify(`${atSource}; skilllib picks up the change next time`) }] : []),
     ...(m.source === "global" && !m.broken ? [{ label: "Edit SKILL.md", action: () => ui.edit(`${m.path}/SKILL.md`) }] : []),
     reviewOption(w, m.name, ui),
   ];
