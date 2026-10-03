@@ -1,30 +1,30 @@
 ╭── ◆ skilllib ────────────╮╭── Your skills ─────────────────────────────────────────────────────────────────────────╮
-│ ▌ ▤ Your skills     7    ││  All 7   Issues 1                                                                      │
+│ ▌ ▤ Your skills     10   ││  All 10   Issues 4                                                                     │
 │   ◈ Global          15   ││     Skill              Ver  Used in            Uses  Issue / description               │
 │   ⧉ Plugins         7    ││   + New skill…                                                                         │
-│   ✓ Health          19   ││ ▌ · sql-migrations     v1   0 repos               –  Used in no repo                   │
-│   Projects ───────────── ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │
-│   ◆ web-app          ✕   ││     api-conventions    v1   2 repos              13  Our REST conventions: resource n… │
-│     api-server       ✕   ││     react-patterns     v2   2 repos (1 behind)   11  Component patterns for React 19:… │
-│     docs-site        ·   ││     mdx-tips           v1   1 repo                1  MDX components and frontmatter u… │
-│     mobile-app       ⚠   ││     seo-meta           v1   1 repo                –  Page titles, Open Graph and stru… │
-│     billing              ││     testing-guide      v3   1 repo                –  How we write unit and e2e tests:… │
-│     blog                 ││                                                                                        │
+│   ✓ Health          19   ││ ▌ · ▸ ⧉ lean plugin (3)                                                     3 to fix   │
+│   Projects ───────────── ││   · sql-migrations     v1   0 repos               –  Used in no repo                   │
+│   ◆ web-app          ✕   ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │
+│     api-server       ✕   ││     api-conventions    v1   2 repos              13  Our REST conventions: resource n… │
+│     docs-site        ·   ││     react-patterns     v2   2 repos (1 behind)   11  Component patterns for React 19:… │
+│     mobile-app       ⚠   ││     mdx-tips           v1   1 repo                1  MDX components and frontmatter u… │
+│     billing              ││     seo-meta           v1   1 repo                –  Page titles, Open Graph and stru… │
+│     blog                 ││     testing-guide      v3   1 repo                –  How we write unit and e2e tests:… │
 │     cli-tools            ││                                                                                        │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     design-system        │╭── sql-migrations ──────────────────────────────────────────────────────────────────────╮
-│     e2e-tests            ││ Write reversible SQL migrations and backfills safely.                                  │
+│     design-system        │╭── ⧉ lean plugin ───────────────────────────────────────────────────────────────────────╮
+│     e2e-tests            ││ lean, lean-audit, lean-review                                                          │
 │     infra                ││                                                                                        │
-│     landing              ││ Versions  v1  (newest)                                                                 │
-│     marketing-site       ││ In repos  none                                                                         │
-│     playground           ││                                                                                        │
-│     scripts              ││ · Used in no repo  · your call                                                         │
-│     status-page          ││       Add to repos…                                                                    │
-│    ───────────────────── ││       Delete from your library                                                         │
+│     landing              ││ 3 of them have issues   open the group to fix them one by one                          │
+│     marketing-site       ││                                                                                        │
+│     playground           ││ Actions  Add all 3 to repos… · Delete all 3 from your library · Review prompt          │
+│     scripts              ││                                                                                        │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││                                                                                        │
 │   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Actions  Edit SKILL.md · Review prompt                                                 │
+│   ? Help                 ││                                                                                        │
 │                          ││                                                                                        │
-│                          ││ Usage   not used in 30 days                                                            │
+│                          ││                                                                                        │
 │                          ││                                                                                        │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back

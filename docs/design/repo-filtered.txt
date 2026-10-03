@@ -1,5 +1,5 @@
 ╭── ◆ skilllib ────────────╮╭── Skills ──────────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3     ⌕ re▏               │
+│   ▤ Your skills     10   ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3     ⌕ re▏               │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
 │   ⧉ Plugins         7    ││ ▌ ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
 │   ✓ Health          19   ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │

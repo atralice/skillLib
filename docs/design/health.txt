@@ -1,5 +1,5 @@
 ╭── ◆ skilllib ────────────╮╭── To fix  2/20 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     7    ││  All 19                                                                                │
+│   ▤ Your skills     10   ││  All 19                                                                                │
 │   ◈ Global          15   ││     Skill              Where            Issue                                          │
 │   ⧉ Plugins         7    ││   ✦ Fix 8 issues automatically…                                                        │
 │ ▌ ✓ Health          19   ││ ▌ ✕ commit-style       Global           Copies differ                                  │
