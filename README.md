@@ -456,14 +456,10 @@ npm link                                     # use your checkout as `skilllib`
 
 How the TUI is designed, and why: [docs/DESIGN.md](docs/DESIGN.md).
 
-**Releasing:**
-1. Bump `version` in `package.json` and merge to `main`.
-2. Tag and push:
-   ```bash
-   git tag v1.10.0 && git push --tags
-   ```
-
-CI then tests on Linux, macOS and Windows, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic), and creates a GitHub release.
+**Releasing:** automatic, with [release-please](https://github.com/googleapis/release-please). Don't edit `version` by hand.
+1. Write commits (and PR titles) as [Conventional Commits](https://www.conventionalcommits.org/): `fix:` → patch, `feat:` → minor, `feat!:` or a `BREAKING CHANGE:` footer → major. `docs:`, `ci:`, `chore:`, `test:` and `refactor:` don't release.
+2. After each merge to `main`, release-please keeps one PR, **chore(main): release X.Y.Z**, up to date with the next version and its `CHANGELOG.md`.
+3. Merge that PR when you want to release. It tags `vX.Y.Z` and creates the GitHub release; CI then tests, builds and publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no token; provenance is automatic).
 
 The earlier registry-server version (Next.js, Postgres, S3) lives on the `archive/registry-server` branch.
 
