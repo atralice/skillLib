@@ -242,6 +242,8 @@ All replace the content area (Places stays visible), except confirm, which opens
 | **Confirm**: the fix as its title, the preview as its body, as tall as the preview needs. `enter` or `y` applies. | **Repo picker**: the preview, then repos to tick with `space`. Pre-ticked: repos where the skill was used. Typing filters. Refuses an empty pick unless the fix allows it. |
 | ![Add a skill](design/add-skill.svg) | ![Fix all](design/fix-all.svg) |
 | **Add a skill**: one box. Typing searches your library; the last rows create a skill with that name (it opens in `$EDITOR`) or copy a prompt for an agent to write it. | **Fix automatically**: every non-decision issue with its `★` fix, all ticked; untick with `space`. |
+| ![Add a group](design/add-group.svg) | |
+| **Adding several**: `space` ticks library skills and `enter` adds them all (picks survive searching). Related skills (a plugin's, an `npx skills` repo's, or ones named alike, as in Your skills) sit under a group row: `space` on it ticks every member, `enter` on it adds them. A group spans your whole library, so typing narrows it but never regroups it; one member left is just a skill. | |
 
 Also: **menu** (a list of options, e.g. `⋯ repo…`), **input** (one line, e.g. a project folder), and **agents** (the first run: which agents you use, then where your projects are).
 
@@ -262,7 +264,7 @@ Changing what every repo loads (stopping a global skill, or swapping yours for a
 | `text` | `#E5E7EB` | The selected row, values, titles in details |
 | `muted` | `#8A93A6` | Descriptions, labels, counts, unselected tabs |
 | `faint` | `#5A6275` | Column titles, hints, *your call*, empty values |
-| `green` | `#6BCB77` | `✓`, `★`, `[x]`, success messages, Health with nothing to fix |
+| `green` | `#6BCB77` | `✓`, `★`, `[x]`, `[-]` (some of a group ticked), success messages, Health with nothing to fix |
 | `yellow` | `#F2C94C` | Warnings, `global`, repos behind, the Issues tab count |
 | `red` | `#EF6B6B` | Problems, `✗` failed actions |
 | `magenta` | `#C792EA` | Plugins (`⧉ name`) |

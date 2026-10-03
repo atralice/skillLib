@@ -1,15 +1,15 @@
-╭── ◆ skilllib ────────────╮╭── Fix automatically (5 of 5) ──────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││ Decisions are never listed here: they stay with you.                                   │
-│   ◈ Global          15   ││ ▌ [x] stripe-payments: Codex can't see it → Link it for every agent                    │
-│   ⧉ Plugins         7    ││   [x] react-patterns: Update available: v1 → v2 → Update to v2                         │
-│   ✓ Health          19   ││   [x] seo-meta: Listed in skilllib.json but the folder is missing → Restore it (sync)  │
-│   Projects ───────────── ││   [x] testing-guide: More copies or links in this repo than your agents need → Keep o… │
-│ ▌ ◆ web-app          ✕   ││   [x] deploy-preview: Claude Code can't see it → Link it for every agent               │
-│     api-server       ✕   ││                                                                                        │
-│     docs-site        ·   ││                                                                                        │
-│     mobile-app       ⚠   ││                                                                                        │
-│     billing              ││                                                                                        │
-│     blog                 ││                                                                                        │
+╭── ◆ skilllib ────────────╮╭── Add 3 skills to web-app ─────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     10   ││ type to search your library, or to name a new skill                                    │
+│   ◈ Global          15   ││   Your library ─────────────────────────────────────────────────────────────────────── │
+│   ⧉ Plugins         7    ││   [ ] mdx-tips                v1    MDX components and frontmatter used across the do… │
+│   ✓ Health          19   ││   [ ] sql-migrations          v1    Write reversible SQL migrations and backfills saf… │
+│   Projects ───────────── ││ ▌ [x] ⧉ lean plugin                 3 skills: lean, lean-review, lean-audit            │
+│ ▌ ◆ web-app          ✕   ││   [x]   lean                  v1    The simplest change that works: question the task… │
+│     api-server       ✕   ││   [x]   lean-review           v1    Review a diff for code that could be deleted or s… │
+│     docs-site        ·   ││   [x]   lean-audit            v1    Audit a repo for dependencies and abstractions it… │
+│     mobile-app       ⚠   ││   New ──────────────────────────────────────────────────────────────────────────────── │
+│     billing              ││   + Create a new skill (type its name)                                                 │
+│     blog                 ││   ✦ Write a new skill with an agent                                                    │
 │     cli-tools            ││                                                                                        │
 │     dotfiles             ││                                                                                        │
 │     design-system        ││                                                                                        │
@@ -27,4 +27,4 @@
 │                          ││                                                                                        │
 │                          ││                                                                                        │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
-                                                                                space tick · enter apply · esc cancel
+                                                                                  space tick · enter add · esc cancel

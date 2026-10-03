@@ -18,6 +18,7 @@ export const SCREENS: Screen[] = [
   { name: "repo-filtered", steps: ["enter", "r e"] },
   { name: "repo-issues-tab", steps: ["enter", "tab"] },
   { name: "add-skill", steps: ["enter", "up", "up", "up", "enter", "s q"] },
+  { name: "add-group", steps: ["enter", "up", "up", "up", "enter", "down down", "space"] },
   { name: "confirm", steps: ["enter", "space", "enter"] },
   { name: "fix-all", steps: ["enter", "up", "up", "enter"] },
   { name: "repo-menu", steps: ["enter", "up", "enter"] },

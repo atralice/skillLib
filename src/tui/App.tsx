@@ -75,8 +75,8 @@ type Modal =
   /** `toast`: for a follow-up question, what the change before it said; shown again if you say no. */
   | { kind: "confirm"; fix: W.Fix; toast?: string }
   | { kind: "repos"; fix: W.Fix; picked: Set<string>; cursor: number; only?: string[]; query: string }
-  /** `target`: the repo to add to, or null for your library. */
-  | { kind: "add"; cursor: number; query: string; target: string | null }
+  /** `target`: the repo to add to, or null for your library. `picked`: library skills ticked to add together. */
+  | { kind: "add"; cursor: number; query: string; target: string | null; picked: Set<string> }
   | { kind: "fixall"; items: { label: string; fix: W.Fix; on: boolean }[]; cursor: number }
   | { kind: "help" }
   | { kind: "menu"; title: string; options: Option[]; cursor: number }
@@ -904,7 +904,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       const repo = open!;
       const skills = W.project(world, repo).skills.map((s) => s.name);
       return [
-        row("#add", "+ Add a skill…", ["Search your library, or create a new skill."], () => setModal({ kind: "add", cursor: 0, query: "", target: repo })),
+        row("#add", "+ Add a skill…", ["Search your library, or create a new skill."], () => setModal({ kind: "add", cursor: 0, query: "", target: repo, picked: new Set() })),
         ...fix,
         row("#repo", `⋯ ${repo}…`, ["Open its folder, hide it from the list, or copy a review prompt for its skills."], () =>
           ui.menu(repo, [
@@ -926,7 +926,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     }
     if (place === "health") return fix;
     if (place === "library")
-      return [row("#add", "+ New skill…", ["Create a skill in your library, or have an agent write it. Skills in your repos can be copied in from their own actions."], () => setModal({ kind: "add", cursor: 0, query: "", target: null }))];
+      return [row("#add", "+ New skill…", ["Create a skill in your library, or have an agent write it. Skills in your repos can be copied in from their own actions."], () => setModal({ kind: "add", cursor: 0, query: "", target: null, picked: new Set() }))];
     return [];
   }
 
@@ -1205,6 +1205,19 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.upArrow) return step(-1);
       if (key.downArrow) return step(1);
       if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
+      // Space ticks a skill, or a group's every member (unticks them when all are ticked); picks survive searching.
+      const members = rows[cursor]?.members;
+      if (input === " " && members) {
+        const picked = new Set(m.picked);
+        const all = members.every((n) => picked.has(n));
+        for (const n of members) all ? picked.delete(n) : picked.add(n);
+        return setModal({ ...m, picked });
+      }
+      if (key.return && m.target && m.picked.size) {
+        const [target, names] = [m.target, [...m.picked]];
+        setModal(null);
+        return apply((w) => w.ops.addTo([target], names));
+      }
       if (key.return && rows[cursor]?.agent) {
         setModal(null);
         return ui.copy(writeSkillPrompt(world, m.query, m.target), "a prompt for an agent to write the skill");
@@ -1469,9 +1482,14 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     );
   } else if (modal?.kind === "add") {
     const rows = W.addRows(world, modal.target, modal.query);
+    const picked = modal.picked;
+    const tick = (names: string[]): Cell => {
+      const n = names.filter((x) => picked.has(x)).length;
+      return { text: n === names.length ? "[x] " : n ? "[-] " : "[ ] ", width: 4, color: n ? color.green : color.faint };
+    };
     body = (
       <ListPanel
-        title={modal.target ? `Add a skill to ${modal.target}` : "New skill"}
+        title={modal.target ? (picked.size ? `Add ${picked.size} skill${picked.size === 1 ? "" : "s"} to ${modal.target}` : `Add a skill to ${modal.target}`) : "New skill"}
         focused
         width={columns}
         height={bodyH}
@@ -1488,14 +1506,20 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
             ? { key: r.key, header: true, cells: [{ text: r.header }] }
             : r.create || r.agent
               ? { key: r.key, cells: [{ text: r.name, grow: true, color: color.accent }] }
-              : {
-                  key: r.key,
-                  cells: [
-                    { text: clip(r.name, 22), width: 22 },
-                    { text: r.note, width: 6, color: color.accent },
-                    { text: r.description, grow: true, color: color.faint },
-                  ],
-                },
+              : r.members!.length > 1
+                ? {
+                    key: r.key,
+                    cells: [tick(r.members!), { text: clip(r.name, 30), width: 30, bold: true }, { text: `${r.note}: ${r.description}`, grow: true, color: color.faint }],
+                  }
+                : {
+                    key: r.key,
+                    cells: [
+                      tick(r.members!),
+                      { text: clip(`${r.inGroup ? "  " : ""}${r.name}`, 24), width: 24 },
+                      { text: r.note, width: 6, color: color.accent },
+                      { text: r.description, grow: true, color: color.faint },
+                    ],
+                  },
         )}
       />
     );
@@ -1524,7 +1548,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           : modal?.kind === "menu"
             ? "↑↓ choose · enter do it · esc cancel"
             : modal?.kind === "add"
-          ? "enter add · esc cancel"
+          ? modal.target
+            ? "space tick · enter add · esc cancel"
+            : "enter add · esc cancel"
           : modal
             ? "any key closes"
             : focus === "detail"
