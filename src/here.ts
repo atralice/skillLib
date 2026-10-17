@@ -6,7 +6,7 @@ import { gitInfo, relativeTo } from "./git.js";
 import { projectHere, readManifest } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
-import { findIssues } from "./health.js";
+import { findIssues, type Issue } from "./health.js";
 import type { ListJson, StatusGlobalGroup, StatusIssue, StatusJson, StatusSkillGroup } from "./json.js";
 
 /** Groups items by a key, collecting names. */
@@ -41,6 +41,11 @@ function topLevel(root: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** The issues `status --json` reports in `root`: this repo's, if it is one, and your global skills'. */
+export function statusIssues(root: string, machine = machineSkills(enabledHarnesses())): Issue[] {
+  return findIssues(projectHere(root) === root ? [root] : [], machine, new Set(librarySkills().map((l) => l.name)));
 }
 
 /** Every skill your agents can use in `root`: the repo's own, its subfolders', then global ones grouped by source. */
@@ -90,11 +95,12 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
       }),
   );
   const issues = new Map<string, StatusIssue>();
-  for (const i of findIssues(inRepo ? [root] : [], machine, new Set(librarySkills().map((l) => l.name)))) {
+  for (const i of statusIssues(root, machine)) {
     const choices = i.choices?.map((c) => c.label);
     const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
-    const issue = issues.get(key) ?? { problems: [], detail: i.detail, fix: i.fix?.label, choices };
+    const issue = issues.get(key) ?? { problems: [], ids: [], detail: i.detail, fix: i.fix?.label, choices };
     issue.problems.push(i.title);
+    issue.ids.push(i.id);
     issues.set(key, issue);
   }
   const usesHere = Object.fromEntries([...uses].filter(([, n]) => n > 0));

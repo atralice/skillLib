@@ -60,9 +60,17 @@ export type StatusGlobalGroup = {
 
 /**
  * Problems skilllib found here or in your global skills that share a cause and remedy: a `fix` is a
- * safe repair (`skilllib doctor --fix` runs it); `choices` need the user to decide (skilllib → Health).
+ * safe repair (`skilllib doctor --fix` runs it); `choices` need the user to decide.
+ * `skilllib apply <id> [choice]` applies either, one problem at a time.
  */
-export type StatusIssue = { problems: string[]; detail: string; fix?: string; choices?: string[] };
+export type StatusIssue = {
+  problems: string[];
+  /** One per problem, in the same order: what `skilllib apply` takes. */
+  ids: string[];
+  detail: string;
+  fix?: string;
+  choices?: string[];
+};
 
 /** `skilllib status --json`: everything your agents can use in this repo. */
 export type StatusJson = {
