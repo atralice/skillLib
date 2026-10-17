@@ -392,6 +392,25 @@ test("a repo reached through a symlinked folder is one project, under the path y
   expect(projects.map((p) => [p.name, p.path])).toEqual([["web", join(link, "web")]]);
 });
 
+test("agent worktrees under .claude/worktrees aren't projects of their own, even ones remembered before", () => {
+  const repo = join(tmp, "Projects", "web");
+  const stale = join(repo, ".claude", "worktrees", "old");
+  const fresh = join(repo, ".claude", "worktrees", "new");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  for (const wt of [stale, fresh]) {
+    mkdirSync(join(wt, ".claude", "skills", "local"), { recursive: true });
+    writeFileSync(join(wt, ".git"), `gitdir: ${join(repo, ".git", "worktrees", "x")}\n`);
+    writeFileSync(join(wt, ".claude", "skills", "local", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+  }
+  writeFileSync(join(tmp, ".skilllib", "projects.json"), JSON.stringify([repo, stale]));
+  // Commands still work inside a worktree; it just isn't remembered.
+  expect(cli(fresh, "add", "alpha").code).toBe(0);
+  expect(existsSync(join(fresh, "skilllib.json"))).toBe(true);
+  const projects = JSON.parse(cli(tmp, "projects", "--json").out) as { path: string }[];
+  expect(projects.map((p) => p.path)).toEqual([repo]);
+  expect(cli(tmp, "doctor", "--json").out).not.toContain("worktrees");
+});
+
 test("one global folder reached by two paths is one folder: listed once, never tidied into a link to itself (#54)", () => {
   const link = join(tmpdir(), `skilllib-home-link-${process.pid}-${Date.now()}`);
   symlinkSync(tmp, link, "junction");

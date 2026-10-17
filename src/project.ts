@@ -99,7 +99,16 @@ export function knownProjects(): string[] {
   const path = projectsFile();
   if (!existsSync(path)) return [];
   const list = JSON.parse(readFileSync(path, "utf-8")) as string[];
-  return onePerFolder(list.filter((p) => existsSync(p) && isProjectCandidate(p)));
+  return onePerFolder(list.filter((p) => existsSync(p) && isProjectCandidate(p) && !isAgentWorktree(p)));
+}
+
+/**
+ * A Claude Code agent worktree (<repo>/.claude/worktrees/<name>): a checkout of its repo,
+ * not a project of its own. Agents create them constantly; remembering each would flood
+ * projects and doctor.
+ */
+export function isAgentWorktree(path: string): boolean {
+  return /[\\/]\.claude[\\/]worktrees[\\/]/.test(path);
 }
 
 /**
@@ -127,7 +136,7 @@ export function isProjectCandidate(root: string): boolean {
 }
 
 export function rememberProjects(roots: string[]) {
-  const incoming = roots.map((r) => resolve(r)).filter(isProjectCandidate);
+  const incoming = roots.map((r) => resolve(r)).filter((r) => isProjectCandidate(r) && !isAgentWorktree(r));
   const all = onePerFolder([...knownProjects(), ...incoming]).sort();
   mkdirSync(skilllibHome(), { recursive: true });
   writeFileSync(projectsFile(), JSON.stringify(all, null, 2) + "\n");
