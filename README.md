@@ -2,7 +2,7 @@
 
 # ◆ skilllib
 
-**Manage your agent skills like dependencies.**<br>
+**Manage your agent skills like dependencies, or let your agents do it.**<br>
 One library for all your skills. Each repo gets only the ones it needs,<br>
 and every agent you use can see them.
 
@@ -12,8 +12,10 @@ and every agent you use can see them.
 ![agents](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Zed%20%C2%B7%20Grok-c792ea)
 
 ```bash
-npx skilllib
+npm install -g skilllib && skilllib agent-skill install
 ```
+
+Then ask your agent: *"Which skills can you use here, and which of my global skills should only load in this repo?"*
 
 <img src="docs/design/repo.svg" alt="skilllib: Places on the left, a repo's skills with their issues and uses, and the selected skill's fixes and actions below" width="100%">
 
@@ -43,18 +45,18 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 
 ## How skilllib fixes it
 
+- **🤖 Your agents run it.** One small skill teaches Claude Code, Cursor, Codex, Zed and Grok to use the skilllib CLI. Ask them what's loaded here, what to add, what's out of date, or to move a global skill into the repos that use it. Every command has `--json` output shaped for agents, and they ask before changing anything.
 - **📚 Your skills: one versioned library.** Every skill has a single master copy in `~/.skilllib/library`, and each change becomes a new version.
 - **📦 Per-repo installs, pinned like dependencies.** Each repo lists its skills and versions in `skilllib.json`. `sync` reproduces them exactly, and `update` moves to the newest.
 - **🤝 One copy, every agent.** skilllib puts one real copy in the repo and links it into whichever folders your other agents read.
-- **🧹 Health: one list of what to fix.** Global skills you haven't decided about, skills loaded twice, duplicate copies, updates, broken links, each with its fix. For a global skill: move it to the repos that need it, keep it global, or delete it. Usage numbers and descriptions help you decide.
+- **🧹 Health: one list of what to fix.** Global skills you haven't decided about, skills loaded twice, duplicate copies, updates, broken links, each with its fix. For a global skill: move it to the repos that need it, keep it global, or delete it. Usage numbers and descriptions help you, or your agent, decide.
 - **✓ Global on purpose.** Some skills belong everywhere. Mark them once and skilllib stops warning about them.
 - **🔎 See everything in a repo:**
   - where each skill comes from (the repo, your library, global, a plugin, claude.ai…)
   - which agents load it
   - whether it's committed to git or gitignored
   - how often it was used
-- **💬 Talk to your agents about your skills.** Ask Claude Code, Cursor, Codex or Grok "which skills can you use here, and where do they come from?" or "which of my skills should this repo use?". They answer with skilllib.
-- **✦ Ask an agent.** Copy a ready-made prompt with all of that data, and let Claude Code, Cursor, Codex or Grok tell you what to keep, move or delete.
+- **🖥 An app when you want to look yourself.** `skilllib` opens a terminal app with the same data and fixes, and can copy a review prompt for any agent.
 - **🛟 Nothing is lost.** Every removal goes to a backup you can restore with one key.
 
 Everything runs locally: no server, no account, no network calls.
@@ -63,17 +65,27 @@ Everything runs locally: no server, no account, no network calls.
 
 ## Quick start
 
+It needs **Node.js 22+** and works on macOS and Linux. Windows support is newer: it uses directory junctions, so no admin rights are needed.
+
+### With your agents
+
 ```bash
-npm install -g skilllib    # or: npx skilllib
-skilllib
+npm install -g skilllib
+skilllib agent-skill install
 ```
 
-It needs **Node.js 22+** and works on macOS and Linux. Windows support is newer: it uses directory junctions, so no admin rights are needed.
+This installs the `skilllib` skill where your agents look, in every repo (see [Use it from your agents](#use-it-from-your-agents)). Start a new agent session in any repo and ask away.
+
+### In the app
+
+```bash
+skilllib    # or: npx skilllib
+```
 
 On first run, skilllib asks two things:
 
 1. **Which agents you use:** Claude Code, Cursor, Codex, Zed, Grok. The ones installed on your machine are pre-selected.
-2. **Where your projects live**, e.g. `~/Projects`. It finds every git repo in there, and rescans each time it opens.
+2. **Where your projects live**, e.g. `~/Projects`. It finds every git repo in there, and rescans each time it opens. Agent worktrees (`<repo>/.claude/worktrees/*`) aren't counted as projects.
 
 Then a good first session looks like this:
 
@@ -83,7 +95,26 @@ Then a good first session looks like this:
 
 ---
 
-## Manual
+## Use it from your agents
+
+`skilllib agent-skill install` puts a small `skilllib` skill in `~/.claude/skills` (Claude Code, Cursor and Grok read it there), with a link in `~/.agents/skills` (Codex and Zed). This is the one skill that should be global, because it's about every repo. Upgrading skilllib keeps it up to date, and `skilllib agent-skill remove` takes it out. Agents use it from their next session.
+
+Then ask in plain words. A few examples, with what the agent runs:
+
+| Ask | The agent runs |
+|---|---|
+| *Which skills can you use here, and where does each come from?* | `status --json`, which Claude Code gets as the skill loads, so it answers in one step |
+| *Which of my skills should this repo use?* | `list --json`, then reads the README and manifests, and gives a reason for each pick |
+| *Which skills do I use most? Which ones never?* | `usage --json` (Claude Code usage only, so "never" is a hint) |
+| *Move my global skills into the repos that actually use them.* | `usage --json` to see where each is used, then `global move <name> --to <repo>`, or `global keep <name>` for the ones you want everywhere |
+| *Is anything broken or out of date? Fix it.* | `status --json` or `doctor --json`, then `doctor --fix` for the safe repairs and `apply <id> <choice>` for each decision you approve |
+| *Add the skill from github.com/acme/skills to my library.* | Clones the repo into a temporary folder, then `import <dir>` and `add <name>`. skilllib itself downloads nothing |
+
+The agent asks before it changes anything, unless you asked for that exact change. Anything skilllib removes can be restored: see [Backups](#backups).
+
+---
+
+## The app
 
 ### The screen
 
@@ -224,25 +255,6 @@ Paste it into Claude Code, Cursor, Codex or Grok. You get back **keep global / m
 
 It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at the top of Global (all your global skills).
 
-### Ask your agents about skills
-
-Run this once:
-
-```bash
-skilllib agent-skill install
-```
-
-This installs a small `skilllib` skill that tells your agents how to use skilllib. It goes where your agents look, in every repo: `~/.claude/skills` for Claude Code and Cursor, with a link in `~/.agents/skills` for Codex and Zed. This is the one skill that should be global, because it's about every repo. Health and Settings offer the same install, and upgrading skilllib keeps the skill up to date.
-
-Then, in any repo, you can ask:
-
-- *Which skills can you use in this repo?*
-- *Where does each one come from?*
-- *Which skills from my library would you add to this project?*
-- *Is anything out of date? Update it.*
-
-The agent runs `skilllib status --json`, `skilllib list --json` and similar commands, reads the repo, and answers. It asks before it adds or removes anything. `skilllib agent-skill remove` uninstalls it.
-
 ### Duplicates
 
 The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case on the skill it's about, with its fix. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
@@ -351,7 +363,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 ## Command line
 
-Everything the app does also works as a command, for scripts and CI:
+Everything the app does also works as a command, for your agents, scripts and CI:
 
 ```
 skilllib                        open the app (prints `status` when piped)
@@ -442,7 +454,7 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 - Turning off Cursor marketplace plugins: skilllib lists them and reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
 - Installing plugins from a marketplace: use `/plugin` in Claude Code. Plugins a repo's own `.claude/settings.json` turns on without installing them aren't listed in Plugins yet.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
-- Installing new skills straight from GitHub is coming. For now, `skilllib import <folder>` or copy one from a repo.
+- Downloading skills: skilllib makes no network calls. To get a skill from GitHub, clone the repo and run `skilllib import <folder>`, or ask your agent to.
 
 ---
 
