@@ -24,7 +24,7 @@ import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
-import { libraryFor, usableHere } from "./here.js";
+import { libraryFor, statusIssues, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
@@ -619,21 +619,32 @@ export async function doctor(args: Args) {
 }
 
 /**
- * Applies one of doctor's issues: its fix, or the choice you name (its number, from 1, or its label).
+ * Applies one issue from `status --json` or `doctor --json`: its fix, or the choice you name (its number, from 1, or its label).
  * skilllib apply <issue-id> [choice]
  */
 export async function apply(args: Args) {
   const [id, pick] = args.positional;
-  if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib doctor --json)");
+  if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib status --json or doctor --json)");
+  // As status sees it here (this repo, even one skilllib hasn't seen yet), then as doctor does (every repo).
   // Only usage issues (`unused:…`) need the transcripts, and they depend on --days: pass the one doctor had.
-  const issue = (await allIssues(args, id.startsWith("unused:"))).find((i) => i.id === id);
-  if (!issue) throw new Error(`No issue ${id} right now (it may be fixed already; for an unused:… issue, pass doctor's --days). See skilllib doctor --json`);
-  const options = issue.choices ?? (issue.fix ? [issue.fix] : []);
+  const found = [...statusIssues(findProjectRoot()), ...(await allIssues(args, id.startsWith("unused:")))].filter((i) => i.id === id);
+  if (!found.length) throw new Error(`No issue ${id} right now (it may be fixed already; for an unused:… issue, pass doctor's --days). See skilllib status --json or doctor --json`);
+  const optionsOf = (i: Issue) => i.choices ?? (i.fix ? [i.fix] : []);
+  const labels = (i: Issue) => optionsOf(i).map((c) => c.label).join("\0");
+  const byLabel = pick === undefined ? undefined : found.find((i) => optionsOf(i).some((c) => c.label.toLowerCase() === pick.toLowerCase()));
+  // An issue that spans repos (a plugin, a skill also loaded globally) can offer different choices here than in
+  // doctor: then a number could mean either list, so only a label says which.
+  if (!byLabel && found.some((i) => labels(i) !== labels(found[0]!))) {
+    const all = [...new Set(found.flatMap((i) => optionsOf(i).map((c) => c.label)))];
+    throw new Error(`${found[0]!.title}: its choices differ between this repo and all your repos; pick one by label: ${all.map((l) => `"${l}"`).join("  ")}`);
+  }
+  const issue = byLabel ?? found[0]!;
+  const options = optionsOf(issue);
   if (!options.length) throw new Error(`${issue.title}: nothing to apply. ${issue.detail}`);
   const listed = options.map((c, i) => `${i + 1}) ${c.label}`).join("  ");
   // A decision is never made for you: with several choices, say which.
   if (pick === undefined && options.length > 1) throw new Error(`${issue.title}: pick one: ${listed}`);
-  const choice = pick === undefined ? options[0]! : (options[Number(pick) - 1] ?? options.find((c) => c.label.toLowerCase() === pick.toLowerCase()));
+  const choice = pick === undefined ? options[0]! : (options.find((c) => c.label.toLowerCase() === pick.toLowerCase()) ?? options[Number(pick) - 1]);
   if (!choice) throw new Error(`${issue.title}: no choice ${pick}. Pick one: ${listed}`);
   const r = runFix(choice);
   if (!r.ok) process.exitCode = 1;

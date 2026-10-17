@@ -375,7 +375,7 @@ skilllib new <name> [desc]      create a skill
 
 skilllib usage [--days N]       which skills Claude Code used
 skilllib doctor [--fix]         find (and fix) problems
-skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from doctor --json)
+skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from status or doctor --json)
 skilllib restore [name]         put back something skilllib moved out
 skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
@@ -393,7 +393,7 @@ A command exits 1 when it couldn't do all you asked: a skill skipped (not in the
   - the repo's skills, with their source, version, state and git state
   - skills in subfolders (`nested`, e.g. monorepo packages), with their folder
   - the global skills, grouped by where they come from, with the plugins the repo's `.claude/settings.json` turns on or off
-  - every problem skilllib found here, with its fix
+  - every problem skilllib found here, with its fix or choices and an id for `skilllib apply`
   - how often Claude Code used each skill here
   - the repo's top-level files
 

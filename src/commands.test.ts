@@ -195,6 +195,45 @@ describe("apply and global move, for agents", () => {
     expect(JSON.parse(cli(repo, "doctor", "--json").out).some((i: { id: string }) => i.id === issue.id)).toBe(false);
   });
 
+  test("status --json gives each problem its id, and apply takes it in a repo skilllib hasn't seen yet", () => {
+    const repo = web();
+    writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { "ghost-skill": { version: 1, hash: "abc" } } }));
+    // Nothing has run in this repo yet, so only status's view of it knows this issue.
+    const r = cli(repo, "apply", `unavailable:${repo}:ghost-skill`, "Remove it from skilllib.json", "--json");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ applied: "Remove it from skilllib.json", ok: true });
+
+    const { issues } = JSON.parse(cli(repo, "status", "--json").out);
+    for (const i of issues) expect(i.ids).toHaveLength(i.problems.length);
+    expect(issues.flatMap((i: { ids: string[] }) => i.ids)).toContain("review:global");
+    expect(issues.flatMap((i: { ids: string[] }) => i.ids).some((id: string) => id.includes("ghost-skill"))).toBe(false);
+  });
+
+  test("an issue whose choices differ here and across your repos is applied by label only", () => {
+    // alpha is kept global and also installed in web and api: from web, status offers to remove web's copy, doctor both.
+    mkdirSync(join(tmp, ".claude", "skills", "alpha"), { recursive: true });
+    writeFileSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const repo = web();
+    const api = join(tmp, "code", "api");
+    mkdirSync(join(api, ".git"), { recursive: true });
+    for (const r of [repo, api]) expect(cli(r, "add", "alpha").code).toBe(0);
+    cli(api, "status", "--json");
+    cli(repo, "global", "keep", "alpha");
+    const choicesOf = (out: string, id: string) =>
+      (JSON.parse(out).issues ?? JSON.parse(out)).find((i: { id?: string; ids?: string[] }) => i.id === id || i.ids?.includes(id))?.choices;
+    expect(choicesOf(cli(repo, "status", "--json").out, "twice:alpha")).toEqual(["Remove the copies in web"]);
+    expect(choicesOf(cli(repo, "doctor", "--json").out, "twice:alpha")).toEqual(["Remove the copies in api, web"]);
+
+    const byNumber = cli(repo, "apply", "twice:alpha", "1");
+    expect(byNumber.code).toBe(1);
+    expect(byNumber.err).toContain("pick one by label");
+    expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(true);
+
+    expect(cli(repo, "apply", "twice:alpha", "Remove the copies in web").code).toBe(0);
+    expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
+    expect(existsSync(join(api, ".claude", "skills", "alpha"))).toBe(true);
+  });
+
   test("apply says why when there's nothing it can do", () => {
     const repo = web();
     expect(cli(repo, "apply", "no-such-issue").err).toContain("No issue no-such-issue right now");
