@@ -71,7 +71,7 @@ export function parseArgs(argv: string[]): Args {
     dryRun: argv.includes("--dry-run"),
     allowGit: argv.includes("--allow-git"),
     ...(keepIdx >= 0 && argv[keepIdx + 1] ? { keep: argv[keepIdx + 1] } : {}),
-    to: argv.flatMap((a, i) => (argv[i - 1] === "--to" ? a.split(",").filter(Boolean) : [])),
+    to: argv.flatMap((a, i) => (argv[i - 1] === "--to" && !a.startsWith("--") ? a.split(",").filter(Boolean) : [])),
   };
 }
 
@@ -555,13 +555,16 @@ export function restore(args: Args) {
   }
 }
 
-/** Everything doctor reports: problems and suggestions in every project and globally, with usage when Claude Code is on. */
-async function allIssues(args: Args): Promise<Issue[]> {
+/**
+ * Everything doctor reports: problems and suggestions in every project and globally, and (unless
+ * `withUsage` is false) the ones from usage when Claude Code is on, which reads every transcript.
+ */
+async function allIssues(args: Args, withUsage = true): Promise<Issue[]> {
   const projects = visibleProjects();
   const machine = machineSkills();
   const libraryNames = new Set(librarySkills().map((s) => s.name));
   const issues = findIssues(projects, machine, libraryNames);
-  if (enabledHarnesses().includes("claude-code")) {
+  if (withUsage && enabledHarnesses().includes("claude-code")) {
     const projectOf = projectOfFactory(projects);
     const uses = await scanUsage(args.days);
     const inProject = usesByProject(uses, projectOf);
@@ -622,8 +625,9 @@ export async function doctor(args: Args) {
 export async function apply(args: Args) {
   const [id, pick] = args.positional;
   if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib doctor --json)");
-  const issue = (await allIssues(args)).find((i) => i.id === id);
-  if (!issue) throw new Error(`No issue ${id} right now (it may be fixed already). See skilllib doctor --json`);
+  // Only usage issues (`unused:…`) need the transcripts, and they depend on --days: pass the one doctor had.
+  const issue = (await allIssues(args, id.startsWith("unused:"))).find((i) => i.id === id);
+  if (!issue) throw new Error(`No issue ${id} right now (it may be fixed already; for an unused:… issue, pass doctor's --days). See skilllib doctor --json`);
   const options = issue.choices ?? (issue.fix ? [issue.fix] : []);
   if (!options.length) throw new Error(`${issue.title}: nothing to apply. ${issue.detail}`);
   const listed = options.map((c, i) => `${i + 1}) ${c.label}`).join("  ");
@@ -763,17 +767,18 @@ export function globalCommand(args: Args) {
   if (unreviewed) info(dim(`\n${unreviewed} not reviewed. Keep one global on purpose: skilllib global keep <name>`));
 }
 
-/** A repo by path, or by the name of one of your projects. */
+/** A repo by the name of one of your projects, or by the path of its top folder. */
 function repoRoot(repo: string): string {
-  const path = expandHome(repo);
-  if (existsSync(path)) {
-    const root = projectHere(path);
-    if (!root) throw new Error(`${tildify(path)} isn't in a git repo`);
-    return root;
-  }
-  const named = visibleProjects().filter((p) => basename(p) === repo);
+  const looksLikePath = /[\\/]/.test(repo) || repo.startsWith(".") || repo.startsWith("~");
+  const named = looksLikePath ? [] : visibleProjects().filter((p) => basename(p) === repo);
   if (named.length === 1) return named[0]!;
-  throw new Error(named.length ? `Several projects are named ${repo}: ${named.map(tildify).join(", ")}. Pass its path.` : `No project ${repo} (pass its path, or see skilllib projects)`);
+  if (named.length > 1) throw new Error(`Several projects are named ${repo}: ${named.map(tildify).join(", ")}. Pass its path.`);
+  const path = expandHome(repo);
+  if (!existsSync(path)) throw new Error(`No project ${repo} (pass its path, or see skilllib projects)`);
+  // A subfolder isn't the repo: installing into the repo around it would surprise you.
+  const root = projectHere(path);
+  if (root !== path) throw new Error(root ? `${tildify(path)} is inside ${tildify(root)}: pass the repo's top folder` : `${tildify(path)} isn't in a git repo`);
+  return root;
 }
 
 /** skilllib global move <name>... --to <repo>...: global skills load only in those repos from now on. */
@@ -782,8 +787,8 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   const unknown = names.filter((n) => !yours.some((m) => m.name === n));
   if (unknown.length) throw new Error(`Not one of your global skills: ${unknown.join(", ")} (see skilllib global)`);
   const roots = [...new Set(args.to.map(repoRoot))];
-  // A skill in two global folders is one skill: move its first copy, the others are links or duplicates `tidy --global` handles.
-  const skills = names.map((n) => yours.find((m) => m.name === n)!);
+  // A skill in two global folders is one skill: every copy moves (links to it are in each copy's `links`).
+  const skills = yours.filter((m) => names.includes(m.name));
   const moves = moveGlobalSkills(skills, roots, { allowTracked: args.allowTracked });
   if (moves.some((m) => !m.moved)) process.exitCode = 1;
   if (args.json) {
@@ -800,7 +805,10 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   for (const m of moves) {
     if (m.moved) success(`${m.name} now loads only in ${m.changes.map(([r]) => basename(r)).join(", ")} (the global copy is in skilllib restore)`);
     else error(`${m.name}: ${m.reason}`);
-    for (const [root, c] of m.changes) if (c.blocked?.length) warn(`  ${basename(root)}: git tracks ${c.blocked.join(", ")}, so no link there. Re-run with --allow-tracked to add it.`);
+    for (const [root, c] of m.changes) {
+      if (c.blocked?.length) warn(`  ${basename(root)}: git tracks ${c.blocked.join(", ")}, so no link there. Re-run with --allow-tracked to add it.`);
+      if (c.uncommitted?.length) warn(`  ${basename(root)}: no link in ${c.uncommitted.join(", ")}: git tracks it but not the skill's copy, so the link would break for teammates. Commit the copy, then run skilllib link --allow-tracked.`);
+    }
   }
   if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
 }

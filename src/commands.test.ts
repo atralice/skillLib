@@ -228,10 +228,42 @@ describe("apply and global move, for agents", () => {
     expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
   });
 
+  test("global move moves every global copy of a skill, and only when they're the same", () => {
+    const repo = web();
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const [move] = JSON.parse(cli(repo, "global", "move", "mine", "--to", repo, "--json").out);
+    expect(move.moved).toBe(true);
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
+    expect(existsSync(join(tmp, ".agents", "skills", "mine"))).toBe(false);
+  });
+
+  test("global move leaves differing global copies alone", () => {
+    const repo = web();
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nother\n");
+    const r = cli(repo, "global", "move", "mine", "--to", repo, "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)[0]).toMatchObject({ skill: "mine", moved: false, reason: expect.stringContaining("copies of mine differ") });
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+    expect(existsSync(join(repo, ".claude", "skills", "mine"))).toBe(false);
+  });
+
+  test("global move wants a repo's top folder, not a folder inside it", () => {
+    const repo = web();
+    mkdirSync(join(repo, "docs"));
+    const r = cli(repo, "global", "move", "mine", "--to", "./docs");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("is inside");
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+  });
+
   test("global move refuses names that aren't your global skills, and needs --to", () => {
     const repo = web();
     expect(cli(repo, "global", "move", "nope", "--to", repo).err).toContain("Not one of your global skills: nope");
     expect(cli(repo, "global", "move", "mine").err).toContain("Usage: skilllib global move");
+    // --to never takes a flag as a repo
+    expect(cli(repo, "global", "move", "mine", "--to", "--json").err).toContain("Usage: skilllib global move");
     expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
   });
 });

@@ -497,8 +497,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
        * `copy`: the real copy's folder; unless git shares it, a link would break for teammates, so none is offered.
        */
       const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
-      const roots = repos.map(rootOf);
-      for (const mv of moveGlobalSkills(skills, roots, { group })) {
+      const repoRoots = repos.map(rootOf);
+      for (const mv of moveGlobalSkills(skills, repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]! })) {
         if (!mv.moved) {
           notes.push(`${mv.name}: ${mv.reason}`);
           continue;

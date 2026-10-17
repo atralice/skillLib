@@ -34,10 +34,10 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 **Prefer per-repo skills to global ones.** A global skill loads in every repo, for every agent. When `usage --json` shows one used in only a few repos, propose moving it there:
 
-- `global move <name>... --to <repo>[,<repo>...]` (a path, or a project name from `projects`): imports it into the library, adds it to each repo, and only then stops loading it globally (restorable with `skilllib restore`). Prints `[{skill, moved, reason, projects: [{project, path, change}]}]`; `moved: false` means it still loads globally, and `reason` says why.
+- `global move <name>... --to <repo>[,<repo>...]` (a project name from `projects`, or the path of a repo's top folder): imports it into the library, adds it to each repo, and only then stops loading it globally (restorable with `skilllib restore`). Prints `[{skill, moved, reason, projects: [{project, path, change}]}]`; `moved: false` means it still loads globally, and `reason` says why.
 - `global keep <name>...`: the user wants it everywhere; skilllib stops flagging it.
 
-**Decisions from doctor.** `apply <id> [n]` runs an issue's `fix`, or its nth choice (from 1; the label works too). With several choices it needs `n`. Prints `{id, applied, ok, message}`. Take ids from `doctor --json` (run `status` first in a repo skilllib hasn't seen).
+**Decisions from doctor.** `apply <id> [n]` runs an issue's `fix`, or its nth choice (from 1; the label works too). With several choices it needs `n`. Prints `{id, applied, ok, message}`. Take ids from `doctor --json` (run `status` first in a repo skilllib hasn't seen), and pass `apply` the same `--days` you gave `doctor`.
 
 **Importing.** `import <dir>...` copies skill folders (each with a `SKILL.md`) into the library; skilllib doesn't download anything. For a skill on GitHub, clone the repo into a temporary folder, `import` the skill's folder, then `add` it here.
 
