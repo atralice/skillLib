@@ -38,6 +38,7 @@ import {
   type ProjectSkill,
 } from "../library.js";
 import { harness, type HarnessId } from "../harnesses.js";
+import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR } from "../paths.js";
 import { projectHere, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
@@ -496,32 +497,20 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
        * `copy`: the real copy's folder; unless git shares it, a link would break for teammates, so none is offered.
        */
       const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
-      for (const m of skills) {
-        // Your library already has a different skill by that name: moving this one would swap in the other.
-        if (importSkill(m.path).status === "exists") {
-          notes.push(`${m.name}: your library has a different ${m.name}; nothing moved (update your library from this copy first)`);
+      const roots = repos.map(rootOf);
+      for (const mv of moveGlobalSkills(skills, roots, { group })) {
+        if (!mv.moved) {
+          notes.push(`${mv.name}: ${mv.reason}`);
           continue;
         }
-        if (group) recordOrigin(m.name, `group: ${group}`);
-        const results = repos.map((r) => [r, addSkill(rootOf(r), m.name)] as const);
-        const skipped = results.filter(([, c]) => c.action === "skipped");
-        // Only stop loading it globally once every repo you picked has it.
-        if (skipped.length) {
-          notes.push(`${m.name}: not added to ${skipped.map(([r, c]) => `${r} (${c.reason})`).join(", ")}, so it still loads globally`);
-          continue;
-        }
-        const r = unloadGlobal(m.path, m.links);
-        if (!r.ok) {
-          notes.push(`${m.name}: ${r.reason}`);
-          continue;
-        }
-        moved.push(m.name);
-        for (const [repo, c] of results) {
-          const blind = visibilityOf(rootOf(repo), m.name).flatMap((v) => (v.paths === 0 ? [v.id] : []));
+        moved.push(mv.name);
+        for (const [i, [root, c]] of mv.changes.entries()) {
+          const repo = repos[i]!;
+          const blind = visibilityOf(root, mv.name).flatMap((v) => (v.paths === 0 ? [v.id] : []));
           // addSkill holds back a link where git tracks the folder: `uncommitted` when git doesn't share the real copy.
           const blocked = [...(c.blocked ?? []), ...(c.uncommitted ?? [])];
           if (!blocked.length || !blind.length) continue;
-          held.push({ repo, name: m.name, blocked, blind, copy: copyDir(repo, m.name), shared: !c.uncommitted?.length });
+          held.push({ repo, name: mv.name, blocked, blind, copy: copyDir(repo, mv.name), shared: !c.uncommitted?.length });
         }
       }
       // Never drop an agent silently: name who can't see it where, whether or not you then allow the links.

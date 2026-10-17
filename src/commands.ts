@@ -30,9 +30,10 @@ import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
-import { findIssues, runFix, usageIssues, type Choice } from "./health.js";
+import { findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
-import type { AllChangesJson, ChangeJson, DoctorJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
+import type { AllChangesJson, ApplyJson, ChangeJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
+import { moveGlobalSkills } from "./move.js";
 import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
@@ -50,6 +51,8 @@ export type Args = {
   allowGit: boolean;
   /** tidy: the folder whose copy wins a conflict, e.g. ".agents/skills". */
   keep?: string;
+  /** global move: the repos to move skills into (each --to takes one, or several comma-separated). */
+  to: string[];
 };
 
 export function parseArgs(argv: string[]): Args {
@@ -57,7 +60,7 @@ export function parseArgs(argv: string[]): Args {
   const days = daysIdx >= 0 ? Number(argv[daysIdx + 1]) : USAGE_DAYS;
   const keepIdx = argv.indexOf("--keep");
   return {
-    positional: argv.filter((a, i) => !a.startsWith("--") && argv[i - 1] !== "--days" && argv[i - 1] !== "--keep"),
+    positional: argv.filter((a, i) => !a.startsWith("--") && !["--days", "--keep", "--to"].includes(argv[i - 1]!)),
     force: argv.includes("--force"),
     all: argv.includes("--all"),
     global: argv.includes("--global"),
@@ -68,6 +71,7 @@ export function parseArgs(argv: string[]): Args {
     dryRun: argv.includes("--dry-run"),
     allowGit: argv.includes("--allow-git"),
     ...(keepIdx >= 0 && argv[keepIdx + 1] ? { keep: argv[keepIdx + 1] } : {}),
+    to: argv.flatMap((a, i) => (argv[i - 1] === "--to" ? a.split(",").filter(Boolean) : [])),
   };
 }
 
@@ -551,8 +555,8 @@ export function restore(args: Args) {
   }
 }
 
-/** Lists problems and suggestions; --fix applies every automatic fix. */
-export async function doctor(args: Args) {
+/** Everything doctor reports: problems and suggestions in every project and globally, with usage when Claude Code is on. */
+async function allIssues(args: Args): Promise<Issue[]> {
   const projects = visibleProjects();
   const machine = machineSkills();
   const libraryNames = new Set(librarySkills().map((s) => s.name));
@@ -570,6 +574,12 @@ export async function doctor(args: Args) {
       }),
     );
   }
+  return issues;
+}
+
+/** Lists problems and suggestions; --fix applies every automatic fix. */
+export async function doctor(args: Args) {
+  const issues = await allIssues(args);
   // A fix that failed or did nothing: ✗, and doctor exits non-zero.
   const fixed = (fix: Choice) => {
     const r = runFix(fix);
@@ -596,13 +606,36 @@ export async function doctor(args: Args) {
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
-    if (issue.choices) info(dim(`  choose in skilllib → Health: ${issue.choices.map((c) => c.label).join(" / ")}`));
+    if (issue.choices) info(dim(`  your call: ${issue.choices.map((c, i) => `${i + 1}) ${c.label}`).join("  ")}  →  skilllib apply ${issue.id} <n>`));
     if (args.fix && issue.fix) {
       const r = fixed(issue.fix);
       info(`  ${r.ok ? green("✓") : red("✗")} ${r.message}`);
     }
   }
-  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or fix them one by one in `skilllib` → Health."));
+  if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or one at a time with `skilllib apply <id>`."));
+}
+
+/**
+ * Applies one of doctor's issues: its fix, or the choice you name (its number, from 1, or its label).
+ * skilllib apply <issue-id> [choice]
+ */
+export async function apply(args: Args) {
+  const [id, pick] = args.positional;
+  if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib doctor --json)");
+  const issue = (await allIssues(args)).find((i) => i.id === id);
+  if (!issue) throw new Error(`No issue ${id} right now (it may be fixed already). See skilllib doctor --json`);
+  const options = issue.choices ?? (issue.fix ? [issue.fix] : []);
+  if (!options.length) throw new Error(`${issue.title}: nothing to apply. ${issue.detail}`);
+  const listed = options.map((c, i) => `${i + 1}) ${c.label}`).join("  ");
+  // A decision is never made for you: with several choices, say which.
+  if (pick === undefined && options.length > 1) throw new Error(`${issue.title}: pick one: ${listed}`);
+  const choice = pick === undefined ? options[0]! : (options[Number(pick) - 1] ?? options.find((c) => c.label.toLowerCase() === pick.toLowerCase()));
+  if (!choice) throw new Error(`${issue.title}: no choice ${pick}. Pick one: ${listed}`);
+  const r = runFix(choice);
+  if (!r.ok) process.exitCode = 1;
+  if (args.json) return json("apply", { id, applied: choice.label, ...r } satisfies ApplyJson);
+  if (r.ok) success(r.message);
+  else error(r.message);
 }
 
 /** Skill usage across all Claude Code sessions, from transcripts. */
@@ -709,6 +742,7 @@ export function link(args: Args) {
 export function globalCommand(args: Args) {
   const [action, ...names] = args.positional;
   const yours = machineSkills().filter((m) => m.movable && !m.broken);
+  if (action === "move") return moveGlobal(args, names, yours);
   if (action === "keep" || action === "unkeep") {
     const unknown = names.filter((n) => !yours.some((m) => m.name === n));
     if (!names.length || unknown.length) {
@@ -718,7 +752,7 @@ export function globalCommand(args: Args) {
     setKeepGlobal(names, action === "keep");
     success(action === "keep" ? `Keeping ${names.join(", ")} global on purpose` : `${names.join(", ")} will show up in cleanup again`);
   } else if (action) {
-    error("Usage: skilllib global [keep|unkeep <name>...]");
+    error("Usage: skilllib global [keep|unkeep <name>...] | skilllib global move <name>... --to <repo>...");
     process.exit(1);
   }
   const kept = keptGlobal();
@@ -727,6 +761,48 @@ export function globalCommand(args: Args) {
   // By name: a skill in two global folders is listed twice but is one skill to review.
   const unreviewed = new Set(yours.filter((m) => !kept.has(m.name)).map((m) => m.name)).size;
   if (unreviewed) info(dim(`\n${unreviewed} not reviewed. Keep one global on purpose: skilllib global keep <name>`));
+}
+
+/** A repo by path, or by the name of one of your projects. */
+function repoRoot(repo: string): string {
+  const path = expandHome(repo);
+  if (existsSync(path)) {
+    const root = projectHere(path);
+    if (!root) throw new Error(`${tildify(path)} isn't in a git repo`);
+    return root;
+  }
+  const named = visibleProjects().filter((p) => basename(p) === repo);
+  if (named.length === 1) return named[0]!;
+  throw new Error(named.length ? `Several projects are named ${repo}: ${named.map(tildify).join(", ")}. Pass its path.` : `No project ${repo} (pass its path, or see skilllib projects)`);
+}
+
+/** skilllib global move <name>... --to <repo>...: global skills load only in those repos from now on. */
+function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machineSkills>) {
+  if (!names.length || !args.to.length) throw new Error("Usage: skilllib global move <name>... --to <repo>[,<repo>...]");
+  const unknown = names.filter((n) => !yours.some((m) => m.name === n));
+  if (unknown.length) throw new Error(`Not one of your global skills: ${unknown.join(", ")} (see skilllib global)`);
+  const roots = [...new Set(args.to.map(repoRoot))];
+  // A skill in two global folders is one skill: move its first copy, the others are links or duplicates `tidy --global` handles.
+  const skills = names.map((n) => yours.find((m) => m.name === n)!);
+  const moves = moveGlobalSkills(skills, roots, { allowTracked: args.allowTracked });
+  if (moves.some((m) => !m.moved)) process.exitCode = 1;
+  if (args.json) {
+    return json(
+      "global move",
+      moves.map(({ name, moved, reason, changes }): GlobalMoveJson[number] => ({
+        skill: name,
+        moved,
+        ...(reason ? { reason } : {}),
+        projects: changes.map(([root, c]) => ({ project: basename(root), path: root, change: withDirs(root, [c])[0]! })),
+      })),
+    );
+  }
+  for (const m of moves) {
+    if (m.moved) success(`${m.name} now loads only in ${m.changes.map(([r]) => basename(r)).join(", ")} (the global copy is in skilllib restore)`);
+    else error(`${m.name}: ${m.reason}`);
+    for (const [root, c] of m.changes) if (c.blocked?.length) warn(`  ${basename(root)}: git tracks ${c.blocked.join(", ")}, so no link there. Re-run with --allow-tracked to add it.`);
+  }
+  if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
 }
 
 /**

@@ -141,10 +141,22 @@ export type DoctorJson = {
   detail: string;
   /** A safe repair; `doctor --fix` runs it. */
   fix?: string;
-  /** Fixes that need a decision (skilllib → Health). */
+  /** Fixes that need a decision: `skilllib apply <id> <n>` runs the nth (from 1). */
   choices?: string[];
   /** With --fix: what running `fix` did. */
   fixed?: { ok: boolean; message: string };
+}[];
+
+/** `skilllib apply <issue-id> [choice] --json` */
+export type ApplyJson = { id: string; applied: string; ok: boolean; message: string };
+
+/** `skilllib global move <name>... --to <repo>... --json`: one entry per skill. */
+export type GlobalMoveJson = {
+  skill: string;
+  /** Added to every repo and no longer global. When false, it still loads globally and `reason` says why. */
+  moved: boolean;
+  reason?: string;
+  projects: { project: string; path: string; change: ChangeJson }[];
 }[];
 
 /** `skilllib usage [--days N] --json` */
