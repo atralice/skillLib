@@ -285,7 +285,7 @@ export function findIssues(
       id: "review:global",
       severity: "suggestion",
       title: `${plural(unreviewed.length, "global skill")} of yours ${unreviewed.length === 1 ? "loads" : "load"} in every repo`,
-      detail: `${unreviewed.join(", ")}. Move each to the repos that need it (skilllib → Global → Move it to the repos that need it…), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
+      detail: `${unreviewed.join(", ")}. Move each to the repos that need it (skilllib global move <name> --to <repo>...), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
     });
   }
 
@@ -319,7 +319,7 @@ export function findIssues(
       detail: `${skills.map((m) => `${m.name} (only ${agentNames(m.harnesses)})`).join(", ")}. ${
         onPurpose
           ? "A link in each agent's global folder makes the one real copy reach every agent you use."
-          : `Link ${skills.length === 1 ? "it" : "them"} for every agent, or move ${skills.length === 1 ? "it" : "them"} to the repos that need ${skills.length === 1 ? "it" : "them"} (skilllib → Global), which works for every agent too.`
+          : `Link ${skills.length === 1 ? "it" : "them"} for every agent, or move ${skills.length === 1 ? "it" : "them"} to the repos that need ${skills.length === 1 ? "it" : "them"} (skilllib global move), which works for every agent too.`
       }`,
       ...(onPurpose ? { fix: link } : { choices: [link] }),
     });

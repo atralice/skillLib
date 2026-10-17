@@ -4,7 +4,9 @@ import type {
   AgentSkillJson,
   AllChangesJson,
   ChangesJson,
+  ApplyJson,
   DoctorJson,
+  GlobalMoveJson,
   ImportJson,
   ListJson,
   OutdatedJson,
@@ -37,6 +39,8 @@ type JsonOutputs = {
   outdated: OutdatedJson;
   import: ImportJson;
   doctor: DoctorJson;
+  apply: ApplyJson;
+  "global move": GlobalMoveJson;
   usage: UsageJson;
   "agent-skill": AgentSkillJson;
 };

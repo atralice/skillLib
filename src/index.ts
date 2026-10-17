@@ -16,6 +16,8 @@ Set up:
   skilllib import <dir>...       Add skill folders to the library (--force replaces)
   skilllib import --global       Copy your global skills (every agent's folder) into the library
   skilllib global [keep|unkeep <name>...]  Your global skills; mark ones you keep global on purpose
+  skilllib global move <name>... --to <repo>...
+                                 Load global skills only in those repos (by path or project name)
 
 In a project (a git repo or a folder with skilllib.json; never your home folder):
   skilllib status                This project's skills, which agents load them, and issues
@@ -38,6 +40,7 @@ Library:
 
 Health:
   skilllib doctor [--fix]        Broken links, duplicates, out-of-date projects
+  skilllib apply <id> [choice]   Apply one issue's fix, or the choice you pick (number or label)
   skilllib restore [name]        Restore something skilllib moved out of the way
   skilllib unhide <path>         Show a hidden project again
 
@@ -46,7 +49,7 @@ Agents:
                                  Teach your agents to use skilllib, so you can ask them
                                  "which skills can you use here?" in any repo
   --json                         Machine-readable output (status list show projects outdated
-                                 usage doctor add remove sync update import agent-skill)
+                                 usage doctor apply add remove sync update import global move agent-skill)
 
 Options: --force (overwrite local edits)  --allow-tracked (link into git-tracked skill folders)  --days N
 `.trim();
@@ -122,6 +125,8 @@ async function main() {
       return commands.restore(args);
     case "doctor":
       return commands.doctor(args);
+    case "apply":
+      return commands.apply(args);
     case "usage":
       return commands.usage(args);
     case "agent-skill":

@@ -175,7 +175,7 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 
 **Global** lists everything that loads in every repo. Each of your global skills you haven't decided about is flagged **Not reviewed**, with three choices:
 
-- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally. If a repo commits a folder one of your agents needs a link in (often `.claude/skills`), skilllib asks before adding it there.
+- **Move it to the repos that need it…**: tick the repos (the ones where Claude Code used it are pre-ticked). It goes into your library and those repos, and stops loading globally. If a repo commits a folder one of your agents needs a link in (often `.claude/skills`), skilllib asks before adding it there. From the command line: `skilllib global move <name>... --to <repo>...`.
 - **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
 - **Delete it**: it goes to Settings › Backups.
 
@@ -370,10 +370,12 @@ skilllib tidy [--all|--global]  one real copy per skill, plus only the links you
 skilllib list | show <name>     your library
 skilllib import <dir>...        add skill folders to your library (--global: all your global skills)
 skilllib global [keep|unkeep]   your global skills; mark the ones you keep global on purpose
+skilllib global move <name> --to <repo>   load a global skill only in those repos
 skilllib new <name> [desc]      create a skill
 
 skilllib usage [--days N]       which skills Claude Code used
 skilllib doctor [--fix]         find (and fix) problems
+skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from doctor --json)
 skilllib restore [name]         put back something skilllib moved out
 skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
@@ -385,7 +387,7 @@ Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`)
 
 A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder. What it did do is still done, and listed.
 
-**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `add`, `remove`, `sync`, `update`, `import` and `agent-skill`. The output is shaped to keep agents fast and cheap:
+**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 
 - **`status --json`** answers everything about the repo in one call:
   - the repo's skills, with their source, version, state and git state

@@ -169,9 +169,102 @@ describe("doctor", () => {
     const r = cli(repo, "doctor", "--fix");
     expect(r.code).toBe(0);
     expect(r.out).toContain("ghost-skill: pinned in web's skilllib.json, but not in your library");
-    expect(r.out).toContain("choose in skilllib → Health: Remove it from skilllib.json");
+    expect(r.out).toContain("your call: 1) Remove it from skilllib.json");
     expect(r.out).not.toContain("out of date");
     expect(r.out).not.toContain("updated");
+  });
+});
+
+describe("apply and global move, for agents", () => {
+  const web = () => {
+    const repo = join(tmp, "code", "web");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    return repo;
+  };
+
+  test("apply runs an issue's only choice by its id, and the issue is gone", () => {
+    const repo = web();
+    writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { "ghost-skill": { version: 1, hash: "abc" } } }));
+    cli(repo, "status"); // remembers the project, as an agent's first status does
+    const issue = JSON.parse(cli(repo, "doctor", "--json").out).find((i: { id: string }) => i.id.includes("ghost-skill"));
+    expect(issue.choices).toEqual(["Remove it from skilllib.json"]);
+
+    const r = cli(repo, "apply", issue.id, "1", "--json");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ id: issue.id, applied: "Remove it from skilllib.json", ok: true });
+    expect(JSON.parse(cli(repo, "doctor", "--json").out).some((i: { id: string }) => i.id === issue.id)).toBe(false);
+  });
+
+  test("apply says why when there's nothing it can do", () => {
+    const repo = web();
+    expect(cli(repo, "apply", "no-such-issue").err).toContain("No issue no-such-issue right now");
+    // Unreviewed global skills are reported with no choice: global move or global keep decides them.
+    const r = cli(repo, "apply", "review:global");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("nothing to apply");
+    expect(r.err).toContain("skilllib global move");
+  });
+
+  test("global move: the skill goes into the library and the repo, and stops loading globally", () => {
+    const repo = web();
+    const r = cli(repo, "global", "move", "mine", "--to", repo, "--json");
+    expect(r.code).toBe(0);
+    const [move] = JSON.parse(r.out);
+    expect(move).toMatchObject({ skill: "mine", moved: true, projects: [{ project: "web", path: repo, change: { name: "mine", action: "installed" } }] });
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
+    expect(existsSync(join(tmp, ".skilllib", "library", "mine"))).toBe(true);
+    expect(existsSync(join(repo, ".claude", "skills", "mine", "SKILL.md"))).toBe(true);
+    expect(cli(repo, "restore").out).toContain("mine");
+  });
+
+  test("global move into a repo that already has the same skill still moves it", () => {
+    const repo = web();
+    mkdirSync(join(repo, ".claude", "skills", "mine"), { recursive: true });
+    writeFileSync(join(repo, ".claude", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    cli(repo, "status"); // remembers web, so --to can name it
+    const [move] = JSON.parse(cli(repo, "global", "move", "mine", "--to", "web", "--to", repo, "--json").out);
+    expect(move.moved).toBe(true);
+    expect(move.projects).toHaveLength(1);
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
+  });
+
+  test("global move moves every global copy of a skill, and only when they're the same", () => {
+    const repo = web();
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const [move] = JSON.parse(cli(repo, "global", "move", "mine", "--to", repo, "--json").out);
+    expect(move.moved).toBe(true);
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
+    expect(existsSync(join(tmp, ".agents", "skills", "mine"))).toBe(false);
+  });
+
+  test("global move leaves differing global copies alone", () => {
+    const repo = web();
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nother\n");
+    const r = cli(repo, "global", "move", "mine", "--to", repo, "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)[0]).toMatchObject({ skill: "mine", moved: false, reason: expect.stringContaining("copies of mine differ") });
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+    expect(existsSync(join(repo, ".claude", "skills", "mine"))).toBe(false);
+  });
+
+  test("global move wants a repo's top folder, not a folder inside it", () => {
+    const repo = web();
+    mkdirSync(join(repo, "docs"));
+    const r = cli(repo, "global", "move", "mine", "--to", "./docs");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("is inside");
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+  });
+
+  test("global move refuses names that aren't your global skills, and needs --to", () => {
+    const repo = web();
+    expect(cli(repo, "global", "move", "nope", "--to", repo).err).toContain("Not one of your global skills: nope");
+    expect(cli(repo, "global", "move", "mine").err).toContain("Usage: skilllib global move");
+    // --to never takes a flag as a repo
+    expect(cli(repo, "global", "move", "mine", "--to", "--json").err).toContain("Usage: skilllib global move");
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
   });
 });
 
