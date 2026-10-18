@@ -811,7 +811,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     };
   }
 
-  /** Decisions for a whole group at once: what the cleanup wizard used to do. */
+  /** Decisions for a whole group at once. */
   function groupActions(label: string, members: Item[]): Option[] {
     const names = members.map((m) => m.name);
     const machines = members.flatMap((m) => (m.skill?.machine ? [m.skill.machine] : []));
@@ -925,7 +925,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   /** Jumps to Global, filtered to one skill. */
   /** Opens a file in $EDITOR, handing it the terminal, then reads everything again (and runs `then`, if given). */
   function edit(file: string, then?: (w: W.World) => W.Result) {
-    // (The prototype's skills have no files: what comes after editing still happens.)
+    // (The sample world's skills have no files: what comes after editing still happens.)
     if (!existsSync(file)) return then ? apply(then) : (setBase(reload()), setToast(`${tildify(file)} doesn't exist`));
     const editor = process.env.VISUAL || process.env.EDITOR || (process.platform === "win32" ? "notepad" : "vi");
     void suspendTerminal(() => {

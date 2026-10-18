@@ -126,7 +126,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Plugins** | Every plugin installed, on or off: what it brings, where it's installed, and how much its skills get used. Turn it on or off, update it, uninstall it, or replace it with library skills. |
 | **Health** | What `skilllib doctor` reports, in every repo and in Global, each with its fix or choices. |
-| **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
+| **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` its worst issue. |
 | **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
 
@@ -169,7 +169,8 @@ What skilllib flags:
 | **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
 | **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
 | **Unused 30 days** | Remove the ones skilllib installed from the repo |
-| **Broken link** (in a repo) | Put the link back when skilllib.json records it, else remove it (your call when git tracks the link) |
+| **Broken link** (in a repo) | Remove it (your call when git tracks the link). Next to a real copy it's an extra link instead: tidy points it at the copy |
+| **Pinned version not in your library** | Install your newest (the folder is missing and your library has no copy of what skilllib.json pins) |
 | **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it (the row's actions) |
 | **Not every agent can use it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
 
@@ -213,7 +214,7 @@ Edit a skill once in **Your skills** (Enter → *Edit SKILL.md*). Every repo tha
 - **Keep it global on purpose**: skilllib stops warning about it (also `skilllib global keep <name>`). The mark only records your decision; to undo it, pick **Stop marking it as global on purpose**.
 - **Delete it**: it goes to Settings › Backups.
 
-When some of your agents can't see a global skill, the flag says so (**Not reviewed · Claude Code can't see it**). This happens, for example, with a Codex skill in `~/.agents/skills` or `~/.codex/skills`, which Claude Code doesn't read. Then a fourth choice appears: **Link it for Claude Code** adds a link in `~/.claude/skills`, and nothing is copied or moved. Moving it to repos works for every agent too. For a skill you keep global on purpose, the link is the ★ fix.
+When some of your agents can't see a global skill, that's a separate issue, **Not every agent can use it**. This happens, for example, with a Codex skill in `~/.agents/skills` or `~/.codex/skills`, which Claude Code doesn't read. Its choice, **Link it for Claude Code**, adds a link in `~/.claude/skills`, and nothing is copied or moved. Moving it to repos works for every agent too. For a skill you keep global on purpose, the link is the ★ fix.
 
 Vendor skills (claude.ai, Cursor built-ins) are managed at their source: claude.ai's settings, or Cursor. A plugin's skills offer **Open *plugin* in Plugins**.
 
@@ -273,7 +274,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |
 
 - **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
-- **It never adds links.** That's `skilllib link`, or a skill's *can't see it* fix.
+- **It never adds links.** That's `skilllib link`, or the *Not every agent can use it* issue's fix.
 - **It leaves committed files alone** unless you say so: Health asks first, and `skilllib tidy` needs `--allow-git`.
 - **Cursor lists a skill once** even when it reaches it through several folders (tested September 2026). It runs the copy from the first of `.cursor`, `.claude`, `.codex`, `.grok`, `.agents` (seen in its app bundle, October 2026). It lists a plugin's copy and your copy separately.
 
@@ -415,7 +416,7 @@ A command exits 1 when it couldn't do all you asked: a skill skipped (not in the
   - the repo's top-level files
 
   Skills that share every attribute are grouped, and attributes at their usual value are left out.
-- **`list --json`**: inside a repo, the library skills the repo already has (names only), and the others with the first sentence of their description.
+- **`list --json`**: inside a repo, the library skills the repo already has (names only), and the others with a short description (its first sentence, or the start of it).
 - **`add`, `remove`, `sync` and `update`** list each change and the folders it wrote to, so there's nothing left to check.
 
 The `skilllib` skill runs `status` and `list` as it loads (in Claude Code), so an agent usually answers "which skills can you use here?" in one step.

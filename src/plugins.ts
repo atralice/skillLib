@@ -379,19 +379,21 @@ type Removed = { id: string; scope: string; projectPath?: string; on?: boolean; 
 /**
  * Keeps your skills and removes the plugin that duplicates them. Every skill
  * it ships is copied into Your skills first, so nothing it brought is lost.
- * "delete" uninstalls it (restorable from Health); "off" only disables it.
+ * "delete" uninstalls it (restorable with skilllib restore); "off" only disables it.
  */
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
   if (plugin.scope && plugin.scope !== "user" && !plugin.projectPath) {
     return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
   }
-  // Check the CLI works before changing anything.
-  if (!plugin.synced && !claudeBinary()) {
+  // Check the CLI works before changing anything. Without it, a user install can still be turned off
+  // in ~/.claude/settings.json (as a synced plugin is); uninstalling needs the CLI.
+  const viaSettings = plugin.synced || (!claudeBinary() && how === "off" && !plugin.projectPath);
+  if (!viaSettings && !claudeBinary()) {
     return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   }
   const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];
-  const r = plugin.synced
+  const r = viaSettings
     ? // Synced plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
       setPluginIn(join(claudeDir(), "settings.json"), plugin.id, false)
     : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);

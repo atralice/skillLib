@@ -20,7 +20,7 @@ import {
   type ProjectSkill,
   type SkillState,
 } from "./library.js";
-import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
+import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realpathOrNull, userHome } from "./paths.js";
 import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
@@ -471,7 +471,8 @@ export function importSkills(args: Args) {
     // pins the new library version. Any other folder (a clone, a repo that doesn't track it) is left alone.
     const root = resolve(dir, "..", "..", "..");
     const dep = projectHere(root) === root ? readManifest(root).skills[name] : undefined;
-    if (dep && resolve(root, dep.dir ?? PROJECT_SKILLS_DIR, name) === resolve(dir) && dep.hash !== treeHash(dir)) {
+    // By real path: the folder given may be the link another agent reads (.claude/skills → .agents/skills).
+    if (dep && realpathOrNull(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name)) === realpathOrNull(dir) && dep.hash !== treeHash(dir)) {
       const change = addSkill(root, name);
       if (change.action !== "skipped") info(dim(`  ${basename(root)} now depends on ${name} v${change.to}`));
     }
@@ -661,8 +662,8 @@ export async function apply(args: Args) {
   const [id, pick] = args.positional;
   if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib status --json or doctor --json)");
   // As status sees it here (this repo, even one skilllib hasn't seen yet), then as doctor does (every repo).
-  // Only usage issues (`unused:…`) need the transcripts, and they depend on --days: pass the one doctor had.
-  const found = [...statusIssues(findProjectRoot()), ...(await allIssues(args, id.startsWith("unused:")))].filter((i) => i.id === id);
+  // Only usage issues (`unused:…`, `plugin-unused:…`) need the transcripts, and they depend on --days: pass the one doctor had.
+  const found = [...statusIssues(findProjectRoot()), ...(await allIssues(args, /^(plugin-)?unused:/.test(id)))].filter((i) => i.id === id);
   if (!found.length) throw new Error(`No issue ${id} right now (it may be fixed already; for an unused:… issue, pass doctor's --days). See skilllib status --json or doctor --json`);
   const optionsOf = (i: Issue) => i.choices ?? (i.fix ? [i.fix] : []);
   const labels = (i: Issue) => optionsOf(i).map((c) => c.label).join("\0");
@@ -778,6 +779,7 @@ export function link(args: Args) {
       process.exitCode = 1;
       error(`${label}git tracks ${res.blocked.join(", ")}, so ${res.linked.length ? "some skills weren't" : "nothing was"} linked there; re-run with --allow-tracked to link there too`);
     }
+    if (res.uncommitted.length) process.exitCode = 1;
     if (res.uncommitted.length)
       warn(
         `${label}${res.uncommitted.join(", ")} ${res.uncommitted.length === 1 ? "isn't" : "aren't"} committed, so not linked into folders git tracks (teammates would get broken links); commit ${res.uncommitted.length === 1 ? "it" : "them"} first`,

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -99,10 +99,19 @@ export function readState<T>(path: string): T | null {
   }
 }
 
-/** Writes JSON whole or not at all (a temp file, then a rename), so a reader never sees half of it. */
+/**
+ * Writes JSON whole or not at all (a temp file, then a rename), so a reader never sees half of it. A file
+ * that's a link (a dotfiles repo) is written where it points, and keeps its permissions (it may hold secrets).
+ */
 export function writeState(path: string, data: unknown) {
-  mkdirSync(dirname(path), { recursive: true });
-  const temp = `${path}.${process.pid}.tmp`;
-  writeFileSync(temp, JSON.stringify(data, null, 2) + "\n");
-  renameSync(temp, path);
+  const target = realpathOrNull(path) ?? path;
+  mkdirSync(dirname(target), { recursive: true });
+  const temp = `${target}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temp, JSON.stringify(data, null, 2) + "\n", { mode: statSync(target, { throwIfNoEntry: false })?.mode ?? 0o644 });
+    renameSync(temp, target);
+  } catch (err) {
+    rmSync(temp, { force: true });
+    throw err;
+  }
 }

@@ -46,7 +46,7 @@ Two layouts, picked by terminal width (`SIDEBAR_AT = 80` columns in `App.tsx`).
 - **Places** is 28 columns wide (`SIDEBAR_W`): your skills, Global, Plugins, Health, every repo, then Settings and Help.
 - **List and details share the rest.** With 30 rows or more (`split`), details sit under the list and half the height goes to each. Shorter terminals show the list only, and `enter` swaps in the details.
 - **Focus** is the pane with the bright border (`accent`); the others are dim (`accentDim`). Only the focused pane shows a selection background.
-- While Places is focused on a repo, the details pane shows the repo's overview (folder, remote, branch, `skilllib.json` state, the plugins that load there).
+- While Places is focused on a repo, the details pane shows the repo's overview (folder, `skilllib.json` state, the plugins that load there).
 
 | | |
 |---|---|
@@ -197,8 +197,9 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 
 | doctor id | Rows | Short | Severity | Your call | Fix or choices |
 |---|---|---|---|---|---|
-| `broken:<skill>` | Global | Broken link | ✕ | | Remove the link |
-| `broken:<root>:<dir>/<skill>` | Repo | Broken link | ✕ | when git tracks the link | Put the link back (skilllib.json records it) · Remove the link |
+| `broken:<path>` | Global | Broken link | ✕ | | Remove the link |
+| `broken:<root>:<dir>/<skill>` | Repo | Broken link (no copy of it in the repo; next to a copy it's `tidy:`) | ✕ | when git tracks the link | Remove the link |
+| `pin:<root>:<skill>` | Repo | Pinned version not in your library (folder missing) | ✕ | yes | Install your newest |
 | `dup:<skill>` | Global | Loaded twice (yours and a claude.ai or system copy, in one agent) | ✕ | yes | none: turn that copy off at its source |
 | `plugin:<id>` | Global (yours and the plugin's), each repo where both load, Plugins | Also in ⧉ *plugin* (Plugins: Repeats N of yours) | ✕ when an agent loads both, else ⚠ | yes | Remove the plugin · Turn the plugin off · Turn it off in *repo* only · Remove your *skills* from *repo* (only copies skilllib installed) |
 | `plugin:<root>:<id>` | The repo, Plugins | The same, for a plugin a repo's settings turn on | ✕ | yes | Turn it off in *repo* only · Remove your *skills* from *repo* |
@@ -248,7 +249,7 @@ All replace the content area (Places stays visible), except confirm, which opens
 
 Also: **menu** (a list of options, e.g. `⋯ repo…`), **input** (one line, e.g. a project folder), and **agents** (the first run: which agents you use, then where your projects are).
 
-After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line: `✓` (`green`) when it worked, `✗` (`red`) when it failed (`failed` results, and errors), `!` (`yellow`) when it waits on a follow-up question (`then`). A result can carry such a question, such as allowing links in a git-tracked folder, which opens as another confirm. `esc` on it keeps the result on the bottom line, so you still see what the change left undone (e.g. which agents can't see a skill). **Fix all** doesn't ask follow-ups: its result counts what it applied, and names each fix it held back and why (e.g. git tracks the folder), and each one that failed.
+After a change, the app reads everything from disk again (`reload`) and shows the result on the bottom line: `✓` (`green`) when it worked, `✗` (`red`) when it failed (`failed` results, and errors), `!` (`yellow`) when it waits on a follow-up question (`then`). A result can carry such a question, such as allowing links in a git-tracked folder, which opens as another confirm. `esc` on it keeps the result on the bottom line, so you still see what the change left undone (e.g. which agents can't see a skill). **Fix all** doesn't ask follow-ups: it runs only doctor's fixes (never a decision), and its result counts what it applied and names each one that failed.
 
 Changing what every repo loads (stopping a global skill, removing a plugin or turning it off) is always a decision, never in **Fix all**.
 
@@ -269,7 +270,7 @@ Changing what every repo loads (stopping a global skill, removing a plugin or tu
 | `yellow` | `#F2C94C` | Suggestions, `global`, repos behind, the Issues tab count |
 | `red` | `#EF6B6B` | Problems, `✗` failed actions |
 | `magenta` | `#C792EA` | Plugins (`⧉ name`) |
-| `blue` | `#5EB8F7` | `repo` and `untracked`, remotes |
+| `blue` | `#5EB8F7` | `repo` and `untracked` |
 | `selection` | `#2A3350` | The selected row's and option's background (focused pane only) |
 
 Text on an `accent` background (the selected tab, the top bar's place) is `#0B1020`.
@@ -290,7 +291,7 @@ Text on an `accent` background (the selected tab, the top bar's place) is `#0B10
 | `+` `⋯` `↺` | Add or create · more for this repo · restore a backup |
 | `±` `+` `∅` | Git: uncommitted changes · not committed · gitignored |
 | `⌕ text▏` | The current filter |
-| `✻` `⬡` `◎` `ℤ` | Claude Code, Cursor, Codex, Zed |
+| `✻` `⬡` `◎` `ℤ` `✶` | Claude Code, Cursor, Codex, Zed, Grok |
 | `…` | Truncated, or opens something more (`Add to repos…`) |
 
 ### Text

@@ -64,6 +64,37 @@ function packageVersion(): string {
   }
 }
 
+/** The flags each command reads (--json works everywhere). Commands not listed take none. */
+const FLAGS_OF: Record<string, string[]> = {
+  "": ["days"],
+  ui: [],
+  status: ["days"],
+  add: ["force", "allow-tracked"],
+  remove: ["force"],
+  sync: ["all", "force", "allow-tracked"],
+  update: ["all", "force", "allow-tracked"],
+  outdated: ["all"],
+  list: [],
+  show: [],
+  import: ["force", "global"],
+  scan: [],
+  projects: [],
+  link: ["all", "allow-tracked"],
+  tidy: ["all", "global", "dry-run", "allow-git", "keep"],
+  harnesses: [],
+  folders: [],
+  unhide: [],
+  new: [],
+  global: ["allow-tracked", "to"],
+  restore: [],
+  doctor: ["fix", "days"],
+  apply: ["days"],
+  usage: ["days"],
+  "agent-skill": [],
+  version: [],
+  help: [],
+};
+
 async function main() {
   const argv = process.argv.slice(2);
   // Before parsing, so a bad flag is reported as JSON too.
@@ -74,6 +105,11 @@ async function main() {
   const command = argv[at];
   const rest = [...argv.slice(0, at), ...argv.slice(at + 1)];
   const args = commands.parseArgs(rest);
+  // A flag a command doesn't use is an error, not a no-op: `add --dry-run` must not quietly add.
+  const takes = FLAGS_OF[command ?? ""];
+  const flagOf = (a: string) => a.slice(2).split("=")[0]!; // --days 30 or --days=30
+  const wrong = takes ? rest.filter((a) => a.startsWith("--") && flagOf(a) !== "json" && !takes.includes(flagOf(a))) : [];
+  if (wrong.length) throw new Error(`skilllib${command ? ` ${command}` : ""} doesn't take ${wrong.join(", ")}`);
   // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
   if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
   switch (command) {

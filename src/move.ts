@@ -44,11 +44,13 @@ export function moveGlobalSkills(
     const skipped = changes.filter(([, c]) => c.action === "skipped");
     if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${c.reason})`).join(", ")}, so it still loads globally`, changes };
     // Git kept a link out, so an agent you use couldn't see it there: keep the global copy until that's sorted.
-    const blind = changes.flatMap(([root, c]) =>
-      c.blocked?.length || c.uncommitted?.length ? visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])) : [],
-    );
-    if (blind.length && !allowBlind)
-      return { name, moved: false, reason: `added, but ${blind.join(", ")} couldn't see it (git tracks the folder its link goes in), so it still loads globally; re-run with --allow-tracked`, changes };
+    const held = changes.filter(([, c]) => c.blocked?.length || c.uncommitted?.length);
+    const blind = held.flatMap(([root]) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])));
+    if (blind.length && !allowBlind) {
+      // --allow-tracked helps where git tracks the folder; where git doesn't share the copy, only committing it does.
+      const next = held.some(([, c]) => c.uncommitted?.length) ? "commit the skill's copy in the repo, then run skilllib link --allow-tracked there" : "re-run with --allow-tracked";
+      return { name, moved: false, reason: `added, but ${blind.join(", ")} couldn't see it (git tracks the folder its link goes in), so it still loads globally; ${next}`, changes };
+    }
     const failed = copies.map((m) => unloadGlobal(m.path, m.links)).find((r) => !r.ok);
     return failed && !failed.ok ? { name, moved: false, reason: failed.reason, changes } : { name, moved: true, changes };
   });

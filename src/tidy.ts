@@ -17,7 +17,7 @@ import { treeHash } from "./skills.js";
  * - replace: swap an identical (or, if you chose, a differing) real copy for a link
  * - remove:  drop an identical (or, if you chose, a differing) real copy no agent you use needs
  * `differs`: the copy's content isn't the kept one's (a `keep` choice), so the step says so.
- * Real copies that go away are stashed in ~/.skilllib/tidy-backup, restorable from Health.
+ * Real copies that go away are stashed in ~/.skilllib/tidy-backup, restorable with skilllib restore.
  */
 export type TidyStep =
   | { kind: "link"; path: string; target: string }

@@ -53,7 +53,7 @@ test("finds broken links, duplicates, and local-only skills, and fixes them", ()
   skill(join(tmp, ".claude", "skills", "synced", "b", "twice"));
 
   const issues = findIssues([project], machineSkills(), new Set());
-  expect(issues.map((i) => i.id)).toEqual(["broken:gone", "dup:twice", "review:global", `local:${project}:deploy`, "agent-skill"]);
+  expect(issues.map((i) => i.id)).toEqual([`broken:${join(tmp, ".claude", "skills", "gone")}`, "dup:twice", "review:global", `local:${project}:deploy`, "agent-skill"]);
 
   // doctor --fix only runs the fixes; importing is a choice.
   expect(issues.find((i) => i.id.startsWith("local:"))?.fix).toBeUndefined();
@@ -525,7 +525,7 @@ test("each issue says which rows the app shows it on", () => {
   skill(join(tmp, ".claude", "skills", "shipit"));
   symlinkSync(join(tmp, "nowhere"), join(tmp, ".claude", "skills", "gone"));
   const at = (id: string) => findIssues([project], machineSkills(), new Set()).find((i) => i.id === id)!.at;
-  expect(at("broken:gone")).toEqual([{ root: null, skill: "gone" }]);
+  expect(at(`broken:${join(tmp, ".claude", "skills", "gone")}`)).toEqual([{ root: null, skill: "gone" }]);
   expect(at(`local:${project}:shipit`)).toEqual([{ root: project, skill: "shipit" }]);
   // A repo copy also loaded globally: on the repo's row and on Global's.
   expect(at("twice:shipit")).toEqual([
@@ -555,7 +555,7 @@ test("replacing a differing copy with the library's keeps the old one restorable
   importSkill(join(tmp, "src", "alpha"));
   skill(join(project, ".claude", "skills", "alpha"), "mine");
   const issue = findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `differs:${project}:alpha`)!;
-  expect(runFix(issue.choices![1]!)).toEqual({ ok: true, message: "alpha in web is your library's v1 now; the old copy is restorable from Health" });
+  expect(runFix(issue.choices![1]!)).toEqual({ ok: true, message: "alpha in web is your library's v1 now; the old copy is restorable with skilllib restore" });
   expect(readFileSync(join(project, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("library's");
   expect(listBackups().some((b) => b.name === "alpha")).toBe(true);
 });
@@ -607,7 +607,7 @@ test.skipIf(process.platform === "win32")("a broken link inside a repo is report
   expect(lstatSync(join(project, ".claude", "skills", "ghost"), { throwIfNoEntry: false })).toBeUndefined();
 });
 
-test.skipIf(process.platform === "win32")("a broken link skilllib.json records is put back, pointing at the copy", () => {
+test.skipIf(process.platform === "win32")("a broken link next to a real copy is tidy's: it points it at the copy", () => {
   setHarnesses(["claude-code", "codex"]);
   const project = join(tmp, "code", "web");
   mkdirSync(join(project, ".git"), { recursive: true });
@@ -617,8 +617,32 @@ test.skipIf(process.platform === "win32")("a broken link skilllib.json records i
   const link = join(project, ".claude", "skills", "alpha");
   rmSync(link);
   symlinkSync(join(tmp, "nowhere"), link);
-  const issue = findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `broken:${project}:.claude/skills/alpha`);
-  expect(issue?.fix?.label).toBe("Put the link back");
-  expect(runFix(issue!.fix!).ok).toBe(true);
+  const issues = findIssues([project], machineSkills(), new Set(["alpha"]));
+  expect(issues.some((i) => i.id.startsWith("broken:"))).toBe(false);
+  const tidy = issues.find((i) => i.id === `tidy:${project}`);
+  expect(runFix(tidy!.fix!).ok).toBe(true);
   expect(existsSync(join(link, "SKILL.md"))).toBe(true);
+});
+
+test.skipIf(process.platform === "win32")("two broken global links with one name are two issues", () => {
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(tmp, ".claude", "skills", "ghost"));
+  symlinkSync(join(tmp, "nowhere"), join(tmp, ".agents", "skills", "ghost"));
+  setHarnesses(["claude-code", "codex"]);
+  const ids = findIssues([], machineSkills(), new Set()).filter((i) => i.id.startsWith("broken:")).map((i) => i.id);
+  expect(new Set(ids).size).toBe(2);
+});
+
+test("a missing folder pinned to a version your library doesn't have is a choice, not a fix that can't work", () => {
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: "0000000000000000" } } }));
+  const issues = findIssues([project], machineSkills(), new Set(["alpha"]));
+  expect(issues.some((i) => i.id === `sync:${project}`)).toBe(false);
+  const pin = issues.find((i) => i.id === `pin:${project}:alpha`)!;
+  expect(pin.fix).toBeUndefined();
+  expect(runFix(pin.choices![0]!).ok).toBe(true);
+  expect(existsSync(join(project, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addSkill, discardEdits, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, stash, syncProject, updateProject } from "./library.js";
@@ -678,5 +679,39 @@ describe("round 2: sync, discard, remove and state files never lose a copy", () 
     const r = restoreBackup(backup!);
     expect(r.ok).toBe(false);
     expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);
+  });
+});
+
+describe("round 3", () => {
+  test("sync points a recorded link that reaches another skill back at its own copy", () => {
+    setHarnesses(["claude-code", "codex"]);
+    writeSkill(join(tmp, "src", "beta"), "beta");
+    importSkill(join(tmp, "src", "beta"));
+    addSkill(project, "alpha");
+    addSkill(project, "beta");
+    const link = join(project, ".claude", "skills", "alpha");
+    rmSync(link);
+    symlinkSync(join(project, ".agents", "skills", "beta"), link, "junction");
+    expect(syncProject(project).map((c) => [c.name, c.action])).toEqual([["alpha", "relinked"]]);
+    expect(readFileSync(join(link, "SKILL.md"), "utf-8")).toContain("v1");
+  });
+
+  test("a backup index that can't be read stops a stash before anything moves", () => {
+    addSkill(project, "alpha");
+    mkdirSync(join(tmp, "home", "edit-backup"), { recursive: true });
+    writeFileSync(join(tmp, "home", "edit-backup", "index.json"), "{ not json");
+    expect(() => stash(local("alpha"), "edit-backup")).toThrow("isn't valid JSON");
+    expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
+  });
+
+  test.skipIf(process.platform === "win32")("a state file that's a link is written where it points, keeping its permissions", () => {
+    const real = join(tmp, "dotfiles", "config.json");
+    mkdirSync(join(tmp, "dotfiles"));
+    writeFileSync(real, "{}\n", { mode: 0o600 });
+    symlinkSync(real, join(tmp, "home", "linked.json"));
+    writeState(join(tmp, "home", "linked.json"), { roots: [] });
+    expect(lstatSync(join(tmp, "home", "linked.json")).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, "utf-8"))).toEqual({ roots: [] });
+    expect(statSync(real).mode & 0o777).toBe(0o600);
   });
 });
