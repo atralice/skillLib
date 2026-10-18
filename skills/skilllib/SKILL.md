@@ -8,7 +8,7 @@ allowed-tools: Bash(skilllib:*)
 
 The user manages agent skills with the `skilllib` CLI. Their **library** (`~/.skilllib/library`, "my skills", "the registry") holds versioned skills that load nowhere until added to a repo. A repo pins its skills in `skilllib.json`.
 
-Always pass `--json` (one line of JSON on stdout; messages go to stderr). Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
+Always pass `--json` (one line of JSON on stdout; messages go to stderr). A failure exits 1 with `{"error": "..."}` as that line; `link`, `tidy` and `global keep` print messages only. Unknown flags are errors. Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
 
 ## Reading
 
@@ -25,12 +25,12 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 ## Changing (ask first unless the user asked for this exact change)
 
-`add <name>...` · `remove <name>...` · `update [name...]` · `sync` (pinned versions) · `import <dir>` (into the library) · `doctor --fix`. Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, backedUp}]`, which is the whole result: there's no need to check files afterwards.
+`add <name>...` · `remove <name>...` · `update [name...]` · `sync` (installs what `skilllib.json` pins; takes no names). Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, backedUp}]`, which is the whole result: there's no need to check files afterwards. `import <dir>...` (into the library) prints `[{path, name, status}]` and exits 1 if a folder was skipped (`exists`, `no SKILL.md`). `doctor --fix` prints doctor's issues, each fix with `fixed: {ok, message}`.
 
 - `skipped` + `reason`: nothing changed for that skill, and the command exits 1; tell the user. `--force` overwrites local edits (`backedUp` says where they went; `skilllib restore <name>` brings them back), but only use it with their OK.
 - `blocked`: git tracks that folder. Re-run with `--allow-tracked` only with their OK.
 - `uncommitted`: git tracks that folder but not the skill's real copy, so a link there would break for teammates; `--allow-tracked` doesn't change that. Once the copy is committed, `link --allow-tracked` adds it.
-- Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and `.claude/skills`.
+- Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and the folders in `dirs`.
 
 **Prefer per-repo skills to global ones.** A global skill loads in every repo, for every agent. When `usage --json` shows one used in only a few repos, propose moving it there:
 

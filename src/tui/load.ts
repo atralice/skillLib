@@ -28,7 +28,7 @@ import {
   projectsUsing,
   removeUntracked,
   restoreBackup,
-  syncProject,
+  syncSkill,
   unloadGlobal,
   updateProject,
   visibilityOf,
@@ -422,7 +422,7 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
     },
     restore: (repo, name) => {
-      const c = syncProject(rootOf(repo)).find((x) => x.name === name);
+      const [c] = syncSkill(rootOf(repo), name);
       return c ? result(c, repo) : `${name} is already in place`;
     },
     update: (repo, name) => {

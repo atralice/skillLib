@@ -6,6 +6,7 @@ import type {
   ChangesJson,
   ApplyJson,
   DoctorJson,
+  ErrorJson,
   GlobalMoveJson,
   ImportJson,
   ListJson,
@@ -26,6 +27,8 @@ export function setJsonMode(on: boolean) {
   jsonMode = on;
 }
 
+export const isJsonMode = () => jsonMode;
+
 /** What each command prints with --json: the public types in json.ts. */
 type JsonOutputs = {
   status: StatusJson;
@@ -43,6 +46,8 @@ type JsonOutputs = {
   "global move": GlobalMoveJson;
   usage: UsageJson;
   "agent-skill": AgentSkillJson;
+  /** Any command that fails: exit code 1, and the reason (also on stderr). */
+  error: ErrorJson;
 };
 
 /**

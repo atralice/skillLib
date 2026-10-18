@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, skilllibHome } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
@@ -503,18 +503,29 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
 export function syncProject(root: string, { force = false } = {}): Change[] {
-  const { skills } = readManifest(root);
-  return Object.entries(skills).flatMap(([name, dep]): Change[] => {
-    const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
-    const linksOk = (dep.links ?? []).every((d) => existsSync(join(root, d, name, "SKILL.md")));
-    if (local === dep.hash && linksOk) return [];
-    const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
-    if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
-    const change = addSkill(root, name, { force: true, version: pinned });
-    // Only skipped when the library has no version of it: a teammate's skill, or another machine's library.
-    if (change.action === "skipped") return [{ ...change, reason: `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it` }];
-    return [{ ...change, action: local === null ? "installed" : change.action }];
-  });
+  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force }));
+}
+
+/** `syncProject` for one skill: nothing when it's already as pinned. */
+export function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
+  const dep = readManifest(root).skills[name];
+  if (!dep) return [];
+  const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
+  const linksOk = (dep.links ?? []).every((d) => existsSync(join(root, d, name, "SKILL.md")));
+  if (local === dep.hash && linksOk) return [];
+  if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
+  const change = addSkill(root, name, { force: true, version: pinnedVersion(name, dep) });
+  // Only skipped when the library has no version of it: a teammate's skill, or another machine's library.
+  if (change.action === "skipped") return [{ ...change, reason: `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it` }];
+  return [{ ...change, action: local === null ? "installed" : change.action }];
+}
+
+/**
+ * The library version a pin means. By its hash first: version numbers are each library's own, so on a
+ * teammate's machine the same number can be other content. Then by number; none means the newest.
+ */
+function pinnedVersion(name: string, dep: Dependency): number | undefined {
+  return versionForHash(name, dep.hash)?.version ?? (dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined);
 }
 
 /**
@@ -526,9 +537,8 @@ export function discardEdits(root: string, name: string): Change {
   const dep = readManifest(root).skills[name];
   if (!dep) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
   const dir = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
-  const pinned = dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined;
   if (existsSync(dir) && !isLink(dir)) stash(dir, "edit-backup");
-  return addSkill(root, name, { force: true, version: pinned });
+  return addSkill(root, name, { force: true, version: pinnedVersion(name, dep) });
 }
 
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
@@ -582,6 +592,17 @@ function readBackupIndex(bucket: string): Record<string, string> {
   }
 }
 
+/** rename, or copy then delete when `from` and `to` are on different disks (EXDEV). Links stay links. */
+function move(from: string, to: string) {
+  try {
+    renameSync(from, to);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
+    cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+    rmSync(from, { recursive: true, force: true });
+  }
+}
+
 /**
  * Moves `dir` into ~/.skilllib/<bucket>/ instead of deleting it, remembering
  * where it came from so it can be restored there. Returns the new path.
@@ -594,7 +615,7 @@ export function stash(dir: string, bucket: string): string {
   const entry = entryAt(at);
   const target = join(skilllibHome(), bucket, entry);
   mkdirSync(join(skilllibHome(), bucket), { recursive: true });
-  renameSync(dir, target);
+  move(dir, target);
   writeFileSync(backupIndexFile(bucket), JSON.stringify({ ...readBackupIndex(bucket), [entry]: dir }, null, 2) + "\n");
   return target;
 }
@@ -742,7 +763,7 @@ export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: 
   }
   if (taken) return { ok: false, reason: `${backup.name} already exists there` };
   mkdirSync(join(to, ".."), { recursive: true });
-  renameSync(backup.path, to);
+  move(backup.path, to);
   forgetLatest(backup.name);
   return { ok: true, to };
 }
