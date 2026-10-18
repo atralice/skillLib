@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { color } from "./theme.js";
 
-export type Cell = { text: string; color?: string; grow?: boolean; width?: number; bold?: boolean; dim?: boolean };
+export type Cell = { text: string; color?: string; grow?: boolean; width?: number; bold?: boolean };
 /** A list row. `header` rows are section titles: shown, never selected. */
 export type Row = { key: string; cells: Cell[]; header?: boolean };
 
@@ -52,7 +52,6 @@ export function ListPanel({
   rows,
   selected,
   empty,
-  filter,
   header,
   headerHeight = 0,
 }: {
@@ -63,7 +62,6 @@ export function ListPanel({
   rows: Row[];
   selected: number;
   empty: React.ReactNode;
-  filter?: string;
   /** Fixed content above the rows (e.g. tabs), `headerHeight` lines tall. */
   header?: React.ReactNode;
   headerHeight?: number;
@@ -72,7 +70,7 @@ export function ListPanel({
   const offset = Math.min(Math.max(0, selected - Math.floor(visible / 2)), Math.max(0, rows.length - visible));
   const shown = rows.slice(offset, offset + visible);
   const inner = width - 4;
-  const hint = [filter ?? "", rows.length > visible ? `${selected + 1}/${rows.length}` : ""].filter(Boolean).join("  ");
+  const hint = rows.length > visible ? `${selected + 1}/${rows.length}` : "";
 
   return (
     <Panel title={title} hint={hint} focused={focused} width={width} height={height}>
@@ -109,7 +107,6 @@ export function ListPanel({
                   backgroundColor={bg}
                   color={c.color ?? (active && focused ? color.text : undefined)}
                   bold={c.bold || (active && focused && c.grow)}
-                  dimColor={c.dim}
                   wrap="truncate-end"
                 >
                   {fit(c.text, c.grow ? growWidth : (c.width ?? c.text.length))}
@@ -120,27 +117,6 @@ export function ListPanel({
         })
       )}
     </Panel>
-  );
-}
-
-export type Hint = [key: string, label: string];
-
-/** Bottom bar: key caps with labels. */
-export function KeyBar({ hints, width }: { hints: Hint[]; width: number }) {
-  let used = 0;
-  const fitting = hints.filter(([k, l]) => {
-    used += k.length + l.length + 4;
-    return used < width;
-  });
-  return (
-    <Box height={1} width={width}>
-      {fitting.map(([k, l]) => (
-        <Box key={k + l} marginRight={2}>
-          <Text backgroundColor={color.accentDim} color={color.text}>{` ${k} `}</Text>
-          <Text color={color.muted}>{` ${l}`}</Text>
-        </Box>
-      ))}
-    </Box>
   );
 }
 

@@ -1,8 +1,8 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
-import { HARNESSES, type HarnessId } from "./harnesses.js";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, writeFileSync } from "node:fs";
+import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, realPath, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, realPath, realpathOrNull, skilllibHome, userHome } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify as homeRelative } from "./output.js";
 
@@ -34,14 +34,6 @@ export type SourcedSkill = {
   links: string[];
 };
 
-function readJson<T>(path: string): T | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf-8")) as T;
-  } catch {
-    return null;
-  }
-}
-
 /** `npx skills` keeps its lock file in ~/.agents, wherever CLAUDE_CONFIG_DIR points. */
 function skillsShLock(): Record<string, { source?: string }> {
   return readJson<{ skills?: Record<string, { source?: string }> }>(join(userHome(), ".agents", ".skill-lock.json"))?.skills ?? {};
@@ -52,19 +44,16 @@ export function projectSkillsLock(root: string): Record<string, { source?: strin
   return readJson<{ skills?: Record<string, { source?: string }> }>(join(root, "skills-lock.json"))?.skills ?? {};
 }
 
-function realpathOrNull(path: string): string | null {
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
+/** A skill a vendor or an admin manages: skilllib reads it and never moves it. */
+function vendorSkill(path: string, kind: SourcedSkill["kind"], origin: string, harnesses: HarnessId[]): SourcedSkill {
+  return { name: basename(path), kind, origin, path, description: readSkillInfo(path).description, movable: false, broken: false, harnesses, links: [] };
 }
 
 /** Your enabled harnesses that read global folder `dir`. */
 function harnessesReading(dir: string, enabled: HarnessId[]): HarnessId[] {
   // By real path: two agents can reach the same folder by different paths (#54).
   const real = realPath(dir);
-  return enabled.filter((id) => HARNESSES.find((h) => h.id === id)?.globalDirs().some((d) => realPath(d) === real));
+  return enabled.filter((id) => harness(id).globalDirs().some((d) => realPath(d) === real));
 }
 
 /** Machine-wide folders an admin manages: read, never changed. */
@@ -93,17 +82,7 @@ export function globalDirAs(dir: string): string {
 /** Skills in the system folders (/etc/codex/skills). */
 function systemSkills(enabled: HarnessId[]): SourcedSkill[] {
   return systemDirs().flatMap((dir) =>
-    skillDirsIn(dir).map((path) => ({
-      name: basename(path),
-      kind: "system" as const,
-      origin: dir.replace(/\\/g, "/"),
-      path,
-      description: readSkillInfo(path).description,
-      movable: false,
-      broken: false,
-      harnesses: harnessesReading(dir, enabled),
-      links: [],
-    })),
+    skillDirsIn(dir).map((path) => vendorSkill(path, "system", dir.replace(/\\/g, "/"), harnessesReading(dir, enabled))),
   ).filter((s) => s.harnesses.length > 0);
 }
 
@@ -144,7 +123,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
     const locked = lock[e.name]?.source;
     if (existsSync(join(e.path, OWN_SKILL_MARKER))) {
       // The skill that teaches agents to use skilllib: deliberately global, so not yours to clean up.
-      skills.push({ name: e.name, kind: "skilllib", origin: "skilllib", path: e.path, description: readSkillInfo(e.path).description, movable: false, broken: false, harnesses: harnessesReading(e.dir, enabled), links: [] });
+      skills.push(vendorSkill(e.path, "skilllib", "skilllib", harnessesReading(e.dir, enabled)));
       continue;
     }
     skills.push({
@@ -176,33 +155,13 @@ function tildify(p: string): string {
 /** Grok's bundled skills (~/.grok/bundled/skills). A same-named user or project skill overrides these. */
 function grokBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   if (!enabled.includes("grok")) return [];
-  return skillDirsIn(join(grokDir(), "bundled", "skills")).map((path) => ({
-    name: basename(path),
-    kind: "built-in" as const,
-    origin: "Grok",
-    path,
-    description: readSkillInfo(path).description,
-    movable: false,
-    broken: false,
-    harnesses: ["grok" as const],
-    links: [],
-  }));
+  return skillDirsIn(join(grokDir(), "bundled", "skills")).map((path) => vendorSkill(path, "built-in", "Grok", ["grok"]));
 }
 
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */
 function cursorBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   if (!enabled.includes("cursor")) return [];
-  return skillDirsIn(join(userHome(), ".cursor", "skills-cursor")).map((path) => ({
-    name: basename(path),
-    kind: "built-in" as const,
-    origin: "Cursor",
-    path,
-    description: readSkillInfo(path).description,
-    movable: false,
-    broken: false,
-    harnesses: ["cursor" as const],
-    links: [],
-  }));
+  return skillDirsIn(join(userHome(), ".cursor", "skills-cursor")).map((path) => vendorSkill(path, "built-in", "Cursor", ["cursor"]));
 }
 
 /**
@@ -227,22 +186,18 @@ function claudeAiSkills(enabled: HarnessId[]): SourcedSkill[] {
     readdirSync(dir)
       .filter((d) => !d.startsWith("."))
       .flatMap((bucket) =>
-        skillDirsIn(join(dir, bucket)).map((path) => ({
-          name: basename(path),
-          kind: "claude.ai" as const,
-          origin: "claude.ai account",
-          path,
-          description: readSkillInfo(path).description,
-          movable: false,
-          broken: false,
-          harnesses: enabled.filter((id) => readers.includes(id)),
-          links: [],
-        })),
+        skillDirsIn(join(dir, bucket)).map((path) => vendorSkill(path, "claude.ai", "claude.ai account", enabled.filter((id) => readers.includes(id)))),
       ),
   );
 }
 
-type InstalledPlugins = { plugins?: Record<string, { scope?: string; installPath?: string }[]> };
+/** One install of a Claude Code plugin, as installed_plugins.json records it. */
+export type InstallEntry = { scope?: string; projectPath?: string; installPath?: string; version?: string; gitCommitSha?: string };
+
+/** Claude Code's installed_plugins.json: each plugin id's installs. */
+export function installedPluginsJson(): Record<string, InstallEntry[]> {
+  return readJson<{ plugins?: Record<string, InstallEntry[]> }>(join(claudeDir(), "plugins", "installed_plugins.json"))?.plugins ?? {};
+}
 type PluginSettings = { enabledPlugins?: Record<string, boolean> };
 
 /** Where Claude Code may find a marketplace plugin's files: its install paths, then its marketplace's copy. */
@@ -282,7 +237,7 @@ function pluginSkills(harnesses: HarnessId[], root?: string): SourcedSkill[] {
   const cursor = harnesses.includes("cursor");
   if (!claude && !cursor) return [];
   const plugins = join(claudeDir(), "plugins");
-  const installed = readJson<InstalledPlugins>(join(plugins, "installed_plugins.json"))?.plugins ?? {};
+  const installed = installedPluginsJson();
   const user = enabledPlugins();
   const enabled = root ? enabledPlugins(root) : user;
 
@@ -315,17 +270,7 @@ function pluginSkills(harnesses: HarnessId[], root?: string): SourcedSkill[] {
         )
     : [];
 
-  return [...fromMarketplaces, ...fromSynced].map(({ path, origin, loadedBy }) => ({
-    name: basename(path),
-    kind: "plugin" as const,
-    origin,
-    path,
-    description: readSkillInfo(path).description,
-    movable: false,
-    broken: false,
-    harnesses: loadedBy,
-    links: [],
-  }));
+  return [...fromMarketplaces, ...fromSynced].map(({ path, origin, loadedBy }) => vendorSkill(path, "plugin", origin, loadedBy));
 }
 
 const byKindAndName = (a: SourcedSkill, b: SourcedSkill) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name);

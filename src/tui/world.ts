@@ -117,7 +117,6 @@ export type Plugin = {
   parts: string[];
 };
 
-export type RepoInfo = { remote?: string; branch?: string; dirty: number };
 export type Backup = { name: string; from: string; at: string };
 
 /**
@@ -188,7 +187,6 @@ export type Ops = {
   deleteLibrary(name: string): Result;
   restoreBackup(index: number): Result;
   setAgents(ids: HarnessId[]): Result;
-  repoInfo(repo: string): RepoInfo;
   /** A tracked skill at a specific library version. */
   installVersion(repo: string, name: string, version: number): Result;
   versions(name: string): { version: number; date: string }[];
@@ -382,7 +380,7 @@ function cursorPluginIssue(name: string, plugin: string): Issue {
 }
 
 /** What you can do with one of your global skills. */
-export function globalFixes(m: MachineSkill): Fix[] {
+function globalFixes(m: MachineSkill): Fix[] {
   return [
     {
       label: "Move it to the repos that need it…",
@@ -700,7 +698,7 @@ export function agentSkillFix(w: World): Fix {
 }
 
 /** Takes the skilllib skill out of your global folders (`skilllib agent-skill remove`). */
-export function removeAgentSkillFix(): Fix {
+function removeAgentSkillFix(): Fix {
   return {
     label: "Remove the skilllib skill",
     preview:
@@ -1057,7 +1055,6 @@ export type AddRow = {
  * The add box for `target` (a repo, or your library when null): library skills the repo
  * doesn't have yet, related ones under a row that adds them all (a plugin's skills, say),
  * then "create" and "write with an agent" for the name you typed.
- * Only the library for now; GitHub and skills.sh come later.
  */
 export function addRows(w: World, target: string | null, q: string): AddRow[] {
   // A global or plugin copy doesn't block adding the library version: that's how a skill moves into the repo.
@@ -1065,8 +1062,9 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
   const loaded = new Set(target ? usable(w, target).map((u) => u.name) : []);
   const hit = (name: string, description: string) => !q || matches(name, q) || (q.length >= 3 && description.toLowerCase().includes(q));
   // Grouped over the whole library, so a group doesn't change as you type or as the repo gets some of it.
-  const groups = assignGroups(w.library.map((l) => groupCandidates(w, l)));
-  const shown = w.library.map((l, i) => ({ l, g: groups[i] })).filter(({ l }) => !taken.has(l.name) && hit(l.name, w.descriptions[l.name] ?? ""));
+  // No repo picked: only the rows that create a skill, so there's nothing to group.
+  const groups = target ? assignGroups(w.library.map((l) => groupCandidates(w, l))) : [];
+  const shown = target ? w.library.map((l, i) => ({ l, g: groups[i] })).filter(({ l }) => !taken.has(l.name) && hit(l.name, w.descriptions[l.name] ?? "")) : [];
   const skillRow = (l: LibrarySkill, inGroup: boolean): AddRow => ({
     key: `lib:${l.name}`,
     name: l.name,
@@ -1078,7 +1076,7 @@ export function addRows(w: World, target: string | null, q: string): AddRow[] {
   });
   const library: AddRow[] = [];
   const done = new Set<string>();
-  for (const { l, g } of target ? shown : []) {
+  for (const { l, g } of shown) {
     if (done.has(l.name)) continue;
     const members = g ? shown.filter((x) => x.g?.key === g.key).map((x) => x.l) : [l];
     members.forEach((m) => done.add(m.name));

@@ -13,9 +13,9 @@
 │     cli-tools            ││   ⚠ testing-guide      lib v3            –  Extra copies                               │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     design-system        │╭── web-app ─────────────────────────────────────────────────────────────────────────────╮
-│     e2e-tests            ││ Folder    ~/Projects/web-app               Remote    github.com/atralice/web-app       │
-│     infra                ││ Branch    main                             Manifest  skilllib.json ✓ committed         │
-│     landing              ││ Plugins   vercel, frontend-design, railway                                             │
+│     e2e-tests            ││ Folder    ~/Projects/web-app               Manifest  skilllib.json ✓ committed         │
+│     infra                ││ Plugins   vercel, frontend-design, railway                                             │
+│     landing              ││                                                                                        │
 │     marketing-site       ││                                                                                        │
 │     playground           ││                                                                                        │
 │     scripts              ││                                                                                        │

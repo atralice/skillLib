@@ -2,7 +2,7 @@
  * The TUI's World from disk: your repos, library and global skills, with ops that call
  * library.ts and config.ts. Usage comes separately (loadUsage): reading transcripts is slow.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
@@ -62,7 +62,7 @@ import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type Sourc
 import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import { failed, followUp, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type RepoInfo, type Result, type World } from "./world.js";
+import { failed, followUp, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
@@ -262,8 +262,7 @@ export function loadWorld(): World {
     usage: {},
     descriptions,
     backups: backups.map((b) => ({ name: b.name, from: tildify(b.from), at: b.movedAt })),
-    roots: readConfig().roots,
-    hidden: readConfig().hidden,
+    ...(({ roots, hidden }) => ({ roots, hidden }))(readConfig()),
     agentsChosen: harnessesChosen(),
     agentSkill: agentSkillState(agents),
     ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups),
@@ -290,20 +289,6 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
   return { usage, days };
 }
 
-function git(root: string, args: string[]): string {
-  try {
-    return execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    return "";
-  }
-}
-
-/** "git@github.com:me/app.git" or "https://github.com/me/app.git" → "github.com/me/app". */
-function remoteLabel(url: string): string | undefined {
-  if (!url) return undefined;
-  return url.replace(/^[a-z+]+:\/\//, "").replace(/^[^@/]+@/, "").replace(/:(?!\d)/, "/").replace(/\.git$/, "");
-}
-
 /** What a change did, in a few words. */
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
@@ -319,7 +304,6 @@ function said(c: Change, repo: string): string {
 function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
   const rootOf = (repo: string) => roots.get(repo)!;
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
-  const info = new Map<string, RepoInfo>();
 
   /** A change; failed if it was skipped. */
   const result = (c: Change, repo: string): Result => (c.action === "skipped" ? failed(said(c, repo)) : said(c, repo));
@@ -639,18 +623,6 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     removeAgentSkill: () => {
       const removed = removeAgentSkill();
       return removed.length ? `Removed the skilllib skill (${removed.map(tildify).join(", ")})` : failed("The skilllib skill isn't installed");
-    },
-    repoInfo: (repo) => {
-      if (!info.has(repo)) {
-        const root = rootOf(repo);
-        const status = git(root, ["status", "--porcelain"]);
-        info.set(repo, {
-          remote: remoteLabel(git(root, ["remote", "get-url", "origin"])),
-          branch: git(root, ["rev-parse", "--abbrev-ref", "HEAD"]) || undefined,
-          dirty: status ? status.split("\n").length : 0,
-        });
-      }
-      return info.get(repo)!;
     },
   };
 }

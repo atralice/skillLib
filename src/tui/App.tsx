@@ -11,10 +11,8 @@ import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
 import * as W from "./world.js";
-import { tildify as homeRelative } from "../output.js";
+import { tildify } from "../output.js";
 
-/** Home-relative path for labels. */
-const tildify = (p: string) => homeRelative(p);
 
 type Place = "projects" | "library" | "global" | "plugins" | "health" | "settings";
 const PLACES: [Place, string][] = [
@@ -87,7 +85,7 @@ type Modal =
 
 const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.SEVERITY_RANK[b.severity];
 
-function tag(u: W.Usable, w: W.World): Seg {
+function tag(u: W.Usable): Seg {
   const s = u.local;
   if (s?.source === "lib") {
     return [`lib v${s.version}`, color.accent];
@@ -233,7 +231,7 @@ function usageLines(w: W.World, name: string, width: number, repo: string | null
 function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: number, actions: Option[], repo: string | null): Item {
   const u = copies[0]!;
   const top = W.worst(issues);
-  const [t, tc] = tag(u, w);
+  const [t, tc] = tag(u);
   return {
     key: u.name,
     name: u.name,
@@ -264,7 +262,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
         const s = c.local;
         const path = s ? `${s.dir}/${c.name}` : c.source === "global" || c.source === "skilllib" ? `${c.where}/${c.name}` : c.where;
         const extra = s ? (s.missing ? "missing" : s.git ? GIT_LABEL[s.git] : "") : "";
-        const [ct, cc] = c === u ? ["", undefined] : tag(c, w);
+        const [ct, cc] = c === u ? ["", undefined] : tag(c);
         b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
       }
       return b.d;
@@ -355,10 +353,9 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
   return [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)];
 }
 
-/** A project at a glance: where it lives and its git state. Health is on the Issues tab. */
+/** A project at a glance: where it lives, its skilllib.json and plugins. Health is on the Issues tab. */
 function overview(w: W.World, p: string): [label: string, value: Seg[]][] {
   const project = W.project(w, p);
-  const info = w.ops.repoInfo(p);
   const manifest: Seg =
     project.manifest === "none"
       ? ["no skilllib.json", color.faint]
@@ -369,8 +366,6 @@ function overview(w: W.World, p: string): [label: string, value: Seg[]][] {
   const plugins = [...new Set(W.machineIn(w, project).filter((m) => m.source === "plugin").map((m) => m.where.split("@")[0]!))];
   return [
     ["Folder", [[tildify(project.path), color.text]]],
-    ["Remote", [[info.remote ?? "none", info.remote ? color.blue : color.faint]]],
-    ["Branch", [[info.branch ?? "–", color.text], [info.dirty ? `  ${info.dirty} uncommitted` : "", color.yellow]]],
     ["Manifest", [manifest]],
     ["Plugins", [[plugins.length ? plugins.join(", ") : "none", plugins.length ? color.magenta : color.faint]]],
   ];
@@ -677,12 +672,14 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     copy: (text, what) => setToast(said(world.ops.copy(text, what))),
     menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
   };
-  // Each plugin's issues, once per render: the sidebar's count and the Plugins list both need them.
+  // Issues once per render: Health's count, the sidebar's badges and Global's count all need them.
   const pluginIssues = new Map(world.plugins.map((p) => [p.key, W.pluginIssues(world, p)]));
+  const repoIssues = new Map(world.projects.map((p) => [p.name, W.projectIssues(world, p.name)]));
+  const machineIssues = world.machine.map((m) => [m, W.machineIssues(world, m)] as const);
   // Health's count (skills with something to fix, per repo and in Global), without building its rows.
   const flagged = [
-    ...world.projects.flatMap((p) => W.projectIssues(world, p.name).map((x) => ({ key: `${p.name}:${x.skill.name}`, issue: x.issue }))),
-    ...world.machine.flatMap((m) => W.machineIssues(world, m).map((issue) => ({ key: `Global:${m.name}`, issue }))),
+    ...[...repoIssues].flatMap(([name, found]) => found.map((x) => ({ key: `${name}:${x.skill.name}`, issue: x.issue }))),
+    ...machineIssues.flatMap(([m, issues]) => issues.map((issue) => ({ key: `Global:${m.name}`, issue }))),
     // The skilllib skill's issue is on its Global row when it has one (see agentSkillItems).
     ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "Global:skilllib", issue }] : [])),
   ];
@@ -1245,7 +1242,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const confirmH = modal?.kind === "confirm" ? confirmLines.length + 2 : 0;
   const bodyH = Math.max(8, termRows - (sidebar ? 0 : 1) - bottomH - confirmH);
   // Same count as Global's Issues tab: skills with something to fix.
-  const globalFlagged = world.machine.map((m) => [m.name, W.machineIssues(world, m)] as const).filter(([, issues]) => issues.length);
+  const globalFlagged = machineIssues.filter(([, issues]) => issues.length).map(([m, issues]) => [m.name, issues] as const);
   const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
   // Plugins' count turns yellow when one repeats your skills; hints (unused, updates) don't color it.
@@ -1254,7 +1251,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   /** The sidebar: places, then every repo. Moving onto a row opens it. */
   // Like Global's count: skills with something to fix, marked by the worst of them.
   const badge = (p: string): Cell => {
-    const found = W.projectIssues(world, p);
+    const found = repoIssues.get(p) ?? W.projectIssues(world, p);
     const top = W.worst(found.map((x) => x.issue));
     return { text: top ? SEV[top.severity].icon : "", width: 3, color: top ? SEV[top.severity].color : undefined };
   };
@@ -1594,7 +1591,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         </Box>
       </Box>
       <Box height={1} width={termCols} justifyContent="space-between">
-        <Text color={toast.startsWith("✓") || toast.startsWith("↺") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
+        <Text color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
         {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}

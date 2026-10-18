@@ -1,7 +1,6 @@
  ◆ skilllib   Projects  Your skills  Global  Plugins  Health 19  Settings
 ╭── web-app ─────────────────────────────────────────────────────────────────╮
-│ Folder    ~/Projects/web-app         Remote    github.com/atralice/web-app │
-│ Branch    main                       Manifest  skilllib.json ✓ committed   │
+│ Folder    ~/Projects/web-app         Manifest  skilllib.json ✓ committed   │
 │ Plugins   vercel, frontend-design, railway                                 │
 ╰────────────────────────────────────────────────────────────────────────────╯
 ╭── Skills  4/22 ────────────────────────────────────────────────────────────╮
@@ -20,5 +19,6 @@
 │   · my-scratchpad    untracked         –  Only in this repo                │
 │     ▸ commit + 1 more · installed together 2026-09-20 (2)                  │
 │     pr-review        global ✓          4                                   │
+│     release-notes    repo              2                                   │
 ╰────────────────────────────────────────────────────────────────────────────╯
 type to filter · space ★ fix · enter actions · tab tabs · esc all projects · ?

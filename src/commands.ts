@@ -110,18 +110,18 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
  * Prints what changed. A skipped skill is a failure: the command exits 1, so
  * scripts and agents can tell (the other skills' changes still happened).
  */
+/** The links a change held back where git tracks the folder, and how to add them. */
+function warnHeldLinks(c: Change, where = "here") {
+  if (c.blocked?.length) warn(`${c.name}: git tracks ${c.blocked.join(", ")} ${where}, so no link was added there. Re-run with --allow-tracked to add it.`);
+  if (c.uncommitted?.length)
+    warn(`${c.name}: git tracks ${c.uncommitted.join(", ")} ${where} but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`);
+}
+
 function printChanges(root: string, changes: Change[], args: Args) {
   if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
   if (args.json) return json("changes", withDirs(root, changes));
   for (const c of changes) {
-    if (c.blocked?.length) {
-      warn(`${c.name}: git tracks ${c.blocked.join(", ")} here, so no link was added there. Re-run with --allow-tracked to add it.`);
-    }
-    if (c.uncommitted?.length) {
-      warn(
-        `${c.name}: git tracks ${c.uncommitted.join(", ")} here but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`,
-      );
-    }
+    warnHeldLinks(c);
     if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
       const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : "↑");
@@ -163,6 +163,12 @@ async function usageBySkill(days: number, onlyProject?: string): Promise<Map<str
  * repo the folders around you aren't a project, and in your home folder
  * they're the global ones: installing there would load a skill in every repo.
  */
+/** The projects a command works on: this one, or every project with --all. */
+const projectsFor = (args: Args) => (args.all ? visibleProjects() : [requireProject()]);
+
+/** Your own global skills (not vendors'), the ones skilllib can move. */
+const yourGlobals = () => machineSkills().filter((m) => m.movable && !m.broken);
+
 function requireProject(): string {
   const root = projectHere();
   if (root) return root;
@@ -296,7 +302,7 @@ export async function list(args: Args) {
 
   const libraryNames = new Set(skills.map((s) => s.name));
   // By name: a skill in two global folders is one skill.
-  const globals = [...new Set(machineSkills().filter((m) => m.movable && !m.broken).map((m) => m.name))];
+  const globals = [...new Set(yourGlobals().map((m) => m.name))];
   if (globals.length > 0) {
     info("");
     warn(`${globals.length} of your global ${globals.length === 1 ? "skill still loads" : "skills still load"} in every project`);
@@ -365,54 +371,53 @@ export function remove(args: Args) {
   printChanges(root, args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
 }
 
-/** Installs exactly the versions in skilllib.json (--all: every project). */
-export function sync(args: Args) {
-  if (args.positional.length) throw new Error(`sync takes no skill names: it installs exactly what skilllib.json pins. To add a skill: skilllib add ${args.positional.join(" ")}`);
-  const roots = args.all ? visibleProjects() : [requireProject()];
+/** sync and update: `change` each project (this one, or --all), then print or return what changed. */
+function changeEach(args: Args, change: (root: string) => Change[], nothing: (root: string) => void): string[] {
+  const roots = projectsFor(args);
   const results = roots.map((root): AllChangesJson[number] => {
     if (args.allowTracked) allowTrackedLinks(root);
-    const changes = syncProject(root, { force: args.force });
+    const changes = change(root);
     if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
-      if (changes.length === 0) {
-        if (existsSync(join(root, MANIFEST_FILE))) success("Installed versions match skilllib.json");
-        else info(dim("No skilllib.json: nothing to sync"));
-      }
+      if (changes.length === 0) nothing(root);
       else printChanges(root, changes, args);
     }
     return { project: basename(root), path: root, changes: withDirs(root, changes) };
   });
   if (args.json) args.all ? json("changes --all", results) : json("changes", results[0]!.changes);
+  return roots;
+}
+
+/** Installs exactly the versions in skilllib.json (--all: every project). */
+export function sync(args: Args) {
+  if (args.positional.length) throw new Error(`sync takes no skill names: it installs exactly what skilllib.json pins. To add a skill: skilllib add ${args.positional.join(" ")}`);
+  const roots = changeEach(
+    args,
+    (root) => syncProject(root, { force: args.force }),
+    (root) => (existsSync(join(root, MANIFEST_FILE)) ? success("Installed versions match skilllib.json") : info(dim("No skilllib.json: nothing to sync"))),
+  );
   if (!args.all) rememberProjects(roots);
 }
 
 /** Moves skills to their newest library version (all, or the ones named). */
 export function update(args: Args) {
-  const roots = args.all ? visibleProjects() : [requireProject()];
-  const results = roots.map((root): AllChangesJson[number] => {
-    if (args.allowTracked) allowTrackedLinks(root);
-    const names = args.positional.length ? args.positional : undefined;
-    const changes = updateProject(root, names, { force: args.force });
-    // A name this project doesn't track isn't "on the latest version" (with --all, most projects lack it).
-    if (!args.all) {
-      const { skills } = readManifest(root);
-      for (const name of names ?? []) if (!(name in skills)) changes.push({ name, action: "skipped", reason: "not managed by skilllib in this project" });
-    }
-    if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
-    if (!args.json) {
-      if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
-      if (changes.length === 0) success("Everything is on the latest version");
-      else printChanges(root, changes, args);
-    }
-    return { project: basename(root), path: root, changes: withDirs(root, changes) };
-  });
-  if (args.json) args.all ? json("changes --all", results) : json("changes", results[0]!.changes);
+  const names = args.positional.length ? args.positional : undefined;
+  changeEach(
+    args,
+    (root) => {
+      const changes = updateProject(root, names, { force: args.force });
+      // A name this project doesn't track isn't "on the latest version" (with --all, most projects lack it).
+      if (!args.all) for (const name of names ?? []) if (!(name in readManifest(root).skills)) changes.push({ name, action: "skipped", reason: "not managed by skilllib in this project" });
+      return changes;
+    },
+    () => success("Everything is on the latest version"),
+  );
 }
 
 /** Skills with a newer library version, per project. */
 export function outdated(args: Args) {
-  const roots = args.all ? visibleProjects() : [requireProject()];
+  const roots = projectsFor(args);
   const behind = roots.flatMap((root) =>
     projectStatus(root)
       .filter((s): s is ProjectSkill & { version: number; latest: number } => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
@@ -430,7 +435,7 @@ export function outdated(args: Args) {
  * a project, the project is marked in sync with the new library version.
  */
 export function importSkills(args: Args) {
-  const dirs = args.global ? machineSkills().filter((m) => m.movable && !m.broken).map((m) => m.path) : args.positional.map((p) => resolve(p));
+  const dirs = args.global ? yourGlobals().map((m) => m.path) : args.positional.map((p) => resolve(p));
   if (dirs.length === 0) {
     throw new Error("Usage: skilllib import <skill-dir>... [--force] | skilllib import --global");
   }
@@ -667,20 +672,20 @@ export async function apply(args: Args) {
 /** Skill usage across all Claude Code sessions, from transcripts. */
 export async function usage(args: Args) {
   const summaries = summarize(await scanUsage(args.days), projectOfFactory(knownProjects()));
+  const library = new Set(librarySkills().map((s) => s.name));
+  const unused = [...library].filter((name) => !summaries.some((u) => u.skill === name));
   if (args.json) {
-    const library = new Set(librarySkills().map((s) => s.name));
     return json("usage", {
       usageDays: args.days,
       source: "Claude Code transcripts",
       skills: summaries.map((s): UsageJson["skills"][number] => ({ skill: s.skill, uses: s.uses, lastUsed: s.lastUsed, projects: [...s.projects].map((p) => basename(p)), inLibrary: library.has(s.skill) })),
-      unusedLibrarySkills: librarySkills().filter((l) => !summaries.some((u) => u.skill === l.name)).map((l) => l.name),
+      unusedLibrarySkills: unused,
     });
   }
   if (summaries.length === 0) {
     info(`No skill usage in Claude Code transcripts from the last ${args.days} days.`);
     return;
   }
-  const library = new Set(librarySkills().map((s) => s.name));
   info(`Skill usage, last ${args.days} days ${dim(`(from ${tildify(join(claudeDir(), "projects"))})`)}\n`);
   table(
     summaries.map((s) => ({
@@ -692,10 +697,9 @@ export async function usage(args: Args) {
     })),
   );
 
-  const unused = librarySkills().filter((s) => !summaries.some((u) => u.skill === s.name));
   if (unused.length > 0) {
     info("");
-    warn(`Library skills unused in the last ${args.days} days: ${unused.map((s) => s.name).join(", ")}`);
+    warn(`Library skills unused in the last ${args.days} days: ${unused.join(", ")}`);
   }
 }
 
@@ -743,7 +747,7 @@ export function harnessesCommand(args: Args) {
 
 /** Makes every skill in the project (or --all projects) usable by every harness you use. */
 export function link(args: Args) {
-  const roots = args.all ? visibleProjects() : [requireProject()];
+  const roots = projectsFor(args);
   for (const root of roots) {
     if (args.allowTracked) allowTrackedLinks(root);
     const res = linkAll(root);
@@ -765,7 +769,7 @@ export function link(args: Args) {
 /** Your global skills, and which you keep global on purpose: skilllib global [keep|unkeep <name>...] */
 export function globalCommand(args: Args) {
   const [action, ...names] = args.positional;
-  const yours = machineSkills().filter((m) => m.movable && !m.broken);
+  const yours = yourGlobals();
   if (action === "move") return moveGlobal(args, names, yours);
   if (action === "keep" || action === "unkeep") {
     const unknown = names.filter((n) => !yours.some((m) => m.name === n));
@@ -823,10 +827,7 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   for (const m of moves) {
     if (m.moved) success(`${m.name} now loads only in ${m.changes.map(([r]) => basename(r)).join(", ")} (the global copy is in skilllib restore)`);
     else error(`${m.name}: ${m.reason}`);
-    for (const [root, c] of m.changes) {
-      if (c.blocked?.length) warn(`  ${basename(root)}: git tracks ${c.blocked.join(", ")}, so no link there. Re-run with --allow-tracked to add it.`);
-      if (c.uncommitted?.length) warn(`  ${basename(root)}: no link in ${c.uncommitted.join(", ")}: git tracks it but not the skill's copy, so the link would break for teammates. Commit the copy, then run skilllib link --allow-tracked.`);
-    }
+    for (const [root, c] of m.changes) warnHeldLinks(c, `in ${basename(root)}`);
   }
   if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
 }
@@ -842,7 +843,7 @@ export function tidy(args: Args) {
   if (args.keep && !names.length) {
     throw new Error("Usage: skilllib tidy <name>... --keep <folder>");
   }
-  const targets: (string | null)[] = args.global ? [null] : args.all ? visibleProjects() : [requireProject()];
+  const targets: (string | null)[] = args.global ? [null] : projectsFor(args);
   // A name or --keep folder that matches nothing is a mistake (a typo): say so before changing anything.
   const problems: string[] = [];
   for (const name of names) {
@@ -886,7 +887,7 @@ export function tidy(args: Args) {
     for (const c of conflicts) {
       warn(`${label} · ${c.name}: the copies differ`);
       for (const copy of c.copies) {
-        const runs = copy.runs.map((id) => HARNESSES.find((h) => h.id === id)!.name);
+        const runs = copy.runs.map((id) => harness(id).name);
         info(`    ${copyLabel(c, copy.dir)}${runs.length ? dim(`  run by ${runs.join(", ")}`) : ""}${c.managed === copy.dir ? dim("  (skilllib's copy)") : ""}`);
       }
       const pick = copyLabel(c, c.managed ?? c.copies[0]!.dir);

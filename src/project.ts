@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { AGENTS_SKILLS_DIR, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, skilllibHome, userHome } from "./paths.js";
+import { MANIFEST_FILE, realPath, skilllibHome, userHome } from "./paths.js";
 import { versionForHash } from "./versions.js";
 
 /**
@@ -43,14 +43,6 @@ export function findProjectRoot(from: string = process.cwd()): string {
 export function projectHere(from: string = process.cwd()): string | null {
   const root = findProjectRoot(from);
   return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE))) ? root : null;
-}
-
-export function projectSkillsDir(root: string): string {
-  return join(root, PROJECT_SKILLS_DIR);
-}
-
-export function agentsSkillsDir(root: string): string {
-  return join(root, AGENTS_SKILLS_DIR);
 }
 
 export function readManifest(root: string): Manifest {
