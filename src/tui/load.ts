@@ -235,7 +235,7 @@ export function loadWorld(): World {
 }
 
 /** Uses per repo and per day over the last 30 days, from Claude Code's transcripts. */
-export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">> {
+export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" | "totals">> {
   const repoOf = new Map(w.projects.map((p) => [p.path, p.name]));
   const projectOf = projectOfFactory(w.projects.map((p) => p.path));
   const usage: World["usage"] = {};
@@ -243,7 +243,11 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
   // Calendar days in local time (index 29 = today), so "today" and each bar mean a real day.
   const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);
   const today = midnight(Date.now());
+  const totals: Record<string, number> = {};
   for (const use of await scanUsage(30)) {
+    // As doctor counts them: every session, and a plugin's copy (/plugin:name) counts for the skill.
+    const skill = use.skill.split(":").pop()!;
+    totals[skill] = (totals[skill] ?? 0) + 1;
     const root = projectOf(use.cwd);
     const repo = root ? repoOf.get(root) : undefined;
     const day = 29 - Math.round((today - midnight(Date.parse(use.at))) / 86_400_000);
@@ -251,7 +255,7 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
     (usage[repo] ??= {})[use.skill] = (usage[repo][use.skill] ?? 0) + 1;
     ((days[repo] ??= {})[use.skill] ??= new Array<number>(30).fill(0))[day]! += 1;
   }
-  return { usage, days };
+  return { usage, days, totals };
 }
 
 /** What a change did, in a few words. */
@@ -519,11 +523,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const removed = removeAgentSkill();
       return removed.length ? `Removed the skilllib skill (${removed.map(tildify).join(", ")})` : failed("The skilllib skill isn't installed");
     },
-    usageIssues: (usage) => {
+    usageIssues: ({ usage, totals = {} }) => {
       const repoOf = new Map([...roots].map(([name, root]) => [root, name]));
-      // As doctor counts them: a plugin's copy (/plugin:name) counts for the skill.
-      const total = (skill: string) => Object.values(usage).reduce((n, u) => n + Object.entries(u).reduce((m, [k, v]) => m + (k.split(":").pop() === skill ? v : 0), 0), 0);
-      return usageIssues([...roots.values()], machine, libraryNames, { inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0, total, days: 30 });
+      return usageIssues([...roots.values()], machine, libraryNames, { inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0, total: (skill) => totals[skill] ?? 0, days: 30 });
     },
   };
 }

@@ -160,7 +160,7 @@ test("each of doctor's issues shows on the rows it names: a repo's, Global's, a 
   expect(plugin("react-kit@cursor-public")).toEqual(["cursor-plugin:react-kit"]);
   expect(plugin("railway@claude-plugins-official")).toEqual([]);
   // Your skills only shows the library's own: in no repo, unused (from usage, which the app adds once it's read).
-  w.issues = [...w.issues, ...w.ops.usageIssues(w.usage)];
+  w.issues = [...w.issues, ...w.ops.usageIssues(w)];
   expect(ids(libraryIssues(w, "sql-migrations"))).toEqual(["unused:library"]);
   expect(libraryIssues(w, "stripe-payments")).toEqual([]);
 });

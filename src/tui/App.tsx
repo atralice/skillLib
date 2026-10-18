@@ -599,7 +599,7 @@ function addCursor(rows: W.AddRow[], cursor: number): number {
 /** The message of a result; its follow-up (if any) is asked separately. */
 const said = W.said;
 
-export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days">> }) {
+export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days" | "totals">> }) {
   const { exit, suspendTerminal } = useApp();
   const { columns: termCols, rows: termRows } = useWindowSize();
   const sidebar = termCols >= SIDEBAR_AT;
@@ -607,10 +607,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const columns = sidebar ? termCols - SIDEBAR_W : termCols;
   const [base, setBase] = useState(initial);
   // Usage arrives after the first paint: reading transcripts is slow.
-  const [used, setUsed] = useState<Pick<W.World, "usage" | "days">>();
+  const [used, setUsed] = useState<Pick<W.World, "usage" | "days" | "totals">>();
   const withUsage = used ? { ...base, ...used } : base;
   // What usage says, read again with everything else after a change.
-  const usageIssues = useMemo(() => (withUsage.days ? base.ops.usageIssues(withUsage.usage) : []), [base, used]);
+  const usageIssues = useMemo(() => (withUsage.days ? base.ops.usageIssues(withUsage) : []), [base, used]);
   const world: W.World = { ...withUsage, issues: [...base.issues, ...usageIssues] };
   useEffect(() => {
     let live = true;

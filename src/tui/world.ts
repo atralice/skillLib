@@ -159,8 +159,8 @@ export type Ops = {
   installAgentSkill(): Result;
   /** Removes the skilllib skill from the global folders it was installed in. */
   removeAgentSkill(): Result;
-  /** What usage says on top of `World.issues` (doctor's unused skills), from the uses per repo. */
-  usageIssues(usage: World["usage"]): Found[];
+  /** What usage says on top of `World.issues` (doctor's unused skills). */
+  usageIssues(used: Pick<World, "usage" | "totals">): Found[];
 };
 
 export type World = {
@@ -176,6 +176,8 @@ export type World = {
   usage: Record<string, Record<string, number>>;
   /** The same per day (index 29 = today); absent until the transcripts are read. */
   days?: Record<string, Record<string, number[]>>;
+  /** Uses per skill in every session, in a listed repo or not (a plugin's copy counts for the skill), as doctor counts them. */
+  totals?: Record<string, number>;
   descriptions: Record<string, string>;
   backups: Backup[];
   /** Folders scanned for repos, and repos you hid from the list. */

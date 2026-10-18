@@ -90,7 +90,7 @@ On first run, skilllib asks two things:
 Then a good first session looks like this:
 
 1. **You land in Places, on the repo you're in.** `enter` opens its skills; `enter` again opens a skill's issues and actions.
-2. **Open Health** to see everything worth fixing, in every repo and in your global skills. **✦ Fix N issues automatically…** does the safe ones; the rest are your call, one skill at a time.
+2. **Open Health** to see everything worth fixing, in every repo and in your global skills: what `skilllib doctor` reports. **✦ Fix N issues automatically…** does the safe ones; the rest are your call, one at a time.
 3. **Add skills** to a repo with **+ Add a skill…**, the top row of its list.
 
 ---
@@ -125,7 +125,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Your skills** | Your library: master copies, versioned. Nothing here loads anywhere until you add it to a repo. |
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Plugins** | Every plugin installed, on or off: what it brings, where it's installed, and how much its skills get used. Turn it on or off, update it, uninstall it, or replace it with library skills. |
-| **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
+| **Health** | What `skilllib doctor` reports, in every repo and in Global, each with its fix or choices. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
 | **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
@@ -257,7 +257,7 @@ It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at
 
 ### Duplicates
 
-The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case on the skill it's about, with its fix. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
+The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case with its fix, and the skill's row in a repo or Global shows it too. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
 
 | What it finds | What it does |
 |---|---|
