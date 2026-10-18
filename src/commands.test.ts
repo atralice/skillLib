@@ -302,8 +302,47 @@ describe("apply and global move, for agents", () => {
     expect(cli(repo, "global", "move", "nope", "--to", repo).err).toContain("Not one of your global skills: nope");
     expect(cli(repo, "global", "move", "mine").err).toContain("Usage: skilllib global move");
     // --to never takes a flag as a repo
-    expect(cli(repo, "global", "move", "mine", "--to", "--json").err).toContain("Usage: skilllib global move");
+    const r = cli(repo, "global", "move", "mine", "--to", "--json");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("--to");
     expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+  });
+});
+
+describe("for agents: flags, errors and exit codes", () => {
+  const repo = () => {
+    const r = join(tmp, "code", "web");
+    mkdirSync(join(r, ".git"), { recursive: true });
+    return r;
+  };
+
+  test("a misspelled flag is an error, and with --json the error is the JSON line", () => {
+    const r = cli(repo(), "link", "--allow-traked", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).error).toContain("--allow-traked");
+  });
+
+  test("a failing command with --json prints {error} on stdout", () => {
+    const r = cli(repo(), "show", "nope", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)).toEqual({ error: "nope is not in the library" });
+    expect(JSON.parse(cli(repo(), "frobnicate", "--json").out).error).toContain("Unknown command: frobnicate");
+  });
+
+  test("sync takes no skill names, and install is not a command", () => {
+    const web = repo();
+    const sync = cli(web, "sync", "alpha");
+    expect(sync.code).toBe(1);
+    expect(sync.err).toContain("sync takes no skill names");
+    expect(cli(web, "install", "alpha").code).toBe(1);
+    expect(existsSync(join(web, ".claude", "skills", "alpha"))).toBe(false);
+  });
+
+  test("import exits 1 when it skips a folder", () => {
+    mkdirSync(join(tmp, "not-a-skill"));
+    const r = cli(tmp, "import", join(tmp, "not-a-skill"), "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)).toEqual([{ path: join(tmp, "not-a-skill"), status: "no SKILL.md" }]);
   });
 });
 

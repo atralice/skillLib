@@ -155,6 +155,9 @@ export type DoctorJson = {
   fixed?: { ok: boolean; message: string };
 }[];
 
+/** Any command with --json that fails: it exits 1, and this is the one line on stdout. */
+export type ErrorJson = { error: string };
+
 /** `skilllib apply <issue-id> [choice] --json` */
 export type ApplyJson = { id: string; applied: string; ok: boolean; message: string };
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import * as commands from "./commands.js";
-import { error, setJsonMode } from "./output.js";
+import { error, isJsonMode, json, setJsonMode } from "./output.js";
 import { refreshAgentSkill } from "./agentSkill.js";
 
 const HELP = `
@@ -66,8 +66,9 @@ function packageVersion(): string {
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
+  // Before parsing, so a bad flag is reported as JSON too.
+  setJsonMode(rest.includes("--json"));
   const args = commands.parseArgs(rest);
-  setJsonMode(args.json);
   // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
   if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
   switch (command) {
@@ -85,7 +86,6 @@ async function main() {
     case "rm":
       return commands.remove(args);
     case "sync":
-    case "install":
       return commands.sync(args);
     case "update":
     case "upgrade":
@@ -142,6 +142,7 @@ async function main() {
       console.log(HELP);
       return;
     default:
+      if (isJsonMode()) throw new Error(`Unknown command: ${command} (skilllib help lists them)`);
       console.error(`Unknown command: ${command}\n`);
       console.log(HELP);
       process.exit(1);
@@ -149,7 +150,10 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
-  error(err instanceof Error ? err.message : String(err));
+  const message = err instanceof Error ? err.message : String(err);
+  // With --json, stdout still carries one JSON document: the error.
+  if (isJsonMode()) json("error", { error: message });
+  error(message);
   if (process.env.DEBUG && err instanceof Error) console.error(err.stack);
   process.exit(1);
 });

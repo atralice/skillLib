@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
-import { importSkill, isLink, listBackups } from "../library.js";
+import { addSkill, importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { recordOrigin } from "../sources.js";
 import { forgetLatest } from "../versions.js";
@@ -649,4 +649,16 @@ test("installing the skilllib skill over a folder that isn't skilllib's fails, a
   writeFileSync(join(mkdirSync(join(tmp, ".claude", "skills", "skilllib"), { recursive: true })!, "SKILL.md"), "mine\n");
   const r = loadWorld().ops.installAgentSkill();
   expect(r).toEqual(failed("skilllib skill: ~/.claude/skills/skilllib already exists and isn't skilllib's"));
+});
+
+test("restoring one skill puts back only that one", () => {
+  for (const name of ["alpha", "beta"]) {
+    writeSkill(join(tmp, "src", name));
+    importSkill(join(tmp, "src", name));
+    addSkill(repo, name);
+    rmSync(join(repo, ".claude", "skills", name), { recursive: true });
+  }
+  loadWorld().ops.restore("app", "alpha");
+  expect(existsSync(join(repo, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+  expect(existsSync(join(repo, ".claude", "skills", "beta"))).toBe(false);
 });

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { parseArgs as parseFlags } from "node:util";
 import { basename, join, resolve, sep } from "node:path";
 import {
   addSkill,
@@ -55,23 +56,37 @@ export type Args = {
   to: string[];
 };
 
+/** Every flag a command takes. A flag not listed here is an error, so a typo never passes silently. */
+const FLAGS = {
+  force: { type: "boolean" },
+  all: { type: "boolean" },
+  global: { type: "boolean" },
+  fix: { type: "boolean" },
+  "allow-tracked": { type: "boolean" },
+  json: { type: "boolean" },
+  "dry-run": { type: "boolean" },
+  "allow-git": { type: "boolean" },
+  days: { type: "string" },
+  keep: { type: "string" },
+  to: { type: "string", multiple: true },
+} as const;
+
 export function parseArgs(argv: string[]): Args {
-  const daysIdx = argv.indexOf("--days");
-  const days = daysIdx >= 0 ? Number(argv[daysIdx + 1]) : USAGE_DAYS;
-  const keepIdx = argv.indexOf("--keep");
+  const { values: v, positionals } = parseFlags({ args: argv, options: FLAGS, allowPositionals: true, strict: true });
+  const days = Number(v.days ?? USAGE_DAYS);
   return {
-    positional: argv.filter((a, i) => !a.startsWith("--") && !["--days", "--keep", "--to"].includes(argv[i - 1]!)),
-    force: argv.includes("--force"),
-    all: argv.includes("--all"),
-    global: argv.includes("--global"),
-    fix: argv.includes("--fix"),
-    allowTracked: argv.includes("--allow-tracked"),
-    json: argv.includes("--json"),
+    positional: positionals,
+    force: !!v.force,
+    all: !!v.all,
+    global: !!v.global,
+    fix: !!v.fix,
+    allowTracked: !!v["allow-tracked"],
+    json: !!v.json,
     days: Number.isFinite(days) && days > 0 ? days : USAGE_DAYS,
-    dryRun: argv.includes("--dry-run"),
-    allowGit: argv.includes("--allow-git"),
-    ...(keepIdx >= 0 && argv[keepIdx + 1] ? { keep: argv[keepIdx + 1] } : {}),
-    to: argv.flatMap((a, i) => (argv[i - 1] === "--to" && !a.startsWith("--") ? a.split(",").filter(Boolean) : [])),
+    dryRun: !!v["dry-run"],
+    allowGit: !!v["allow-git"],
+    ...(v.keep ? { keep: v.keep } : {}),
+    to: (v.to ?? []).flatMap((t) => t.split(",").filter(Boolean)),
   };
 }
 
@@ -334,8 +349,7 @@ export function projects(args: Args) {
 
 export function add(args: Args) {
   if (args.positional.length === 0) {
-    error("Usage: skilllib add <skill-name>... [--force]");
-    process.exit(1);
+    throw new Error("Usage: skilllib add <skill-name>... [--force]");
   }
   const root = requireProject();
   if (args.allowTracked) allowTrackedLinks(root);
@@ -345,8 +359,7 @@ export function add(args: Args) {
 
 export function remove(args: Args) {
   if (args.positional.length === 0) {
-    error("Usage: skilllib remove <skill-name>... [--force]");
-    process.exit(1);
+    throw new Error("Usage: skilllib remove <skill-name>... [--force]");
   }
   const root = requireProject();
   printChanges(root, args.positional.map((name) => removeSkill(root, name, { force: args.force })), args);
@@ -354,6 +367,7 @@ export function remove(args: Args) {
 
 /** Installs exactly the versions in skilllib.json (--all: every project). */
 export function sync(args: Args) {
+  if (args.positional.length) throw new Error(`sync takes no skill names: it installs exactly what skilllib.json pins. To add a skill: skilllib add ${args.positional.join(" ")}`);
   const roots = args.all ? visibleProjects() : [requireProject()];
   const results = roots.map((root): AllChangesJson[number] => {
     if (args.allowTracked) allowTrackedLinks(root);
@@ -418,20 +432,21 @@ export function outdated(args: Args) {
 export function importSkills(args: Args) {
   const dirs = args.global ? machineSkills().filter((m) => m.movable && !m.broken).map((m) => m.path) : args.positional.map((p) => resolve(p));
   if (dirs.length === 0) {
-    error("Usage: skilllib import <skill-dir>... [--force] | skilllib import --global");
-    process.exit(1);
+    throw new Error("Usage: skilllib import <skill-dir>... [--force] | skilllib import --global");
   }
   const results: ImportJson = [];
   for (const dir of dirs) {
     if (!isSkillDir(dir)) {
       warn(`${tildify(dir)}: no SKILL.md, skipping`);
       results.push({ path: dir, status: "no SKILL.md" });
+      process.exitCode = 1;
       continue;
     }
     const { name, status: result } = importSkill(dir, { force: args.force });
     results.push({ path: dir, name, status: result });
     if (result === "exists") {
       warn(`${name}: the library already has a different version (use --force to replace it)`);
+      process.exitCode = 1;
       continue;
     }
     success(`${name} ${dim(result === "unchanged" ? "already in library" : result === "added" ? "added to library" : "library updated")}`);
@@ -498,13 +513,12 @@ export function folders(args: Args) {
   const { roots, hidden } = readConfig();
   info(roots.length ? `Project folders:\n${roots.map((r) => `  ${tildify(r)}`).join("\n")}` : "No project folders. Add one: skilllib folders add ~/Projects");
   if (hidden.length) info(dim(`Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}  (skilllib unhide <path>)`));
-  if (failed) process.exit(1);
+  if (failed) process.exitCode = 1;
 }
 
 export function unhide(args: Args) {
   if (args.positional.length === 0) {
-    error("Usage: skilllib unhide <path>...");
-    process.exit(1);
+    throw new Error("Usage: skilllib unhide <path>...");
   }
   let failed = false;
   for (const p of args.positional) {
@@ -516,19 +530,17 @@ export function unhide(args: Args) {
       failed = true;
     }
   }
-  if (failed) process.exit(1);
+  if (failed) process.exitCode = 1;
 }
 
 export function newSkill(args: Args) {
   const [name, ...rest] = args.positional;
   if (!name) {
-    error("Usage: skilllib new <name> [description]");
-    process.exit(1);
+    throw new Error("Usage: skilllib new <name> [description]");
   }
   const r = createSkill(name, rest.join(" "));
   if (!r.ok) {
-    error(`Can't create ${name}: ${r.reason}`);
-    process.exit(1);
+    throw new Error(`Can't create ${name}: ${r.reason}`);
   }
   success(`Created ${tildify(join(r.dir, "SKILL.md"))}`);
 }
@@ -544,8 +556,7 @@ export function restore(args: Args) {
   }
   const backup = backups.find((b) => b.name === name);
   if (!backup) {
-    error(`No backup named ${name}`);
-    process.exit(1);
+    throw new Error(`No backup named ${name}`);
   }
   const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
   if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
@@ -692,8 +703,7 @@ export function show(args: Args) {
   const name = args.positional[0];
   const dir = name ? join(libraryDir(), name) : "";
   if (!name || !isSkillDir(dir)) {
-    error(name ? `${name} is not in the library` : "Usage: skilllib show <skill-name>");
-    process.exit(1);
+    throw new Error(name ? `${name} is not in the library` : "Usage: skilllib show <skill-name>");
   }
   const { description } = readSkillInfo(dir);
   if (args.json) {
@@ -719,8 +729,7 @@ export function harnessesCommand(args: Args) {
   if (args.positional.length) {
     const unknown = args.positional.filter((p) => !ids.includes(p as HarnessId));
     if (unknown.length) {
-      error(`Unknown harness: ${unknown.join(", ")}. Choose from: ${ids.join(", ")}`);
-      process.exit(1);
+      throw new Error(`Unknown harness: ${unknown.join(", ")}. Choose from: ${ids.join(", ")}`);
     }
     setHarnesses(args.positional as HarnessId[]);
     success(`Using ${args.positional.join(", ")}`);
@@ -761,14 +770,12 @@ export function globalCommand(args: Args) {
   if (action === "keep" || action === "unkeep") {
     const unknown = names.filter((n) => !yours.some((m) => m.name === n));
     if (!names.length || unknown.length) {
-      error(names.length ? `Not one of your global skills: ${unknown.join(", ")}` : `Usage: skilllib global ${action} <name>...`);
-      process.exit(1);
+      throw new Error(names.length ? `Not one of your global skills: ${unknown.join(", ")}` : `Usage: skilllib global ${action} <name>...`);
     }
     setKeepGlobal(names, action === "keep");
     success(action === "keep" ? `Keeping ${names.join(", ")} global on purpose` : `${names.join(", ")} will show up in cleanup again`);
   } else if (action) {
-    error("Usage: skilllib global [keep|unkeep <name>...] | skilllib global move <name>... --to <repo>...");
-    process.exit(1);
+    throw new Error("Usage: skilllib global [keep|unkeep <name>...] | skilllib global move <name>... --to <repo>...");
   }
   const kept = keptGlobal();
   if (!yours.length) return info("None of your skills load globally.");
@@ -833,8 +840,7 @@ export function tidy(args: Args) {
   const keepFor = (base: string | null) =>
     args.keep ? Object.fromEntries(names.map((n) => [n, base ? resolve(base, args.keep!) : expandHome(args.keep!)])) : {};
   if (args.keep && !names.length) {
-    error("Usage: skilllib tidy <name>... --keep <folder>");
-    process.exit(1);
+    throw new Error("Usage: skilllib tidy <name>... --keep <folder>");
   }
   const targets: (string | null)[] = args.global ? [null] : args.all ? visibleProjects() : [requireProject()];
   // A name or --keep folder that matches nothing is a mistake (a typo): say so before changing anything.
@@ -855,8 +861,7 @@ export function tidy(args: Args) {
     }
   }
   if (problems.length) {
-    for (const p of problems) error(p);
-    process.exit(1);
+    throw new Error(problems.join("\n"));
   }
   const reports: { label: string; report: TidyReport }[] = targets.map((root) =>
     root === null ? { label: "global folders", report: planGlobalTidy({ keep: keepFor(null) }) } : { label: basename(root), report: planProjectTidy(root, { keep: keepFor(root) }) },
@@ -900,8 +905,7 @@ export function agentSkill(args: Args) {
   if (action === "install") {
     const r = installAgentSkill();
     if (!r.ok) {
-      error(`Can't install the skilllib skill: ${r.reason}`);
-      process.exit(1);
+      throw new Error(`Can't install the skilllib skill: ${r.reason}`);
     }
     if (args.json) return json("agent-skill", { state: agentSkillState(), dirs: r.dirs });
     success(`Installed in ${r.dirs.map((d) => tildify(d)).join(" and ")}`);

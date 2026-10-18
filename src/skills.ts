@@ -34,7 +34,9 @@ function listFiles(dir: string): string[] {
     .filter((entry) => !IGNORED.has(entry))
     .flatMap((entry) => {
       const full = join(dir, entry);
-      return statSync(full).isDirectory() ? listFiles(full) : [full];
+      // A link to nothing has no content: skip it rather than fail on the whole skill.
+      const st = statSync(full, { throwIfNoEntry: false });
+      return !st ? [] : st.isDirectory() ? listFiles(full) : [full];
     });
 }
 
@@ -60,8 +62,11 @@ export function treeHash(dir: string): string | null {
  * ~/.agents/skills, and editing a copy must not edit the source.
  */
 export function copySkill(from: string, to: string) {
+  // Resolve first: if `from` is gone, this throws before `to` is deleted.
+  const source = realpathSync(from);
   rmSync(to, { recursive: true, force: true });
-  cpSync(realpathSync(from), to, { recursive: true, dereference: true, filter: (src) => !IGNORED.has(basename(src)) });
+  // existsSync: a link to nothing (dereferenced, there's nothing to copy) is left out.
+  cpSync(source, to, { recursive: true, dereference: true, filter: (src) => !IGNORED.has(basename(src)) && existsSync(src) });
 }
 
 /** Skill folders directly inside `dir` (folders containing SKILL.md). */

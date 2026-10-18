@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addSkill, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
+import { copySkill, treeHash } from "./skills.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
 import { tildify } from "./output.js";
@@ -582,4 +583,33 @@ test("nested skill folders in a monorepo are found apart from the repo's own, wi
     ["packages/web/.claude/skills", "alpha", "untracked copy of library skill", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 0 }]],
     ["packages/web/.claude/skills", "lint", "local only", [{ id: "claude-code", paths: 1 }, { id: "cursor", paths: 1 }, { id: "codex", paths: 0 }]],
   ]);
+});
+
+describe("damaged folders and pins from another library", () => {
+  // A link to nothing: Windows needs privileges for file symlinks, so this runs elsewhere.
+  test.skipIf(process.platform === "win32")("a link to nothing inside a skill doesn't break hashing or copying", () => {
+    const dir = join(tmp, "src", "alpha");
+    symlinkSync(join(tmp, "nowhere"), join(dir, "gone"));
+    expect(treeHash(dir)).toBeString();
+    const to = join(tmp, "copy");
+    copySkill(dir, to);
+    expect(existsSync(join(to, "SKILL.md"))).toBe(true);
+    expect(lstatSync(join(to, "gone"), { throwIfNoEntry: false })).toBeUndefined();
+  });
+
+  test("copying from a folder that's gone leaves the target as it was", () => {
+    const to = join(tmp, "keep");
+    writeSkill(to, "mine");
+    expect(() => copySkill(join(tmp, "missing"), to)).toThrow();
+    expect(readFileSync(join(to, "SKILL.md"), "utf-8")).toContain("mine");
+  });
+
+  test("sync installs the pinned content by its hash, even when the pinned number is other content here", () => {
+    writeSkill(join(tmp, "src", "alpha"), "v2");
+    importSkill(join(tmp, "src", "alpha"), { force: true });
+    // A teammate's library numbered this content 1; in this one, 1 is "v1".
+    writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: latestVersion("alpha")!.hash } } }));
+    syncProject(project);
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v2");
+  });
 });

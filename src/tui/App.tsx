@@ -855,7 +855,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
             ...(mine.some((m) => !m.kept)
               ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `skilllib stops warning about these ${n(mine.length)}.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
               : []),
-            fixOption({ label: `Delete all ${mine.length}`, preview: `Move these ${n(mine.length)} to Settings › Backups.`, run: (w) => (mine.forEach((m) => w.ops.deleteGlobal(m)), `Deleted ${n(mine.length)} (in Settings › Backups)`) }),
+            fixOption({ label: `Delete all ${mine.length}`, preview: `Move these ${n(mine.length)} to Settings › Backups.`, run: (w) => W.joined(mine.map((m) => w.ops.deleteGlobal(m))) }),
           ]
         : []),
       ...(libs.length
@@ -871,7 +871,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         : []),
       ...(libs.length ? [fixOption(W.deleteLibraryFix(world, libs.map((l) => l.name)))] : []),
       ...(locals.length
-        ? [fixOption({ label: `Remove all ${locals.length} from this repo`, preview: `Remove these ${n(locals.length)} from ${open}; your library keeps the tracked ones.`, run: (w) => (locals.forEach((s) => w.ops.remove(open!, s.name)), `Removed ${n(locals.length)} from ${open}`) })]
+        ? [fixOption({ label: `Remove all ${locals.length} from this repo`, preview: `Remove these ${n(locals.length)} from ${open}; your library keeps the tracked ones.`, run: (w) => W.joined(locals.map((s) => w.ops.remove(open!, s.name))) })]
         : []),
       ...[...new Set(machines.filter((m) => m.source === "plugin").map((m) => m.where))].map((id): Option => ({ label: `Open ${id.split("@")[0]} in Plugins`, action: () => openInPlugins(id) })),
       { label: "Review prompt", action: () => ui.copy(reviewPrompt(world, names, `Review these related skills (${label}).`), `a review prompt for ${label}`) },
@@ -1229,7 +1229,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         if (!row.create) return apply(row.run!);
         // A new skill opens in your editor, and goes into the repo once you've written it. Nothing
         // reads the library in between, so the template never becomes a version of its own.
-        row.run!(world);
+        // Creating can fail (a name the library won't take): say why, rather than open nothing.
+        const created = row.run!(world);
+        if (W.isFailure(created)) return setToast(`✗ ${said(created)}`);
         return edit(world.ops.libraryFile(m.query), row.afterEdit);
       }
       if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
