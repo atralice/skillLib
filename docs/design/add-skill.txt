@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││ ⌕ sq▏                                                                                  │
 │   ◈ Global          15   ││   Your library ─────────────────────────────────────────────────────────────────────── │
 │   ⧉ Plugins         7    ││ ▌ [ ] sql-migrations          v1    Write reversible SQL migrations and backfills saf… │
-│   ✓ Health          27   ││   New ──────────────────────────────────────────────────────────────────────────────── │
+│   ✓ Health          28   ││   New ──────────────────────────────────────────────────────────────────────────────── │
 │   Projects ───────────── ││   + Create "sq" for web-app                                                            │
 │ ▌ ◆ web-app          ✕   ││   ✦ Write "sq" with an agent                                                           │
 │     api-server       ✕   ││                                                                                        │

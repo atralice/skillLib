@@ -257,6 +257,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
         const extra = s ? (s.missing ? "missing" : s.git ? GIT_LABEL[s.git] : "") : "";
         const [ct, cc] = c === u ? ["", undefined] : tag(c);
         b.line(["  ", undefined], [path + "  ", color.text], [ct ? ct + "  " : "", cc], [extra, color.faint]);
+        for (const dir of s?.others ?? []) b.line(["  ", undefined], [`${dir}/${c.name}  `, color.text], ["another copy", color.faint]);
       }
       return b.d;
     },
@@ -265,9 +266,35 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
 
 /** A repo's skills, seen from the repo: only its own copies' issues; what loads everywhere is Global's business. */
 function projectSkillItems(w: W.World, p: string, nameW: number, ui: Ui): Item[] {
-  return byName(W.usable(w, p)).map((copies) =>
-    skillItem(w, copies, copies.some((c) => c.local) ? W.issuesAt(w, p, copies[0]!.name) : [], nameW, skillActions(w, p, copies[0]!, ui), p),
-  );
+  return [
+    ...byName(W.usable(w, p)).map((copies) =>
+      skillItem(w, copies, copies.some((c) => c.local) ? W.issuesAt(w, p, copies[0]!.name) : [], nameW, skillActions(w, p, copies[0]!, ui), p),
+    ),
+    // A link to nothing loads nothing, but its issue still needs a row (and its fix, Fix all).
+    ...W.unlisted(w, p).map((name): Item => {
+      const issues = W.issuesAt(w, p, name);
+      const top = W.worst(issues)!;
+      return {
+        key: name,
+        name,
+        group: "local",
+        issues,
+        uses: 0,
+        cells: [
+          { text: SEV[top.severity].icon, width: 2, color: SEV[top.severity].color },
+          { text: clip(name, nameW), width: nameW },
+          { text: "–", width: 14, color: color.faint },
+          { text: usesText(0), width: 6, color: color.muted },
+          { text: " " + top.short, grow: true, color: SEV[top.severity].color },
+        ],
+        detail: () => {
+          const b = builder(name);
+          b.issues(issues);
+          return b.d;
+        },
+      };
+    }),
+  ];
 }
 
 /** What the lists need from the screen: messages, jumping, the editor, copying, menus. */
@@ -307,11 +334,12 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
   const remove: W.Fix = {
     // Its folder gone: all that's left to remove is the skilllib.json entry (the label Health offers too).
     label: s?.missing ? "Remove it from skilllib.json" : "Remove from repo",
-    preview: s?.missing
-      ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
-      : s?.source === "lib"
-        ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
-        : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`,
+    preview:
+      (s?.missing
+        ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
+        : s?.source === "lib"
+          ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
+          : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) + (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : ""),
     run: (w) => w.ops.remove(p, u.name),
   };
   if (s?.source === "lib")
@@ -515,14 +543,14 @@ function healthItems(w: W.World): Item[] {
   });
 }
 
-/** Plugin names are short; the room goes to Scope and Issue. */
-const pluginW = (nameW: number) => Math.min(nameW, 17);
+/** Plugin names are short; the room goes to Scope and Issue. Under 76 columns Brings and Uses go (the details have both). */
+const pluginCols = (columns: number, nameW: number) => (columns >= 76 ? { wide: true, name: Math.min(nameW, 17), scope: 19 } : { wide: false, name: 15, scope: 12 });
 
 const STATE: Record<string, Seg> = { on: ["on", color.green], off: ["off", color.faint], unknown: ["?", color.faint] };
 
 /** Plugins: one row per install, on or off, with what it brings and how much its skills get used. */
-function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W.Issue[]>): Item[] {
-  const nameW = pluginW(skillW);
+function pluginItems(w: W.World, columns: number, skillW: number, ui: Ui, issuesOf: Map<string, W.Issue[]>): Item[] {
+  const { wide, name: nameW, scope: scopeW } = pluginCols(columns, skillW);
   return w.plugins.map((p): Item => {
     const issues = issuesOf.get(p.key) ?? [];
     const top = W.worst(issues);
@@ -550,10 +578,10 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
         { text: top ? SEV[top.severity].icon : " ", width: 2, color: top ? SEV[top.severity].color : undefined },
         { text: clip(name, nameW), width: nameW, color: p.on === false ? color.muted : undefined },
         { text: harness(p.agent).icon, width: 3, color: harness(p.agent).color },
-        { text: clip(cursor ? "–" : W.pluginScope(p), 19), width: 19, color: p.repo ? color.blue : color.muted },
-        { text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted },
+        { text: clip(cursor ? "–" : W.pluginScope(p), scopeW), width: scopeW, color: p.repo ? color.blue : color.muted },
+        ...(wide ? [{ text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted }] : []),
         { text: state.padEnd(4), width: 4, color: stateColor },
-        { text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted },
+        ...(wide ? [{ text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted }] : []),
         // Your skills it repeats, across its issues; else its worst issue.
         { text: " " + (repeats ? `Repeats ${repeats} of yours` : (top?.short ?? "")), grow: true, color: top ? SEV[top.severity].color : color.faint },
       ],
@@ -630,7 +658,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   /** Groups you opened. */
   const [folds, setFolds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [cursors, setCursors] = useState<Record<string, number>>({});
+  /** Per list, the row the cursor is on and where it was: rows above it come and go (a fix's row, after a fix). */
+  const [cursors, setCursors] = useState<Record<string, { key: string; at: number }>>({});
   // Panes go Places → list → details: enter or → goes one deeper, esc or ← one back.
   const [focus, setFocus] = useState<"sidebar" | "list" | "detail">(sidebar ? "sidebar" : "list");
   const [sideQuery, setSideQuery] = useState("");
@@ -674,7 +703,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         : place === "library"
           ? libraryItems(world, nameW, ui)
           : place === "plugins"
-            ? pluginItems(world, nameW, ui, pluginIssues)
+            ? pluginItems(world, columns, nameW, ui, pluginIssues)
           : place === "health"
             ? healthItems(world)
             : settingsItems();
@@ -702,7 +731,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
 
   const cursorKey = `${place}|${open}`;
   const firstSelectable = Math.max(0, items.findIndex((i) => !i.header && !i.action));
-  let cursor = Math.min(cursors[cursorKey] ?? firstSelectable, items.length - 1);
+  const saved = cursors[cursorKey];
+  const kept = saved ? items.findIndex((i) => i.key === saved.key) : -1;
+  let cursor = Math.min(kept >= 0 ? kept : (saved?.at ?? firstSelectable), items.length - 1);
   if (items[cursor]?.header) cursor = firstSelectable;
   const current = items[cursor];
   const detail = current?.detail?.(columns);
@@ -831,7 +862,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
               pickRepos: (w, repos) => w.ops.moveGlobal(mine, repos, label),
             }),
             ...(mine.some((m) => !m.kept)
-              ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `skilllib stops warning about these ${n(mine.length)}.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
+              ? [fixOption({ label: `Keep all ${mine.length} global on purpose`, preview: `Mark these ${n(mine.length)} as global on purpose: they no longer show as Not reviewed. Their other issues stay.`, run: (w) => (mine.forEach((m) => w.ops.keepGlobal(m.name, true)), `${n(mine.length)} marked as global on purpose`) })]
               : []),
             fixOption({ label: `Delete all ${mine.length}`, preview: `Move these ${n(mine.length)} to Settings › Backups.`, run: (w) => W.joined(mine.map((m) => w.ops.deleteGlobal(m))) }),
           ]
@@ -913,8 +944,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     do i = Math.max(0, Math.min(items.length - 1, i + delta));
     while (items[i]?.header && i > 0 && i < items.length - 1);
     if (items[i]?.header) return;
-    setCursors({ ...cursors, [cursorKey]: i });
+    setCursorAt(i);
     setDetailCursor(0);
+  }
+  function setCursorAt(i: number) {
+    setCursors({ ...cursors, [cursorKey]: { key: items[i]?.key ?? "", at: i } });
   }
   function goPlace(p: Place) {
     setPlace(p);
@@ -1057,23 +1091,24 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       if (key.escape) return setSideQuery("");
       return;
     }
+    // No Places pane: ← → switch places, wherever the list cursor is (groups open and close with space).
+    if (!sidebar && (key.leftArrow || key.rightArrow)) {
+      const i = PLACES.findIndex(([p]) => p === place) + (key.leftArrow ? -1 : 1);
+      if (PLACES[i]) goPlace(PLACES[i]![0]);
+      return;
+    }
     // Groups open with → (or enter, or space) and close with ← (or space); enter on an open one shows its actions.
     const fold = current?.fold;
     if (fold && !fold.open && (key.rightArrow || key.return || input === " ")) return toggleFold(fold.key);
     if (fold?.open && (key.leftArrow || input === " ")) return toggleFold(fold.key);
     if (current?.inFold && key.leftArrow) {
       toggleFold(current.inFold);
-      return setCursors({ ...cursors, [cursorKey]: items.findIndex((i) => i.fold?.key === current.inFold) });
+      return setCursorAt(items.findIndex((i) => i.fold?.key === current.inFold));
     }
     if (sidebar && key.leftArrow) return setFocus("sidebar");
     if (sidebar && key.rightArrow && detail) return setFocus("detail"), setDetailCursor(0);
     if (key.upArrow) return move(-1);
     if (key.downArrow) return move(1);
-    if (!sidebar && (key.leftArrow || key.rightArrow)) {
-      const i = PLACES.findIndex(([p]) => p === place) + (key.leftArrow ? -1 : 1);
-      if (PLACES[i]) goPlace(PLACES[i]![0]);
-      return;
-    }
     if (key.escape) {
       if (query) return setQuery("");
       if (sidebar) return setFocus("sidebar");
@@ -1310,7 +1345,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         : place === "library"
           ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 18], [" Uses", 6], [" Issue / description", 0]])
           : place === "plugins"
-            ? titles([["", 2], ["Plugin", pluginW(nameW)], ["", 3], ["Scope", 19], ["Brings", 13], ["On", 4], [" Uses", 6], [" Issue", 0]])
+            ? ((c) => titles([["", 2], ["Plugin", c.name], ["", 3], ["Scope", c.scope], ...(c.wide ? [["Brings", 13] as [string, number]] : []), ["On", 4], ...(c.wide ? [[" Uses", 6] as [string, number]] : []), [" Issue", 0]]))(pluginCols(columns, nameW))
           : place === "health"
             ? titles([["", 2], ["Issue", 0]])
             : null;
@@ -1650,18 +1685,22 @@ function Help({ width, height }: { width: number; height: number }) {
     ["ctrl+r", "read everything again from disk"],
     ["ctrl+c", "quit"],
   ];
+  const notes = [
+    "✕ problem · ⚠ suggestion · ★ recommended fix · \"your call\" = a decision, never auto-fixed",
+    "Source: lib = from your library · repo = committed by the team · untracked = only on this machine",
+    "Usage counts Claude Code sessions only: other agents don't record skill use.",
+  ];
+  // Wrapped to the pane, a key's description indented under itself; what doesn't fit is cut, not squeezed.
+  const lines: Seg[][] = [
+    ...keys.flatMap(([k, d]) => wrap(d, width - 16, 3).map((l, i): Seg[] => [[(i ? "" : k).padEnd(12), color.accent], [l, color.text]])),
+    [],
+    ...notes.flatMap((n) => wrap(n, width - 4, 3).map((l): Seg[] => [[l, color.muted]])),
+  ];
   return (
     <Panel title="Keys" hint="any key closes" focused width={width} height={height}>
-      {keys.map(([k, d]) => (
-        <Text key={k}>
-          <Text color={color.accent}>{k.padEnd(12)}</Text>
-          <Text color={color.text}>{d}</Text>
-        </Text>
+      {lines.slice(0, height - 2).map((segs, i) => (
+        <SegLine key={i} segs={segs.length ? segs : [[" "]]} />
       ))}
-      <Text> </Text>
-      <Text color={color.muted}>{"✕ problem · ⚠ suggestion · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
-      <Text color={color.muted}>{"Source: lib = from your library · repo = committed by the team · untracked = only on this machine"}</Text>
-      <Text color={color.muted}>{"Usage counts Claude Code sessions only: other agents don't record skill use."}</Text>
     </Panel>
   );
 }

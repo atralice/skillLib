@@ -1,16 +1,16 @@
-╭── ◆ skilllib ────────────╮╭── To fix  2/28 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││  All 27                                                                                │
+╭── ◆ skilllib ────────────╮╭── To fix  2/29 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     10   ││  All 28                                                                                │
 │   ◈ Global          15   ││     Issue                                                                              │
-│   ⧉ Plugins         7    ││   ✦ Fix 5 issues automatically…                                                        │
-│ ▌ ✓ Health          27   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
+│   ⧉ Plugins         7    ││   ✦ Fix 6 issues automatically…                                                        │
+│ ▌ ✓ Health          28   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
 │   Projects ───────────── ││   ✕ db-seed in api-server: the copies differ                                           │
 │   ◆ web-app          ✕   ││   ✕ frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-of… │
 │     api-server       ✕   ││   ✕ old-helper: broken link in ~/.claude/skills                                        │
-│     docs-site        ⚠   ││   ✕ stripe-payments: also in the Claude Code plugin stripe-tools@acme, on in api-serv… │
-│     mobile-app       ⚠   ││   ✕ vercel-deploy: also in the Claude Code plugin vercel@claude-plugins-official       │
-│     billing              ││   ✕ web-app: 1 skill in skilllib.json not installed                                    │
-│     blog                 ││   ⚠ 1 global skill not usable by Claude Code                                           │
-│     cli-tools            ││   ⚠ 1 global skill with duplicate copies                                               │
+│     docs-site        ⚠   ││   ✕ old-lint: broken link in api-server/.claude/skills                                 │
+│     mobile-app       ⚠   ││   ✕ stripe-payments: also in the Claude Code plugin stripe-tools@acme, on in api-serv… │
+│     billing              ││   ✕ vercel-deploy: also in the Claude Code plugin vercel@claude-plugins-official       │
+│     blog                 ││   ✕ web-app: 1 skill in skilllib.json not installed                                    │
+│     cli-tools            ││   ⚠ 1 global skill not usable by Claude Code                                           │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     design-system        │╭── Copies differ ───────────────────────────────────────────────────────────────────────╮
 │     e2e-tests            ││ Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs          │

@@ -2,7 +2,7 @@
 │ ▌ ▤ Your skills     10   ││  All 10   Issues 4                                                                     │
 │   ◈ Global          15   ││     Skill              Ver  Used in            Uses  Issue / description               │
 │   ⧉ Plugins         7    ││   + New skill…                                                                         │
-│   ✓ Health          27   ││ ▌ ⚠ ▸ ⧉ lean plugin (3)                                                     3 to fix   │
+│   ✓ Health          28   ││ ▌ ⚠ ▸ ⧉ lean plugin (3)                                                     3 to fix   │
 │   Projects ───────────── ││   ⚠ sql-migrations     v1   0 repos               –  In no repo, unused 30 days        │
 │   ◆ web-app          ✕   ││     stripe-payments    v2   2 repos              14  Stripe Checkout, Payment Links, … │
 │     api-server       ✕   ││     api-conventions    v1   2 repos              13  Our REST conventions: resource n… │

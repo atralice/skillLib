@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
@@ -11,7 +11,7 @@ import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
 import { usableHere } from "../here.js";
-import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, said, usable, type World } from "./world.js";
+import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, said, unlisted, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -249,7 +249,7 @@ test("deleting a library skill removes it from every repo, edits backed up", () 
   w = loadWorld();
   const fix = deleteLibraryFix(w, ["gamma"]);
   expect(fix.label).toBe("Delete from your library and 1 repo…");
-  expect(fix.preview).toContain("Removes it from this repo: app.");
+  expect(fix.preview).toContain("Removes it from app.");
   expect(fix.preview).toContain("app has local edits: backed up too.");
   expect(fix.run(w)).toBe("Deleted gamma from your library and from app (in Settings › Backups)");
   w = loadWorld();
@@ -268,14 +268,14 @@ function fakePlugin() {
 }
 
 /** A `claude` command that records what it was asked, or no `claude` at all. It's a shell script, so the tests that run it skip Windows. */
-function withClaude(installed: boolean, body: () => void) {
+function withClaude<T>(installed: boolean, body: () => T): T {
   const path = process.env.PATH;
   const bin = join(tmp, "bin");
   mkdirSync(bin, { recursive: true });
   if (installed) writeFileSync(join(bin, "claude"), `#!/bin/sh\n[ "$1" = --version ] && echo "2.1 (Claude Code)" && exit 0\necho "$@" > "${tmp}/claude-args"\n`, { mode: 0o755 });
   process.env.PATH = bin;
   try {
-    body();
+    return body();
   } finally {
     process.env.PATH = path;
   }
@@ -304,6 +304,17 @@ test("replacing a plugin keeps the origin of a skill you already had", () => {
   const w = loadWorld();
   withClaude(false, () => replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, []));
   expect(loadWorld().library.map((l) => `${l.name}:${l.origin}`).sort()).toEqual(["fmt:skills.sh: me/tools", "lint:plugin: tools@mk"]);
+});
+
+test("replacing a plugin whose skill your library has differently changes nothing", () => {
+  fakePlugin();
+  writeSkill(join(tmp, "src", "lint"), "mine");
+  importSkill(join(tmp, "src", "lint"));
+  const w = loadWorld();
+  const r = withClaude(false, () => replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, ["app"]));
+  expect(r).toEqual(failed("tools@mk kept: your library has different lint; update or delete it first"));
+  // Nothing copied in before it said no.
+  expect(loadWorld().library.map((l) => l.name)).toEqual(["lint"]);
 });
 
 test.skipIf(process.platform === "win32")("a plugin only turned on in your settings is turned off by Replace, never sent to `claude plugin`", () => {
@@ -396,6 +407,28 @@ test("differing copies in a repo: which agent runs which, and you pick the one t
   expect(readFileSync(join(repo, ".claude", "skills", "notes", "SKILL.md"), "utf-8")).toContain("theirs");
   w = loadWorld();
   expect(issue(w, `conflict:${repo}:notes`, "notes")).toBeUndefined();
+});
+
+test("removing a skill whose copies differ removes one, lists both, and says which stays", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(repo, ".claude", "skills", "notes"), "mine");
+  writeSkill(join(repo, ".agents", "skills", "notes"), "theirs");
+  const w = loadWorld();
+  const s = local(w, "notes").local!;
+  expect([s.dir, s.others]).toEqual([".claude/skills", [".agents/skills"]]);
+  expect(w.ops.remove("app", "notes")).toBe("Removed .claude/skills/notes from app (in Settings › Backups); the copy in .agents/skills stays");
+  expect(existsSync(join(repo, ".claude", "skills", "notes"))).toBe(false);
+  expect(readFileSync(join(repo, ".agents", "skills", "notes", "SKILL.md"), "utf-8")).toContain("theirs");
+});
+
+test("a broken link with no copy in the repo gets a row of its own, with its fix", () => {
+  mkdirSync(join(repo, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "gone"), join(repo, ".claude", "skills", "old"));
+  let w = loadWorld();
+  expect(unlisted(w, "app")).toEqual(["old"]);
+  pick(issue(w, `broken:${repo}:.claude/skills/old`, "old"), "Remove the link").run(w);
+  w = loadWorld();
+  expect(unlisted(w, "app")).toEqual([]);
 });
 
 test("tidying asks before changing what git tracks", () => {

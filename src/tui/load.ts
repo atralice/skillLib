@@ -38,7 +38,8 @@ import { harness, type HarnessId } from "../harnesses.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR } from "../paths.js";
 import { projectHere, readableRoots, readManifest } from "../project.js";
-import { readSkillInfo } from "../skills.js";
+import { readSkillInfo, treeHash } from "../skills.js";
+import { foldersOf } from "../tidy.js";
 import {
   claudeBinary,
   cursorPlugins,
@@ -92,6 +93,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     "repo skill, differs from library": { source: "repo" },
   };
   const state = git ? git.of(relativeTo(root, s.path)) : null;
+  const others = otherCopies(root, s.name, s.location);
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
   const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
   return {
@@ -103,8 +105,16 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
     ...(s.managed ? { version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
+    ...(others.length ? { others } : {}),
     git: state,
   };
+}
+
+/** Folders in a repo holding another real copy of a skill, besides `dir` (e.g. ".agents/skills"). */
+function otherCopies(root: string, name: string, dir: string): string[] {
+  return foldersOf(root, name)
+    .real.map((d) => relativeTo(root, d))
+    .filter((d) => d !== dir);
 }
 
 /** When a folder appeared, to the minute ("2026-09-25 20:55"). */
@@ -374,8 +384,11 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       if (!s) return failed(`${name} isn't in ${repo}`);
       const committed = !s.managed && ["committed", "changed"].includes(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)) ?? "");
       if (s.state.startsWith("repo skill") || committed) return failed(`${name} is the repo's own (committed by your team): skilllib doesn't delete it`);
-      if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
-      return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
+      // This copy goes; a real copy in another folder (one that differs) stays, and the result says so.
+      const others = otherCopies(rootOf(repo), name, s.location);
+      const left = (r: Result): Result => (typeof r === "string" && others.length ? `${r}; the copy in ${others.join(", ")} stays` : r);
+      if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), left(`Removed ${others.length ? `${s.location}/${name}` : name} from ${repo} (in Settings › Backups)`));
+      return left(orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true })));
     },
     update: (repo, name) => {
       const c = updateProject(rootOf(repo), [name])[0];
@@ -439,10 +452,14 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     replacePlugin: (p, repos) => {
       const id = p.id;
-      // Copies in, recording the plugin as their origin; a different library skill by the same name stops it.
+      // A different library skill by the same name stops it, before anything is copied in.
+      const clashes = p.skills.filter((s) => {
+        const mine = treeHash(librarySkillDir(s.name));
+        return mine !== null && mine !== treeHash(s.path);
+      });
+      if (clashes.length) return failed(`${id} kept: your library has different ${clashes.map((s) => s.name).join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
+      // Copies in, recording the plugin as their origin.
       const imported = p.skills.map((s) => ({ name: s.name, status: importSkill(s.path).status }));
-      const clashes = imported.filter((r) => r.status === "exists").map((r) => r.name);
-      if (clashes.length) return failed(`${id} kept: your library has different ${clashes.join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
       // Skills you already had keep the origin they have.
       for (const r of imported) if (r.status !== "unchanged") recordOrigin(r.name, `plugin: ${id}`);
       // Adding them asks about links git-tracked folders held back, as Add to repos does.

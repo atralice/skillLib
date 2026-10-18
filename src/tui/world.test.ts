@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, assignGroups, failed, isFailure, issueOf, issuesAt, libraryIssues, machineActions, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, repoIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
+import { addRows, assignGroups, failed, isFailure, issueOf, issuesAt, libraryIssues, machineActions, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, repoIssues, runAll, said, unlisted, usable, type Fix, type Result, type World } from "./world.js";
 
 test("add box: library skills not usable here yet, then create", () => {
   const w = sampleWorld();
@@ -155,6 +155,24 @@ test("each of doctor's issues shows on the rows it names: a repo's, Global's, a 
   // Each issue's view is made once.
   expect(issuesAt(w, "web-app", "seo-meta")[0]).toBe(issuesAt(w, "web-app", "seo-meta")[0]);
   expect(libraryIssues(w, "stripe-payments")).toEqual([]);
+});
+
+test("a repo's broken link with no copy there still has a row: only the skills doctor names that nothing lists", () => {
+  const w = sampleWorld();
+  expect(unlisted(w, "api-server")).toEqual(["old-lint"]);
+  expect(unlisted(w, "web-app")).toEqual([]);
+  const [broken] = issuesAt(w, "api-server", "old-lint");
+  expect([broken!.short, broken!.decision, broken!.fixes.map((f) => f.label)]).toEqual(["Broken link", false, ["Remove the link"]]);
+  broken!.fixes[0]!.run(w);
+  expect(unlisted(w, "api-server")).toEqual([]);
+});
+
+test("a plugin's switch says how it's turned, with or without the claude command", () => {
+  const w = sampleWorld();
+  const p = (id: string) => w.plugins.find((x) => x.id === id)!;
+  expect(pluginSwitchFix(p("railway@synced"), true).preview).toContain(`Sets "railway@synced": true in Claude Code's settings.`);
+  expect(pluginSwitchFix({ ...p("ponytail@ponytail"), settingsOnly: true }, true).preview).not.toContain("Runs claude");
+  expect(pluginSwitchFix(p("ponytail@ponytail"), true).preview).toContain("(without the claude command, sets it in Claude Code's settings)");
 });
 
 test("a fix runs doctor's choice, and the issue goes", () => {
