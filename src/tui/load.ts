@@ -394,7 +394,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
        */
       const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
       const repoRoots = repos.map(rootOf);
-      for (const mv of moveGlobalSkills(skills, repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]! })) {
+      for (const mv of moveGlobalSkills(skills, repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]!, allowBlind: true })) {
         if (!mv.moved) {
           notes.push(`${mv.name}: ${mv.reason}`);
           continue;
