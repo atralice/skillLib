@@ -4,14 +4,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
-import { addSkill, importSkill, isLink, listBackups } from "../library.js";
+import { importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { recordOrigin } from "../sources.js";
 import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
 import { usableHere } from "../here.js";
-import { agentSkillIssue, deleteLibraryFix, failed, followUp, issuesOf, machineActions, machineIssues, replacePluginFix, said, usable, type World } from "./world.js";
+import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, said, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -45,15 +45,18 @@ afterEach(() => {
 });
 
 const local = (w: World, name: string) => usable(w, "app").find((u) => u.local && u.name === name)!;
-const issue = (w: World, id: string) => issuesOf(w, "app", local(w, id.split(":")[1]!)).find((i) => i.id === id);
-const run = (w: World, issueId: string, name: string, fix = 0) => issuesOf(w, "app", local(w, name)).find((i) => i.id.startsWith(issueId))!.fixes[fix]!.run(w);
+/** Doctor's issue on a skill's row in app, as the app shows it. */
+const issue = (w: World, id: string, name: string) => issuesAt(w, "app", name).find((i) => i.id === id);
+/** The same in Global. */
+const globalIssue = (w: World, id: string, name: string) => issuesAt(w, null, name).find((i) => i.id === id);
+const pick = (i: ReturnType<typeof issue>, label: string) => i!.fixes.find((f) => f.label === label)!;
 
 test("a skill only in the repo gets imported and tracked", () => {
   writeSkill(join(repo, ".claude", "skills", "notes"));
   let w = loadWorld();
   expect(w.cwd).toBe("app");
   expect(local(w, "notes").local!.source).toBe("untracked");
-  run(w, "local", "notes");
+  expect(said(pick(issue(w, `local:${repo}:notes`, "notes"), "Import into the library").run(w))).toBe("notes imported and tracked in app");
   w = loadWorld();
   expect(local(w, "notes").local!.source).toBe("lib");
   expect(w.library.map((l) => l.name)).toContain("notes");
@@ -67,7 +70,9 @@ test("a global skill loaded twice is unloaded, backed up and restorable", () => 
   w.ops.add("app", "alpha");
   w = loadWorld();
   expect(w.machine.find((m) => m.name === "alpha")?.source).toBe("global");
-  run(w, "twice-g", "alpha");
+  // On the repo's row and on Global's.
+  expect(globalIssue(w, "twice:alpha", "alpha")).toBeDefined();
+  pick(issue(w, "twice:alpha", "alpha"), "Stop loading it globally").run(w);
   w = loadWorld();
   expect(w.machine.some((m) => m.name === "alpha")).toBe(false);
   expect(w.backups[0]?.name).toBe("alpha");
@@ -79,11 +84,11 @@ test("keeping a global skill on purpose clears its warning", () => {
   writeSkill(join(tmp, ".claude", "skills", "beta"));
   let w = loadWorld();
   const beta = () => w.machine.find((m) => m.name === "beta")!;
-  expect(machineIssues(w, beta()).map((i) => i.id)).toContain("global:beta");
-  machineIssues(w, beta())[0]!.fixes[1]!.run(w);
+  expect(globalIssue(w, "review:global", "beta")!.short).toBe("Not reviewed");
+  machineActions(beta()).find((f) => f.label === "Keep it global on purpose")!.run(w);
   w = loadWorld();
   expect(beta().kept).toBe(true);
-  expect(machineIssues(w, beta())).toEqual([]);
+  expect(issuesAt(w, null, "beta")).toEqual([]);
 });
 
 test("a group moved together stays grouped in your library", () => {
@@ -206,36 +211,31 @@ test("linking never puts an uncommitted skill in a folder git tracks, and doesn'
   writeSkill(join(repo, ".cursor", "skills", "mine"));
   setHarnesses(["claude-code", "cursor"]);
 
-  const w = loadWorld();
-  // Nothing linked: a failure (✗), and Health doesn't offer it as a fix, it says to commit first.
-  expect(w.ops.link("app", "mine")).toEqual(failed("mine: not linked in .claude/skills: git tracks it and mine isn't committed, so teammates would get broken links"));
-  expect(isLink(join(repo, ".claude", "skills", "mine"))).toBe(false);
-  expect(local(w, "mine").local!.unshared).toEqual(["claude-code"]);
-  const blind = issue(w, "blind:mine")!;
-  expect(blind.short).toBe("Claude Code can't see it: commit it first");
+  // Health doesn't offer the link: it says to commit first.
+  const blind = issue(loadWorld(), `uncommitted:${repo}:mine`, "mine")!;
+  expect(blind.short).toBe("Commit it first");
   expect(blind.decision).toBe(true);
   expect(blind.fixes).toEqual([]);
+  expect(isLink(join(repo, ".claude", "skills", "mine"))).toBe(false);
 
-  // Committed, the link fix is back.
+  // Committed, linking it is offered (git will see the link).
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "mine");
   const after = loadWorld();
-  expect(local(after, "mine").local!.unshared).toBeUndefined();
-  expect(issue(after, "blind:mine")!.fixes.map((f) => f.label)).toEqual(["Link it for every agent"]);
+  expect(issue(after, `uncommitted:${repo}:mine`, "mine")).toBeUndefined();
+  expect(issue(after, `usable:${repo}`, "mine")!.fixes.map((f) => f.label)).toEqual(["Add links everywhere"]);
 });
 
 test("a skill pinned in skilllib.json that your library doesn't have: no restore, no library actions, only removing the pin", () => {
   writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { "ghost-skill": { version: 1, hash: "abc" } } }));
   let w = loadWorld();
-  const s = local(w, "ghost-skill").local!;
-  expect(s).toMatchObject({ missing: true, library: "missing" });
-  const ids = issuesOf(w, "app", local(w, "ghost-skill")).map((i) => i.id);
-  expect(ids).toEqual(["unavailable:ghost-skill"]);
-  const pinned = issue(w, "unavailable:ghost-skill")!;
-  expect(pinned.title).toContain("not in your library: import it, or set SKILLLIB_HOME");
+  expect(local(w, "ghost-skill").local!).toMatchObject({ missing: true });
+  expect(issuesAt(w, "app", "ghost-skill").map((i) => i.id)).toEqual([`unavailable:${repo}:ghost-skill`]);
+  const pinned = issue(w, `unavailable:${repo}:ghost-skill`, "ghost-skill")!;
+  expect(pinned.detail).toContain("import it, or set SKILLLIB_HOME");
   expect(pinned.decision).toBe(true);
   expect(pinned.fixes.map((f) => f.label)).toEqual(["Remove it from skilllib.json"]);
-  expect(said(pinned.fixes[0]!.run(w))).toBe("Removed ghost-skill from app");
+  expect(said(pinned.fixes[0]!.run(w))).toBe("ghost-skill: removed from app's skilllib.json");
   w = loadWorld();
   expect(usable(w, "app").some((u) => u.name === "ghost-skill")).toBe(false);
 });
@@ -371,12 +371,12 @@ test("identical copies in a repo become one copy plus a link", () => {
   writeSkill(join(repo, ".claude", "skills", "notes"));
   writeSkill(join(repo, ".agents", "skills", "notes"));
   let w = loadWorld();
-  const copies = issue(w, "copies:notes")!;
+  const copies = issue(w, `tidy:${repo}`, "notes")!;
   expect(copies.decision).toBe(false);
-  expect(copies.fixes[0]!.run(w)).toBe("notes: .claude/skills/notes: duplicate copy → link");
+  expect(copies.fixes[0]!.run(w)).toBe("app: tidied 1 skill");
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
-  expect(issue(w, "copies:notes")).toBeUndefined();
+  expect(issue(w, `tidy:${repo}`, "notes")).toBeUndefined();
   expect(w.backups.map((b) => b.name)).toEqual(["notes"]);
 });
 
@@ -385,16 +385,17 @@ test("differing copies in a repo: which agent runs which, and you pick the one t
   writeSkill(join(repo, ".claude", "skills", "notes"), "mine");
   writeSkill(join(repo, ".agents", "skills", "notes"), "theirs");
   let w = loadWorld();
-  const conflict = issue(w, "conflict:notes")!;
-  expect(conflict.title).toBe("Copies differ: .claude/skills (Claude Code) vs .agents/skills (Codex)");
+  const conflict = issue(w, `conflict:${repo}:notes`, "notes")!;
+  expect(conflict.title).toBe("notes in app: the copies differ");
+  expect(conflict.detail).toStartWith("Your agents run different versions: .claude/skills (Claude Code) vs .agents/skills (Codex).");
   expect(conflict.decision).toBe(true);
   // Which copy the library comparison looked at is arbitrary: only the conflict shows.
-  expect(issue(w, "local:notes")).toBeUndefined();
-  conflict.fixes.find((f) => f.label === "Keep the .agents/skills copy")!.run(w);
+  expect(issue(w, `local:${repo}:notes`, "notes")).toBeUndefined();
+  pick(conflict, "Keep the .agents/skills copy").run(w);
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   expect(readFileSync(join(repo, ".claude", "skills", "notes", "SKILL.md"), "utf-8")).toContain("theirs");
   w = loadWorld();
-  expect(issue(w, "conflict:notes")).toBeUndefined();
+  expect(issue(w, `conflict:${repo}:notes`, "notes")).toBeUndefined();
 });
 
 test("tidying asks before changing what git tracks", () => {
@@ -406,16 +407,17 @@ test("tidying asks before changing what git tracks", () => {
   git("init", "-q");
   git("add", ".");
   git("commit", "-qm", "skills");
-  const w = loadWorld();
-  const fix = issue(w, "copies:notes")!.fixes[0]!;
-  expect(fix.preview).toContain("Git would see");
-  const r = fix.run(w);
-  const then = followUp(r);
-  if (!then) throw new Error(`expected a question, got: ${said(r)}`);
-  expect(said(r)).toBe("notes: held back .claude/skills/notes: duplicate copy → link, because git tracks it");
+  let w = loadWorld();
+  const tidy = issue(w, `tidy:${repo}`, "notes")!;
+  // What git would see makes it your call: two choices, no ★ fix.
+  expect(tidy.decision).toBe(true);
+  expect(tidy.fixes.map((f) => f.label)).toEqual(["Tidy, but keep git as it is", "Tidy everything"]);
+  expect(tidy.fixes[1]!.preview).toStartWith("1 change will show in git status. notes: .claude/skills/notes: duplicate copy → link. Git would see");
   const links = () => [".claude", ".agents"].filter((d) => isLink(join(repo, d, "skills", "notes")));
+  expect(said(tidy.fixes[0]!.run(w))).toBe("app: nothing tidied; left 1 change git would see");
   expect(links()).toEqual([]);
-  then.run(w);
+  w = loadWorld();
+  pick(issue(w, `tidy:${repo}`, "notes"), "Tidy everything").run(w);
   expect(links()).toEqual([".claude"]);
 });
 
@@ -424,12 +426,10 @@ test("identical global copies become one copy plus a link", () => {
   writeSkill(join(tmp, ".claude", "skills", "beta"));
   writeSkill(join(tmp, ".agents", "skills", "beta"));
   let w = loadWorld();
-  const beta = w.machine.find((m) => m.name === "beta")!;
-  const copies = machineIssues(w, beta).find((i) => i.id === "copies-g:beta")!;
-  copies.fixes[0]!.run(w);
+  globalIssue(w, "tidy:global", "beta")!.fixes[0]!.run(w);
   expect(isLink(join(tmp, ".claude", "skills", "beta"))).toBe(true);
   w = loadWorld();
-  expect(w.machine.filter((m) => m.name === "beta").flatMap((m) => machineIssues(w, m).map((i) => i.id))).toEqual(["global:beta"]);
+  expect(issuesAt(w, null, "beta").map((i) => i.id)).toEqual(["review:global"]);
 });
 
 test("an agent that can't see a repo's skill is reported, and a link fixes it", () => {
@@ -437,13 +437,13 @@ test("an agent that can't see a repo's skill is reported, and a link fixes it", 
   writeSkill(join(repo, ".agents", "skills", "notes"));
   let w = loadWorld();
   expect(local(w, "notes").agents).toEqual(["codex"]);
-  const blind = issue(w, "blind:notes")!;
-  expect(blind.title).toBe("Claude Code can't see it");
-  expect(blind.fixes[0]!.preview).toBe("Add links (nothing is copied or moved), so Claude Code loads it too.");
-  expect(blind.fixes[0]!.run(w)).toBe("notes: linked in .claude/skills");
+  const blind = issue(w, `usable:${repo}`, "notes")!;
+  expect(blind.title).toBe("app: 1 skill not usable by Claude Code");
+  expect(blind.decision).toBe(false);
+  expect(blind.fixes[0]!.run(w)).toBe("app: linked 1 skill for Claude Code");
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
-  expect(issue(w, "blind:notes")).toBeUndefined();
+  expect(issue(w, `usable:${repo}`, "notes")).toBeUndefined();
 });
 
 test("linking for every agent asks before linking into a folder git tracks", () => {
@@ -456,15 +456,16 @@ test("linking for every agent asks before linking into a folder git tracks", () 
   git("add", ".");
   git("commit", "-qm", "skills");
   let w = loadWorld();
-  const r = issue(w, "blind:notes")!.fixes[0]!.run(w);
-  if (typeof r === "string" || !("then" in r)) throw new Error(`expected a question, got: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toBe("notes: nothing to link; not linked in .claude/skills: git tracks it");
-  expect(r.then.preview).toContain(".claude/skills is committed in app");
+  // Git tracks the only folder a link would go in: your call, and the choice says git will see it.
+  const blind = issue(w, `usable:${repo}`, "notes")!;
+  expect(blind.decision).toBe(true);
+  expect(blind.fixes.map((f) => f.label)).toEqual(["Add links everywhere"]);
+  expect(blind.fixes[0]!.preview).toStartWith("Remembered for app; git will see them.");
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(false);
-  r.then.run(w);
+  blind.fixes[0]!.run(w);
   expect(isLink(join(repo, ".claude", "skills", "notes"))).toBe(true);
   w = loadWorld();
-  expect(issue(w, "blind:notes")).toBeUndefined();
+  expect(issue(w, `usable:${repo}`, "notes")).toBeUndefined();
 }, 20_000); // several git commands: slow on Windows CI
 
 test("a skill the repo commits in .claude/skills is the team's: a plugin with its name is turned off, never the copy removed", () => {
@@ -479,8 +480,10 @@ test("a skill the repo commits in .claude/skills is the team's: a plugin with it
   const w = loadWorld();
   expect(local(w, "lint").local!.source).toBe("repo");
   expect(local(w, "scratch").local!.source).toBe("untracked");
-  expect(issue(w, "twice-p:lint")!.fixes.map((f) => f.label)).toEqual(["Turn the plugin off in app only"]);
-  expect(issue(w, "local:lint")).toBeUndefined();
+  // The plugin goes, or is turned off here; removing the team's copy is never offered.
+  expect(issue(w, "plugin:tools@mk", "lint")!.fixes.map((f) => f.label)).toEqual(["Turn the plugin tools@mk off", "Remove the plugin tools@mk", "Turn the plugin tools@mk off in app only"]);
+  // Copying it into your library leaves the repo's copy as it is.
+  expect(issue(w, `local:${repo}:lint`, "lint")!.fixes.map((f) => f.label)).toEqual(["Copy into the library"]);
   expect(w.ops.remove("app", "lint")).toEqual({ message: "lint is the repo's own (committed by your team): skilllib doesn't delete it", failed: true });
   expect(existsSync(join(repo, ".claude", "skills", "lint", "SKILL.md"))).toBe(true);
   // Only on this machine: removable, and backed up.
@@ -542,14 +545,15 @@ test("the skilllib skill installs from Health for every agent you use", () => {
   setHarnesses(["claude-code", "codex"]);
   let w = loadWorld();
   expect(w.agentSkill).toBe("missing");
-  expect(agentSkillIssue(w)!.fixes[0]!.run(w)).toBe("Your agents can now use skilllib (~/.claude/skills/skilllib, ~/.agents/skills/skilllib)");
+  const install = w.issues.map(issueOf).find((i) => i.id === "agent-skill")!;
+  expect(install.decision).toBe(true);
+  expect(install.fixes[0]!.run(w)).toBe("Your agents can now use skilllib (2 folders)");
   w = loadWorld();
   expect(w.agentSkill).toBe("installed");
-  expect(agentSkillIssue(w)).toBeNull();
-  // It's skilllib's own: not a global skill to review.
-  const own = w.machine.filter((m) => m.name === "skilllib");
-  expect(own.length).toBeGreaterThan(0);
-  expect(own.flatMap((m) => [m.source === "global" ? "global" : "", ...machineIssues(w, m).map((i) => i.id)]).filter(Boolean)).toEqual([]);
+  // It's skilllib's own: no issue, and not a global skill to review.
+  expect(w.machine.filter((m) => m.name === "skilllib").length).toBeGreaterThan(0);
+  expect(w.machine.filter((m) => m.name === "skilllib" && m.source === "global")).toEqual([]);
+  expect(issuesAt(w, null, "skilllib")).toEqual([]);
 });
 
 test("Global shows the skilllib skill as skilllib's own: update it when it's old, or remove it", () => {
@@ -565,7 +569,7 @@ test("Global shows the skilllib skill as skilllib's own: update it when it's old
   writeFileSync(join(tmp, ".claude", "skills", "skilllib", "SKILL.md"), "old\n");
   w = loadWorld();
   expect(w.agentSkill).toBe("outdated");
-  expect(machineIssues(w, own()).flatMap((i) => i.fixes.map((f) => f.label))).toEqual(["Update the skilllib skill"]);
+  expect(issuesAt(w, null, "skilllib").flatMap((i) => i.fixes.map((f) => f.label))).toEqual(["Update the skilllib skill"]);
 
   expect(said(machineActions(own())[0]!.run(w))).toBe("Removed the skilllib skill (~/.claude/skills/skilllib, ~/.agents/skills/skilllib)");
   w = loadWorld();
@@ -574,13 +578,16 @@ test("Global shows the skilllib skill as skilllib's own: update it when it's old
 });
 
 test("a repo copy of a skill you keep global is the extra one", () => {
+  writeSkill(join(tmp, "src", "beta"));
+  importSkill(join(tmp, "src", "beta"));
   writeSkill(join(tmp, ".claude", "skills", "beta"));
-  writeSkill(join(repo, ".claude", "skills", "beta"));
   let w = loadWorld();
+  w.ops.add("app", "beta");
   w.ops.keepGlobal("beta", true);
   w = loadWorld();
-  expect(issue(w, "twice-g:beta")).toBeUndefined();
-  issue(w, "kept-g:beta")!.fixes[0]!.run(w);
+  const twice = issue(w, "twice:beta", "beta")!;
+  expect(twice.title).toBe("beta: in app, and you keep it global");
+  pick(twice, "Remove the copies in app").run(w);
   w = loadWorld();
   expect(w.projects[0]!.skills).toEqual([]);
   expect(w.machine.map((m) => m.name)).toEqual(["beta"]);
@@ -590,9 +597,12 @@ test("a skill also in a Cursor plugin is reported", () => {
   setHarnesses(["cursor"]);
   writeSkill(join(tmp, ".cursor", "plugins", "cache", "mk", "kit", "1.0", "skills", "notes"));
   writeSkill(join(repo, ".agents", "skills", "notes"));
-  const found = issue(loadWorld(), "cursor-plugin:notes")!;
-  expect(found.title).toBe("Also in the Cursor plugin kit: Cursor lists both while it's on");
+  const w = loadWorld();
+  const found = issue(w, "cursor-plugin:kit", "notes")!;
+  expect(found.title).toBe("notes: also in the Cursor plugin kit");
   expect(found.decision).toBe(true);
+  // On the Cursor plugin's row too.
+  expect(pluginIssues(w, w.plugins.find((p) => p.id === "kit@mk")!).map((i) => i.id)).toEqual(["cursor-plugin:kit"]);
 });
 
 test("a plugin the repo turned off for Claude Code still collides in Cursor: said so, with only the choices that change something", () => {
@@ -602,21 +612,18 @@ test("a plugin the repo turned off for Claude Code still collides in Cursor: sai
   writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "pt@mk": [{ scope: "user", installPath: dir }] } }));
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
   writeSkill(join(repo, ".claude", "skills", "alpha"));
-  const before = issue(loadWorld(), "twice-p:alpha")!;
-  expect(before.fixes.map((f) => f.label)).toContain("Turn the plugin off in app only");
-  expect(before.fixes.find((f) => f.label.includes("only"))!.preview).toContain("Cursor ignores repo settings, so it still lists both.");
+  expect(issue(loadWorld(), "plugin:pt@mk", "alpha")!.fixes.map((f) => f.label)).toContain("Turn the plugin pt@mk off in app only");
 
   writeFileSync(join(repo, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "pt@mk": false } }));
-  const found = issue(loadWorld(), "twice-p:alpha")!;
-  expect(found.title).toBe("Same name as a skill in plugin pt@mk: Claude Code has it off in app, but Cursor ignores repo settings and lists both");
+  const found = issue(loadWorld(), "plugin:pt@mk", "alpha")!;
+  expect(found.detail).toContain("app turns it off for Claude Code, but Cursor ignores repo settings and lists both there");
   expect(found.decision).toBe(true);
-  expect(found.fixes.map((f) => f.label)).toEqual(["Replace pt with library skills…"]);
+  expect(found.fixes.map((f) => f.label)).toEqual(["Remove the plugin pt@mk", "Turn the plugin pt@mk off"]);
 });
 
 test("a failed action is a failure, not a message", () => {
   const w = loadWorld();
   expect(w.ops.remove("app", "nope")).toEqual({ message: "nope isn't in app", failed: true });
-  expect(w.ops.pluginOffHere("app", "pt@mk")).toEqual({ message: "pt@mk isn't on in app", failed: true });
 });
 
 test("repo names stay unique however deep folders clash", () => {
@@ -636,9 +643,7 @@ test("a plugin the repo's settings turn on loads only there, and can be turned o
   expect(w.machine.filter((m) => m.source === "plugin").map((m) => m.where)).toEqual(["sy@synced"]);
   expect(usable(w, "app").filter((u) => u.source === "plugin").map((u) => `${u.where}/${u.name}`)).toEqual(["pt@mk/alpha", "sy@synced/beta"]);
 
-  const fix = issuesOf(w, "app", local(w, "beta")).find((i) => i.id.startsWith("twice-p"))!.fixes.find((f) => f.label.includes("only"))!;
-  expect(fix.label).toBe("Turn the plugin off in app only");
-  fix.run(w);
+  pick(issue(w, "plugin:sy@synced", "beta"), "Turn the plugin sy@synced off in app only").run(w);
   expect(JSON.parse(readFileSync(join(repo, ".claude", "settings.local.json"), "utf-8"))).toEqual({ enabledPlugins: { "sy@synced": false } });
   w = loadWorld();
   expect(usable(w, "app").filter((u) => u.source === "plugin").map((u) => u.where)).toEqual(["pt@mk"]);
@@ -649,16 +654,4 @@ test("installing the skilllib skill over a folder that isn't skilllib's fails, a
   writeFileSync(join(mkdirSync(join(tmp, ".claude", "skills", "skilllib"), { recursive: true })!, "SKILL.md"), "mine\n");
   const r = loadWorld().ops.installAgentSkill();
   expect(r).toEqual(failed("skilllib skill: ~/.claude/skills/skilllib already exists and isn't skilllib's"));
-});
-
-test("restoring one skill puts back only that one", () => {
-  for (const name of ["alpha", "beta"]) {
-    writeSkill(join(tmp, "src", name));
-    importSkill(join(tmp, "src", name));
-    addSkill(repo, name);
-    rmSync(join(repo, ".claude", "skills", name), { recursive: true });
-  }
-  loadWorld().ops.restore("app", "alpha");
-  expect(existsSync(join(repo, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
-  expect(existsSync(join(repo, ".claude", "skills", "beta"))).toBe(false);
 });

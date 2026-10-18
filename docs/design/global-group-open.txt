@@ -1,16 +1,16 @@
 ╭── ◆ skilllib ────────────╮╭── Loads everywhere  3/15 ──────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││  All 15   Issues 7   Global 8   Plugins 4   Vendor 3                                   │
+│   ▤ Your skills     10   ││  All 15   Issues 8   Global 8   Plugins 4   Vendor 3                                   │
 │ ▌ ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ⧉ Plugins         7    ││   ✦ Fix 3 issues automatically…                                                        │
-│   ✓ Health          19   ││   ⧉ Review prompt for your 6 global skills…                                            │
+│   ⧉ Plugins         7    ││   ✦ Fix 2 issues automatically…                                                        │
+│   ✓ Health          24   ││   ⧉ Review prompt for your 6 global skills…                                            │
 │   Projects ───────────── ││ ▌ ✕ ▾ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
 │   ◆ web-app          ✕   ││   ✕   commit-style     global           14  Copies differ                              │
-│     api-server       ✕   ││   ✕   frontend-design  global            –  Loaded twice                               │
-│     docs-site        ·   ││   ⚠   stripe-payments  global           14  Not reviewed · Codex can't see it          │
-│     mobile-app       ⚠   ││   ✕ old-helper         global            –  Broken link                                │
-│     billing              ││   ⚠ pr-review          global ✓          4  Codex can't see it                         │
-│     blog                 ││   ⚠ security-audit     global            –  Not reviewed · Claude Code can't see it    │
-│     cli-tools            ││   ⚠ tailwind-tips      global            –  Extra copies                               │
+│     api-server       ✕   ││   ✕   frontend-design  global            –  Also in ⧉ frontend-design                  │
+│     docs-site        ⚠   ││   ⚠   stripe-payments  global           14  Not reviewed                               │
+│     mobile-app       ⚠   ││   ✕ ▸ ⧉ vercel plugin (3)                                                   1 to fix   │
+│     billing              ││   ✕ old-helper         global            –  Broken link                                │
+│     blog                 ││   ⚠ pr-review          global ✓          4  Repo and global copies                     │
+│     cli-tools            ││   ⚠ security-audit     global            –  Not reviewed                               │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     design-system        │╭── commit + 2 more · installed together 2026-09-20 ─────────────────────────────────────╮
 │     e2e-tests            ││ commit-style, frontend-design, stripe-payments                                         │

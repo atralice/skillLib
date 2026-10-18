@@ -2,7 +2,7 @@
  * Sample data for tests and headless screen checks: a few repos, a library and what loads
  * everywhere, held in memory. Its ops change it in place; `reload()` hands back a fresh copy.
  */
-import { harness, type HarnessId } from "../harnesses.js";
+import type { HarnessId } from "../harnesses.js";
 import type { Choice, Issue as Found } from "../health.js";
 import type { LocalSkill, MachineSkill, Ops, Plugin, Project, World } from "./world.js";
 
@@ -107,69 +107,36 @@ export function sampleWorld(): World {
     cwd: "web-app",
     projects: [
       repo("web-app", "committed", [
-        { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: false, version: 2, library: "same", git: "ignored" },
-        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 1, library: "same", git: "ignored", cursorPlugin: "react-kit" },
-        { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, edited: true, library: "same", git: "ignored" },
-        { name: "seo-meta", source: "lib", dir: ".claude/skills", linked: true, version: 1, missing: true, library: "same", git: "ignored" },
-        {
-          name: "testing-guide",
-          source: "lib",
-          dir: ".claude/skills",
-          linked: true,
-          version: 3,
-          library: "same",
-          git: "ignored",
-          dupes: { steps: [".agents/skills/testing-guide: duplicate copy → link"], git: [".agents/skills/testing-guide: duplicate copy → link"] },
-        },
+        { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: false, version: 2, git: "ignored" },
+        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 1, git: "ignored" },
+        { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, edited: true, git: "ignored" },
+        { name: "seo-meta", source: "lib", dir: ".claude/skills", linked: true, version: 1, missing: true, git: "ignored" },
+        { name: "testing-guide", source: "lib", dir: ".claude/skills", linked: true, version: 3, git: "ignored" },
         { name: "deploy-preview", source: "repo", dir: ".agents/skills", linked: false, git: "committed" },
         { name: "release-notes", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
         { name: "my-scratchpad", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
         { name: "vercel-deploy", source: "untracked", dir: ".claude/skills", linked: true, git: "new" },
       ]),
       repo("api-server", "changed", [
-        { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: true, version: 2, library: "same", git: "ignored" },
-        { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, library: "same", git: "ignored" },
-        {
-          name: "db-seed",
-          source: "untracked",
-          dir: ".claude/skills",
-          linked: true,
-          git: "ignored",
-          dupes: {
-            steps: [],
-            git: [],
-            differ: [
-              { dir: "~/Projects/api-server/.claude/skills", label: ".claude/skills", runs: ["claude-code", "cursor"], canWin: true },
-              { dir: "~/Projects/api-server/.agents/skills", label: ".agents/skills", runs: ["codex"], canWin: true },
-            ],
-          },
-        },
+        { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: true, version: 2, git: "ignored" },
+        { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, git: "ignored" },
+        { name: "db-seed", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
       ]),
       repo("docs-site", "none", [
         { name: "writing-style", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
-        { name: "mdx-tips", source: "untracked", dir: ".claude/skills", linked: true, library: "same", git: "ignored" },
+        { name: "mdx-tips", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
       ]),
       repo("mobile-app", "committed", [
-        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 2, library: "same", git: "ignored" },
+        { name: "react-patterns", source: "lib", dir: ".claude/skills", linked: true, version: 2, git: "ignored" },
         { name: "expo-release", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
         { name: "pr-review", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
       ]),
       ...emptyRepos.map((name) => repo(name, "none", [])),
     ],
     machine: [
-      machine("commit-style", "global", "~/.claude/skills", {
-        installed: "2026-09-20 10:00",
-        dupes: {
-          steps: [],
-          git: [],
-          differ: [
-            { dir: "~/.claude/skills", label: "~/.claude/skills", runs: ["claude-code", "cursor"], canWin: true },
-            { dir: "~/.agents/skills", label: "~/.agents/skills", runs: ["codex"], canWin: true },
-          ],
-        },
-      }),
+      machine("commit-style", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
       machine("stripe-payments", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
-      machine("tailwind-tips", "global", "~/.agents/skills", { origin: "skills.sh: tailwindlabs/skills", dupes: { steps: ["~/.claude/skills/tailwind-tips: duplicate copy → link"], git: [] } }),
+      machine("tailwind-tips", "global", "~/.agents/skills", { origin: "skills.sh: tailwindlabs/skills" }),
       machine("frontend-design", "global", "~/.claude/skills", { installed: "2026-09-20 10:00" }),
       machine("pr-review", "global", "~/.claude/skills", { kept: true }),
       machine("security-audit", "global", "~/.codex/skills", { installed: "2026-09-22 18:30" }),
@@ -390,7 +357,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     fix: { label: "Update to the newest versions", change: () => void (skill("web-app", "react-patterns").version = 2), said: "web-app: updated 1 skill" },
     at: at("web-app", "react-patterns"),
   });
-  const tidy = { change: () => delete skill("web-app", "testing-guide").dupes, said: "web-app: tidied 1 skill" };
+  const tidy = { said: "web-app: tidied 1 skill" };
   add(issues, {
     id: `tidy:${root("web-app")}`,
     severity: "suggestion",
@@ -438,7 +405,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
   });
   const track = (repo: string, name: string) => () => {
     if (!w.library.some((l) => l.name === name)) w.library.push({ name, latest: 1 });
-    Object.assign(skill(repo, name), { source: "lib", version: 1, library: "same" });
+    Object.assign(skill(repo, name), { source: "lib", version: 1 });
   };
   for (const [repo, name] of [["web-app", "my-scratchpad"], ["web-app", "vercel-deploy"], ["mobile-app", "pr-review"]] as const)
     add(issues, {
@@ -509,7 +476,7 @@ function sampleOps(w: World): Omit<Ops, "usageIssues"> {
   const add = (repo: string, name: string) => {
     const p = w.projects.find((x) => x.name === repo)!;
     p.skills = p.skills.filter((s) => s.name !== name);
-    const s: SampleSkill = { name, source: "lib", dir: ".claude/skills", path: `${p.path}/.claude/skills/${name}`, linked: true, agents: [], version: lib(name)?.latest ?? 1, library: "same", git: "ignored" };
+    const s: SampleSkill = { name, source: "lib", dir: ".claude/skills", path: `${p.path}/.claude/skills/${name}`, linked: true, agents: [], version: lib(name)?.latest ?? 1, git: "ignored" };
     p.skills.push(s);
     seeAgents(w);
   };
@@ -525,33 +492,11 @@ function sampleOps(w: World): Omit<Ops, "usageIssues"> {
       p.skills = p.skills.filter((s) => s.name !== name);
       return `Removed ${name} from ${repo}`;
     },
-    restore: (repo, name) => ((skill(repo, name).missing = false), done(`Restored ${name}`)),
-    update: (repo, name) => ((skill(repo, name).version = lib(name)!.latest), `${name} updated to v${lib(name)!.latest}`),
-    saveEdits: (repo, name) => {
-      toLibrary(name);
-      Object.assign(skill(repo, name), { version: lib(name)!.latest, edited: false });
-      return `${name} v${lib(name)!.latest} saved to your library`;
-    },
-    discardEdits: (repo, name) => (Object.assign(skill(repo, name), { edited: false, source: "lib", version: skill(repo, name).version ?? lib(name)!.latest, library: "same" }), `${name} reset to the library version`),
-    link: (repo, name) => ((skill(repo, name).linked = true), done(`${name} is now visible to every agent`)),
-    track: (repo, name) => (Object.assign(skill(repo, name), { source: "lib", version: lib(name)!.latest, library: "same" }), `${name} is tracked`),
-    importLocal: (repo, name) => (toLibrary(name), Object.assign(skill(repo, name), { source: "lib", version: lib(name)!.latest, library: "same" }), `${name} imported and tracked`),
-    copyToLibrary: (repo, name) => (toLibrary(name), (skill(repo, name).library = "same"), `${name} copied into your library`),
-    tidy: (repo, name, { keep } = {}) => {
-      if (repo === null) for (const m of w.machine.filter((x) => x.name === name && x.dupes)) delete m.dupes;
-      else Object.assign(skill(repo, name), { dupes: undefined, linked: true });
-      return done(`${name}: one copy${keep ? ` (${keep})` : ""}, plus links`);
-    },
-    unloadGlobal: (m) => (lib(m.name) || toLibrary(m.name), drop(m), `${m.name} no longer loads globally (backed up)`),
+    copyToLibrary: (_repo, name) => (toLibrary(name), `${name} copied into your library`),
     deleteGlobal: (m) => (drop(m), m.broken ? `Removed broken link ${m.name}` : `Deleted ${m.name} (backed up)`),
     keepGlobal: (name, keep) => {
       w.machine.find((x) => x.name === name && x.source === "global")!.kept = keep;
       return keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`;
-    },
-    linkGlobal: (m, agents) => {
-      const x = w.machine.find((y) => y.path === m.path)!;
-      x.agents = [...new Set([...x.agents, ...agents])];
-      return `${m.name} now loads for ${agents.map((a) => harness(a).name).join(", ")} too`;
     },
     moveGlobal: (skills, repos) => {
       for (const m of skills) {
@@ -566,7 +511,6 @@ function sampleOps(w: World): Omit<Ops, "usageIssues"> {
       w.library.push({ name, latest: 1 });
       return `Created ${name} v1 (its SKILL.md would open in your editor)`;
     },
-    pluginOffHere: (repo, id) => `${id} turned off in ${repo}; other repos keep it`,
     replacePlugin: (p, repos) => {
       for (const s of p.skills) if (!lib(s.name)) w.library.push({ name: s.name, latest: 1, origin: `plugin: ${p.id}` });
       for (const r of repos) for (const s of p.skills) add(r, s.name);

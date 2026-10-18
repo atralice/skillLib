@@ -1,23 +1,23 @@
-╭── ◆ skilllib ────────────╮╭── Loads everywhere  8/12 ──────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││  All 15   Issues 7   Global 8   Plugins 4   Vendor 3                                   │
+╭── ◆ skilllib ────────────╮╭── Loads everywhere  4/12 ──────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     10   ││  All 15   Issues 8   Global 8   Plugins 4   Vendor 3                                   │
 │ ▌ ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ⧉ Plugins         7    ││   ✕ ▸ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
-│   ✓ Health          19   ││   ✕ old-helper         global            –  Broken link                                │
-│   Projects ───────────── ││   ⚠ pr-review          global ✓          4  Codex can't see it                         │
-│   ◆ web-app          ✕   ││   ⚠ security-audit     global            –  Not reviewed · Claude Code can't see it    │
-│     api-server       ✕   ││   ⚠ tailwind-tips      global            –  Extra copies                               │
-│     docs-site        ·   ││ ▌   ▸ ⧉ vercel plugin (3)                                                              │
-│     mobile-app       ⚠   ││     ▸ claude.ai skills (2)                                                             │
-│     billing              ││     create-rule        cursor            –                                             │
-│     blog                 ││     skilllib           ◆ skilllib        –                                             │
-│     cli-tools            ││     use-railway        ⧉ railway         –                                             │
+│   ⧉ Plugins         7    ││   ✦ Fix 2 issues automatically…                                                        │
+│   ✓ Health          24   ││   ⧉ Review prompt for your 6 global skills…                                            │
+│   Projects ───────────── ││   ✕ ▸ commit + 2 more · installed together 2026-09-20 (3)                   3 to fix   │
+│   ◆ web-app          ✕   ││ ▌ ✕ ▸ ⧉ vercel plugin (3)                                                   1 to fix   │
+│     api-server       ✕   ││   ✕ old-helper         global            –  Broken link                                │
+│     docs-site        ⚠   ││   ⚠ pr-review          global ✓          4  Repo and global copies                     │
+│     mobile-app       ⚠   ││   ⚠ security-audit     global            –  Not reviewed                               │
+│     billing              ││   ⚠ tailwind-tips      global            –  Extra copies                               │
+│     blog                 ││     ▸ claude.ai skills (2)                                                             │
+│     cli-tools            ││     create-rule        cursor            –                                             │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
 │     design-system        │╭── ⧉ vercel plugin ─────────────────────────────────────────────────────────────────────╮
 │     e2e-tests            ││ vercel-deploy, nextjs, vercel-env                                                      │
 │     infra                ││                                                                                        │
-│     landing              ││                                                                                        │
-│     marketing-site       ││ Actions  Open vercel in Plugins · Review prompt                                        │
-│     playground           ││                                                                                        │
+│     landing              ││ 1 of them has issues   open the group to fix them one by one                           │
+│     marketing-site       ││                                                                                        │
+│     playground           ││ Actions  Open vercel in Plugins · Review prompt                                        │
 │     scripts              ││                                                                                        │
 │     status-page          ││                                                                                        │
 │    ───────────────────── ││                                                                                        │

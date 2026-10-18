@@ -1,24 +1,24 @@
- ◆ skilllib   Projects  Your skills  Global  Plugins  Health 19  Settings
-╭── stripe-payments ─────────────────────────────────────────────────────────╮
-│ Stripe Checkout, Payment Links, webhooks and subscriptions with trials and │
-│ proration.                                                                 │
+ ◆ skilllib   Projects  Your skills  Global  Plugins  Health 24  Settings
+╭── vercel-deploy ───────────────────────────────────────────────────────────╮
+│ Deploy this app to Vercel with the right env and region.                   │
 │                                                                            │
-│ ✕ Loaded twice: also global in ~/.claude/skills  · your call               │
-│   ▸   Keep this repo's copy, stop loading it globally                      │
-│       Keep it global, remove it from this repo                             │
-│ ⚠ Codex can't see it                                                       │
-│     ★ Link it for every agent                                              │
+│ ✕ vercel-deploy: also in the Claude Code plugin vercel@claude-plugins-off… │
+│   ▸   Turn the plugin vercel@claude-plugins-official off                   │
+│       Remove the plugin vercel@claude-plugins-official                     │
+│       Turn the plugin vercel@claude-plugins-official off in web-app only   │
+│ ⚠ vercel-deploy in web-app isn't in your library  · your call              │
+│       Import into the library                                              │
 │                                                                            │
-│ Actions  Edit in library · Other versions… · Remove from repo              │
-│          Review prompt                                                     │
+│ Actions  Edit SKILL.md · Remove from repo · Review prompt                  │
 │                                                                            │
-│ Usage here   last used yesterday                                           │
-│                                                         █                  │
-│     ▄         ▄   ▄           ▄ ▄       ▄ ▄           ▄ █ ▄                │
-│     █         █   █           █ █       █ █           █ █ █                │
-│   30 days ago                                       today                  │
+│ Usage here   last used 11 days ago                                         │
+│   █                                 █ █                                    │
+│   █                                 █ █                                    │
+│   █                                 █ █                                    │
+│   30 days ago                     today                                    │
 │                                                                            │
 │ Loaded from                                                                │
-│   .claude/skills/stripe-payments  ∅ gitignored                             │
+│   .claude/skills/vercel-deploy  + not committed                            │
+│   vercel@claude-plugins-official  ⧉ vercel                                 │
 ╰────────────────────────────────────────────────────────────────────────────╯
                                         ↑↓ ←→ choose · enter apply · esc back

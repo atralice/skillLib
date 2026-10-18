@@ -1,32 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, issueOf, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
-
-const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
-
-test("sample data shows every kind of issue", () => {
-  const w = sampleWorld();
-  const found = new Set([...w.projects.flatMap((p) => ids(w, p.name)), ...w.machine.flatMap((m) => machineIssues(w, m).map((i) => i.id))].map((id) => id.split(":")[0]));
-  for (const kind of ["missing", "twice-g", "kept-g", "twice-p", "copies", "conflict", "cursor-plugin", "edited", "outdated", "blind", "local", "unused", "global", "dup-plugin", "copies-g", "conflict-g", "broken", "blind-global"])
-    expect(found).toContain(kind);
-});
-
-test("a skill added a minute ago isn't called unused", () => {
-  const w = sampleWorld();
-  const p = w.projects.find((p) => ids(w, p.name).some((id) => id.startsWith("unused:")))!;
-  const id = ids(w, p.name).find((id) => id.startsWith("unused:"))!;
-  p.skills.find((s) => s.name === id.slice("unused:".length))!.added = Date.now() - 60_000;
-  expect(ids(w, p.name)).not.toContain(id);
-});
-
-test("keeping the repo copy unloads the global one and clears the duplicate", () => {
-  const w = sampleWorld();
-  const stripe = usable(w, "web-app").find((u) => u.local && u.name === "stripe-payments")!;
-  issuesOf(w, "web-app", stripe).find((i) => i.id === "twice-g:stripe-payments")!.fixes[0]!.run(w);
-  expect(ids(w, "web-app")).not.toContain("twice-g:stripe-payments");
-  expect(w.machine.some((m) => m.name === "stripe-payments")).toBe(false);
-  expect(w.backups[0]?.name).toBe("stripe-payments");
-});
+import { addRows, assignGroups, failed, isFailure, issueOf, issuesAt, libraryIssues, machineActions, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, repoIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
 
 test("add box: library skills not usable here yet, then create", () => {
   const w = sampleWorld();
@@ -60,9 +34,9 @@ test("add box: a plugin's skills under one row that adds them all, its namesake 
   expect(addRows(sampleWorld(), "web-app", "lean-").find((r) => r.members?.length! > 1)!.members).toEqual(["lean-review", "lean-audit"]);
 });
 
-test("Global only offers fixes that act on global skills, never on a repo", () => {
+test("Global's actions act on global skills, never on a repo", () => {
   // Moving to repos needs you to tick them, so it's left out.
-  const fixes = (w: World, i: number) => [...machineIssues(w, w.machine[i]!).flatMap((x) => x.fixes), ...machineActions(w.machine[i]!)].filter((f) => !f.pickRepos);
+  const fixes = (w: World, i: number) => machineActions(w.machine[i]!).filter((f) => !f.pickRepos);
   const before = sampleWorld();
   before.machine.forEach((_, i) =>
     fixes(before, i).forEach((_, j) => {
@@ -71,42 +45,6 @@ test("Global only offers fixes that act on global skills, never on a repo", () =
       expect(w.projects).toEqual(sampleWorld().projects);
     }),
   );
-});
-
-test("differing global copies: your call which to keep, the other becomes a link", () => {
-  const w = sampleWorld();
-  const commit = w.machine.find((m) => m.name === "commit-style")!;
-  const issue = machineIssues(w, commit).find((i) => i.id === "conflict-g:commit-style")!;
-  expect(issue.title).toBe("Copies differ: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex)");
-  expect(issue.decision).toBe(true);
-  expect(issue.fixes.map((f) => f.label)).toEqual(["Keep the ~/.claude/skills copy", "Keep the ~/.agents/skills copy"]);
-  issue.fixes[1]!.run(w);
-  expect(machineIssues(w, commit).map((i) => i.id)).not.toContain("conflict-g:commit-style");
-});
-
-test("identical copies are fixed automatically; differing ones and Cursor plugins are your call", () => {
-  const w = sampleWorld();
-  const issue = (repo: string, name: string, id: string) => issuesOf(w, repo, usable(w, repo).find((u) => u.local && u.name === name)!).find((i) => i.id === `${id}:${name}`)!;
-  const copies = issue("web-app", "testing-guide", "copies");
-  expect(copies.decision).toBe(false);
-  expect(copies.fixes[0]!.preview).toContain("skilllib asks before that one");
-  expect(issue("api-server", "db-seed", "conflict").decision).toBe(true);
-  expect(issue("web-app", "react-patterns", "cursor-plugin").decision).toBe(true);
-  // While copies differ, comparing one of them with your library says nothing.
-  expect(ids(w, "api-server")).not.toContain("local:db-seed");
-  copies.fixes[0]!.run(w);
-  expect(ids(w, "web-app")).not.toContain("copies:testing-guide");
-});
-
-test("a repo copy of a skill you keep global is the extra one", () => {
-  const w = sampleWorld();
-  const pr = usable(w, "mobile-app").find((u) => u.local && u.name === "pr-review")!;
-  const issue = issuesOf(w, "mobile-app", pr).find((i) => i.id === "kept-g:pr-review")!;
-  expect(ids(w, "mobile-app")).not.toContain("twice-g:pr-review");
-  expect(issue.fixes.map((f) => f.label)).toEqual(["Remove this repo's copy, keep it global", "Stop loading it globally after all"]);
-  issue.fixes[0]!.run(w);
-  expect(ids(w, "mobile-app")).not.toContain("kept-g:pr-review");
-  expect(w.machine.some((m) => m.name === "pr-review")).toBe(true);
 });
 
 test("related skills group by source, then install time, then first word", () => {
@@ -135,57 +73,6 @@ test("replacing a plugin: its skills join your library, grouped by the plugin", 
   expect(w.library.filter((l) => l.origin === "plugin: vercel@claude-plugins-official").map((l) => l.name)).toEqual(["vercel-deploy", "vercel-env", "nextjs"]);
 });
 
-test("a global skill only Codex loads: Claude Code can't see it, and a link fixes that", () => {
-  const w = sampleWorld();
-  const audit = w.machine.find((m) => m.name === "security-audit")!;
-  // Not reviewed yet: linking it is one of your choices, next to moving it to repos.
-  const review = machineIssues(w, audit).find((i) => i.id === "global:security-audit")!;
-  expect(review.short).toBe("Not reviewed · Claude Code can't see it");
-  expect(review.decision).toBe(true);
-  expect(review.fixes.map((f) => f.label)).toEqual(["Move it to the repos that need it…", "Link it for Claude Code", "Keep it global on purpose", "Delete it"]);
-  // Kept global on purpose: the link is the plain fix.
-  review.fixes[2]!.run(w);
-  const blind = machineIssues(w, audit).find((i) => i.id === "blind-global:security-audit")!;
-  expect(blind.decision).toBe(false);
-  blind.fixes[0]!.run(w);
-  expect(machineIssues(w, audit)).toEqual([]);
-  // A duplicate copy elsewhere is tidy's job first, not a missing link.
-  const tailwind = w.machine.find((m) => m.name === "tailwind-tips")!;
-  expect(machineIssues(w, tailwind).map((i) => i.short)).not.toContain("Not reviewed · Claude Code can't see it");
-});
-
-test("the skilllib skill: Health offers it when your agents don't have it, and it's your call", () => {
-  const w = sampleWorld();
-  expect(agentSkillIssue(w)).toBeNull();
-  w.agentSkill = "missing";
-  const issue = agentSkillIssue(w)!;
-  expect(issue.decision).toBe(true);
-  expect(issue.fixes.map((f) => f.label)).toEqual(["Install the skilllib skill for your agents"]);
-  issue.fixes[0]!.run(w);
-  expect(agentSkillIssue(w)).toBeNull();
-  // An old copy is only refreshed: fix all may do that.
-  w.agentSkill = "outdated";
-  expect(agentSkillIssue(w)!.decision).toBe(false);
-  expect(agentSkillIssue(w)!.fixes[0]!.label).toBe("Update the skilllib skill");
-  // No agents picked: nowhere to install it.
-  w.agents = [];
-  expect(agentSkillIssue(w)).toBeNull();
-});
-
-test("stopping a global skill from loading changes every repo: a decision that names the repos that use it", () => {
-  const w = sampleWorld();
-  // api-server uses stripe-payments without a copy of its own: it would lose it.
-  const api = w.projects.find((p) => p.name === "api-server")!;
-  api.skills = api.skills.filter((s) => s.name !== "stripe-payments");
-  const stripe = usable(w, "web-app").find((u) => u.local && u.name === "stripe-payments")!;
-  const twice = issuesOf(w, "web-app", stripe).find((i) => i.id === "twice-g:stripe-payments")!;
-  expect(twice.decision).toBe(true);
-  expect(twice.fixes[0]!.preview).toContain("Every other repo stops seeing it, and api-server used it in the last 30 days.");
-  // Keeping the plugin's copy instead of yours changes what every repo runs too.
-  const frontend = w.machine.find((m) => m.name === "frontend-design" && m.source === "global")!;
-  expect(machineIssues(w, frontend).find((i) => i.id === "dup-plugin:frontend-design")!.decision).toBe(true);
-});
-
 test("fix all says what it held back and why, and what failed", () => {
   const w = sampleWorld();
   const fix = (r: Result): Fix => ({ label: "", preview: "", run: () => r });
@@ -206,29 +93,6 @@ test("fix all says what it held back and why, and what failed", () => {
   const bad = runAll(w, [fix(failed("y: nope")), broken]);
   expect(isFailure(bad)).toBe(true);
   expect(said(bad)).toBe("Applied 0 of 2 fixes · couldn't: y: nope; x: gone");
-});
-
-test("importing a repo's skill or tracking it writes to skilllib.json: your call, never in fix all (#49)", () => {
-  const w = sampleWorld();
-  const issue = (repo: string, name: string, id: string) => issuesOf(w, repo, usable(w, repo).find((u) => u.local && u.name === name)!).find((i) => i.id === `${id}:${name}`);
-  expect(issue("docs-site", "mdx-tips", "adopt")!.decision).toBe(true);
-  expect(issue("mobile-app", "pr-review", "local")!.decision).toBe(true);
-});
-
-test("plugin issues are always your call: fix-all never turns plugins on or off, or updates them", () => {
-  const w = sampleWorld();
-  const issues = w.plugins.flatMap((p) => pluginIssues(w, p).map((i) => [p.id, i.short, i.decision] as const));
-  expect(issues).toEqual([
-    ["vercel@claude-plugins-official", "Update to 0.51.0", true],
-    ["frontend-design@claude-plugins-official", "Repeats 1 of yours", true],
-    ["frontend-design@claude-plugins-official", "Unused 30 days", true],
-    ["stripe-tools@acme", "Repeats 1 of yours", true],
-    // Your own stripe-payments is used, but not the plugin's (stripe-tools:stripe-payments).
-    ["stripe-tools@acme", "Unused 30 days", true],
-    ["react-kit@cursor-public", "Repeats 1 of yours", true],
-  ]);
-  // Off plugins load nothing: no duplicates, nothing unused.
-  expect(pluginIssues(w, w.plugins.find((p) => p.id === "ponytail@ponytail")!)).toEqual([]);
 });
 
 test("turning a plugin off takes its skills out of what loads everywhere; on brings them back", () => {
@@ -252,24 +116,6 @@ test("a plugin's uses are its own (plugin:skill), per repo too", () => {
   // Claude Code records both railway installs as railway:use-railway, so they share a count.
   expect(pluginUses(w, byId("railway@synced"))).toBe(2);
   expect(replacePluginFix(byId("railway@claude-plugins-official")).preticked!(w)).toEqual(["api-server"]);
-});
-
-test("a plugin only turned on in your settings can be turned off, not uninstalled", () => {
-  const w = sampleWorld();
-  const p = { ...w.plugins.find((x) => x.id === "frontend-design@claude-plugins-official")!, settingsOnly: true as const };
-  expect(pluginIssues(w, p).find((i) => i.short === "Unused 30 days")!.fixes.map((f) => f.label)).toEqual(["Turn it off"]);
-});
-
-test("a plugin installed for one repo only repeats what loads in that repo", () => {
-  const w = sampleWorld();
-  const stripe = w.plugins.find((p) => p.id === "stripe-tools@acme")!;
-  // api-server has stripe-payments: the plugin repeats it there.
-  expect(pluginIssues(w, stripe).map((i) => i.short)).toContain("Repeats 1 of yours");
-  // Without it there or globally, your library copy loads nowhere the plugin does.
-  const api = w.projects.find((p) => p.name === "api-server")!;
-  api.skills = api.skills.filter((s) => s.name !== "stripe-payments");
-  w.machine = w.machine.filter((m) => !(m.source === "global" && m.name === "stripe-payments"));
-  expect(pluginIssues(w, stripe).map((i) => i.short)).not.toContain("Repeats 1 of yours");
 });
 
 test("doctor's issues in the app: the fix is the ★ one, choices are your call, a fix that throws is a failure", () => {
@@ -296,4 +142,33 @@ test("doctor's issues in the app: the fix is the ★ one, choices are your call,
   expect(choice.fixes[1]!.run(w)).toEqual(failed("two: no"));
   // Nothing skilllib can do: still your call, with no fix to run.
   expect(issueOf({ id: "z", severity: "suggestion", title: "t", detail: "d" })).toMatchObject({ decision: true, fixes: [] });
+});
+
+test("each of doctor's issues shows on the rows it names: a repo's, Global's, a plugin's, your library's", () => {
+  const w = sampleWorld();
+  const ids = (issues: { id: string }[]) => issues.map((i) => i.id);
+  // A repo copy also loaded globally: on every repo's row, and on Global's.
+  expect(ids(issuesAt(w, "web-app", "stripe-payments"))).toContain("twice:stripe-payments");
+  expect(ids(issuesAt(w, "api-server", "stripe-payments"))).toContain("twice:stripe-payments");
+  expect(ids(issuesAt(w, null, "stripe-payments"))).toContain("twice:stripe-payments");
+  // A repo's grouped issue is on each skill it names, and counts once for the repo.
+  expect(ids(issuesAt(w, "web-app", "deploy-preview"))).toEqual(["usable:~/Projects/web-app"]);
+  expect(ids(repoIssues(w, "web-app")).filter((id) => id === "usable:~/Projects/web-app")).toHaveLength(1);
+  // Plugins: Claude Code's by id, Cursor's by name.
+  const plugin = (id: string) => ids(pluginIssues(w, w.plugins.find((p) => p.id === id)!));
+  expect(plugin("vercel@claude-plugins-official")).toEqual(["plugin:vercel@claude-plugins-official"]);
+  expect(plugin("react-kit@cursor-public")).toEqual(["cursor-plugin:react-kit"]);
+  expect(plugin("railway@claude-plugins-official")).toEqual([]);
+  // Your skills only shows the library's own: in no repo, unused (from usage, which the app adds once it's read).
+  w.issues = [...w.issues, ...w.ops.usageIssues(w.usage)];
+  expect(ids(libraryIssues(w, "sql-migrations"))).toEqual(["unused:library"]);
+  expect(libraryIssues(w, "stripe-payments")).toEqual([]);
+});
+
+test("a fix runs doctor's choice, and the issue goes", () => {
+  const w = sampleWorld();
+  const [stop] = issuesAt(w, "web-app", "stripe-payments").find((i) => i.id === "twice:stripe-payments")!.fixes;
+  expect(stop!.run(w)).toBe("stripe-payments no longer loads globally");
+  expect(issuesAt(w, "web-app", "stripe-payments").map((i) => i.id)).not.toContain("twice:stripe-payments");
+  expect(w.machine.some((m) => m.name === "stripe-payments" && m.source === "global")).toBe(false);
 });

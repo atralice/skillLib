@@ -1,30 +1,30 @@
-╭── ◆ skilllib ────────────╮╭── To fix  2/20 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││  All 19                                                                                │
-│   ◈ Global          15   ││     Skill              Where            Issue                                          │
-│   ⧉ Plugins         7    ││   ✦ Fix 8 issues automatically…                                                        │
-│ ▌ ✓ Health          19   ││ ▌ ✕ commit-style       Global           Copies differ                                  │
-│   Projects ───────────── ││   ✕ stripe-payments    web-app          Loaded twice                                   │
-│   ◆ web-app          ✕   ││   ✕ stripe-payments    api-server       Loaded twice                                   │
-│     api-server       ✕   ││   ✕ vercel-deploy      web-app          Same name as a plugin skill                    │
-│     docs-site        ·   ││   ✕ db-seed            api-server       Copies differ                                  │
-│     mobile-app       ⚠   ││   ✕ frontend-design    Global           Loaded twice                                   │
-│     billing              ││   ✕ old-helper         Global           Broken link                                    │
-│     blog                 ││   ✕ seo-meta           web-app          Folder missing                                 │
-│     cli-tools            ││   ⚠ stripe-payments    Global           Not reviewed · Codex can't see it              │
+╭── ◆ skilllib ────────────╮╭── To fix  2/25 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     10   ││  All 24                                                                                │
+│   ◈ Global          15   ││     Issue                                                                              │
+│   ⧉ Plugins         7    ││   ✦ Fix 5 issues automatically…                                                        │
+│ ▌ ✓ Health          24   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
+│   Projects ───────────── ││   ✕ db-seed in api-server: the copies differ                                           │
+│   ◆ web-app          ✕   ││   ✕ frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-of… │
+│     api-server       ✕   ││   ✕ old-helper: broken link in ~/.claude/skills                                        │
+│     docs-site        ⚠   ││   ✕ stripe-payments: also in the Claude Code plugin stripe-tools@acme, on in api-serv… │
+│     mobile-app       ⚠   ││   ✕ vercel-deploy: also in the Claude Code plugin vercel@claude-plugins-official       │
+│     billing              ││   ✕ web-app: 1 skill in skilllib.json not installed                                    │
+│     blog                 ││   ⚠ 1 global skill not usable by Claude Code                                           │
+│     cli-tools            ││   ⚠ 1 global skill with duplicate copies                                               │
 │     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     design-system        │╭── commit-style ────────────────────────────────────────────────────────────────────────╮
-│     e2e-tests            ││ Conventional commits with a short imperative subject and a why-focused body.           │
-│     infra                ││                                                                                        │
-│     landing              ││ ✕ Copies differ: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex)  … │
-│     marketing-site       ││       Keep the ~/.claude/skills copy                                                   │
-│     playground           ││       Keep the ~/.agents/skills copy                                                   │
-│     scripts              ││ ⚠ Global, not reviewed: loads in every repo  · your call                               │
-│     status-page          ││       Move it to the repos that need it…                                               │
-│    ───────────────────── ││       Keep it global on purpose                                                        │
-│   ⚙ Settings             ││       Delete it                                                                        │
+│     design-system        │╭── Copies differ ───────────────────────────────────────────────────────────────────────╮
+│     e2e-tests            ││ Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs          │
+│     infra                ││ ~/.agents/skills (Codex). Keep one; the others become links to it and are restorable   │
+│     landing              ││ from Health.                                                                           │
+│     marketing-site       ││                                                                                        │
+│     playground           ││ ✕ commit-style in your global folders: the copies differ  · your call                  │
+│     scripts              ││       Keep the ~/.claude/skills copy                                                   │
+│     status-page          ││       Keep the ~/.agents/skills copy                                                   │
+│    ───────────────────── ││                                                                                        │
+│   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││                                                                                        │
-│                          ││ Actions  Edit SKILL.md · Review prompt                                                 │
 │                          ││                                                                                        │
-│                          ││ Usage   last used yesterday                                                            │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back

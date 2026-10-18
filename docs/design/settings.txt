@@ -2,11 +2,11 @@
 │   ▤ Your skills     10   ││   Agents ───────────────────────────────────────────────────────────────────────────── │
 │   ◈ Global          15   ││ ▌ [x] ✻ Claude Code                 .claude/skills                                     │
 │   ⧉ Plugins         7    ││   [x] ⬡ Cursor                      .agents/skills, .cursor/skills, .claude/skills, .… │
-│   ✓ Health          19   ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
+│   ✓ Health          24   ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
 │   Projects ───────────── ││   [ ] ℤ Zed                         .agents/skills                                     │
 │   ◆ web-app          ✕   ││   [ ] ✶ Grok                        .agents/skills, .grok/skills, .claude/skills, .cu… │
 │     api-server       ✕   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
-│     docs-site        ·   ││   Project folders ──────────────────────────────────────────────────────────────────── │
+│     docs-site        ⚠   ││   Project folders ──────────────────────────────────────────────────────────────────── │
 │     mobile-app       ⚠   ││   ~/Projects                        scanned for git repos                              │
 │     billing              ││   + Add a folder…                                                                      │
 │     blog                 ││   Backups ──────────────────────────────────────────────────────────────────────────── │

@@ -24,7 +24,7 @@ export const SCREENS: Screen[] = [
   { name: "repo-menu", steps: ["enter", "up", "enter"] },
   { name: "global", steps: ["up", "up", "up", "enter"] },
   { name: "global-group-open", steps: ["up", "up", "up", "enter", "right"] },
-  { name: "global-plugin", steps: ["up", "up", "up", "enter", "down down down down down"] },
+  { name: "global-plugin", steps: ["up", "up", "up", "enter", "down"] },
   { name: "repo-picker", steps: ["up", "up", "up", "enter", "right", "right", "enter"] },
   { name: "your-skills", steps: ["up", "up", "up", "up", "enter"] },
   { name: "plugins", steps: ["up", "up", "enter"] },

@@ -35,8 +35,7 @@ const CHIPS: [Chip, string][] = [
 ];
 const SEV: Record<W.Severity, { icon: string; color: string }> = {
   problem: { icon: "✕", color: color.red },
-  warning: { icon: "⚠", color: color.yellow },
-  hint: { icon: "·", color: color.blue },
+  suggestion: { icon: "⚠", color: color.yellow },
 };
 /** Terminals this wide get the Places sidebar instead of the tab bar. */
 const SIDEBAR_AT = 80;
@@ -175,12 +174,6 @@ function byName(copies: W.Usable[]): W.Usable[][] {
   return [...groups.values()].map((g) => g.sort((a, b) => COPY_RANK[a.source] - COPY_RANK[b.source]));
 }
 
-/** Every copy's issues on one row, each once. */
-function mergeIssues(lists: W.Issue[][]): W.Issue[] {
-  const seen = new Set<string>();
-  return lists.flat().filter((i) => !seen.has(i.id) && seen.add(i.id));
-}
-
 const BLOCKS = " ▁▂▃▄▅▆▇█";
 
 /** Daily values as bars `height` rows tall; a gap between days when there's room. */
@@ -270,10 +263,10 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
   };
 }
 
-/** A repo's skills, seen from the repo: only its own issues; what loads everywhere is Global's business. */
+/** A repo's skills, seen from the repo: only its own copies' issues; what loads everywhere is Global's business. */
 function projectSkillItems(w: W.World, p: string, nameW: number, ui: Ui): Item[] {
   return byName(W.usable(w, p)).map((copies) =>
-    skillItem(w, copies, mergeIssues(copies.filter((c) => c.local).map((c) => W.issuesOf(w, p, c))), nameW, skillActions(w, p, copies[0]!, ui), p),
+    skillItem(w, copies, copies.some((c) => c.local) ? W.issuesAt(w, p, copies[0]!.name) : [], nameW, skillActions(w, p, copies[0]!, ui), p),
   );
 }
 
@@ -326,7 +319,6 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       // A tracked skill your library doesn't have: nothing to edit there, no versions to pick.
       ...(inLibrary
         ? [
-            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
             { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
             versionsOption(w, p, u.name, s.version, ui),
           ]
@@ -340,11 +332,9 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       reviewOption(w, u.name, ui, p),
     ];
+  // Importing or tracking it is doctor's choice, on its issue.
   if (s)
     return [
-      inLibrary
-        ? fixOption({ label: "Track it", preview: `Record ${u.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(p, u.name) })
-        : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library and track it here.`, run: (w) => w.ops.importLocal(p, u.name) }),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       fixOption(remove),
       reviewOption(w, u.name, ui, p),
@@ -393,7 +383,7 @@ function InfoGrid({ rows, columns, width }: { rows: [string, Seg[]][]; columns: 
 
 function projectItems(w: W.World): Item[] {
   return w.projects.map((p) => {
-    const issues = W.projectIssues(w, p.name).map((x) => x.issue);
+    const issues = W.repoIssues(w, p.name);
     const t = W.tally(issues);
     return {
       key: p.name,
@@ -405,8 +395,7 @@ function projectItems(w: W.World): Item[] {
         { text: p.name, width: 18 },
         { text: p.skills.length ? `${p.skills.length} skill${p.skills.length === 1 ? "" : "s"}` : "–", width: 10, color: color.muted },
         { text: t.problem ? `✕ ${t.problem}` : "", width: 5, color: color.red },
-        { text: t.warning ? `⚠ ${t.warning}` : "", width: 5, color: color.yellow },
-        { text: t.hint ? `· ${t.hint}` : "", grow: true, color: color.blue },
+        { text: t.suggestion ? `⚠ ${t.suggestion}` : "", grow: true, color: color.yellow },
       ] as Cell[],
     };
   });
@@ -414,7 +403,7 @@ function projectItems(w: W.World): Item[] {
 
 function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
   const copies = w.machine.map((m): W.Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: W.totalUses(w, m.name), machine: m }));
-  return byName(copies).map((g) => skillItem(w, g, mergeIssues(g.map((c) => W.machineIssues(w, c.machine!))), nameW, globalActions(w, g[0]!, ui), null));
+  return byName(copies).map((g) => skillItem(w, g, W.issuesAt(w, null, g[0]!.name), nameW, globalActions(w, g[0]!, ui), null));
 }
 
 /** What to tell the user for a vendor skill. null: this screen already has actions for that source. */
@@ -448,7 +437,8 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
     const uses = W.totalUses(w, l.name);
     const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => w.ops.addTo(rs, [l.name]) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
-    const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
+    const issues = W.libraryIssues(w, l.name);
+    const sev = issues[0] && SEV[issues[0].severity];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
     return {
       key: l.name,
@@ -458,12 +448,12 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
       cands: W.groupCandidates(w, l),
       lib: l,
       cells: [
-        { text: issues[0] ? SEV.hint.icon : " ", width: 2, color: color.blue },
+        { text: sev ? sev.icon : " ", width: 2, color: sev?.color },
         { text: clip(l.name, nameW), width: nameW },
         { text: `v${l.latest}`, width: 5, color: color.accent },
         { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
         { text: usesText(uses), width: 6, color: color.muted },
-        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
+        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: sev ? sev.color : color.faint },
       ],
       detail: (width) => {
         const b = builder(l.name);
@@ -513,7 +503,7 @@ function healthItems(w: W.World): Item[] {
         { text: issue.title, grow: true },
       ],
       detail: (width) => {
-        const b = builder(issue.title);
+        const b = builder(issue.short);
         for (const l of wrap(found.detail, width - 4, 4)) b.line([l, color.muted]);
         b.line();
         b.issues([issue]);
@@ -561,7 +551,8 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
         { text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted },
         { text: state.padEnd(4), width: 4, color: stateColor },
         { text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted },
-        { text: " " + (top?.short ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+        // Its issues are about your skills it repeats: say how many.
+        { text: " " + (top ? `Repeats ${top.skills.length} of yours` : ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
       ],
       detail: (width) => {
         const b = builder(p.id);
@@ -663,10 +654,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     copy: (text, what) => setToast(said(world.ops.copy(text, what))),
     menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
   };
-  // Issues once per render: Health's count, the sidebar's badges and Global's count all need them.
+  // Issues once per render: the sidebar's badges and counts need them.
   const pluginIssues = new Map(world.plugins.map((p) => [p.key, W.pluginIssues(world, p)]));
-  const repoIssues = new Map(world.projects.map((p) => [p.name, W.projectIssues(world, p.name)]));
-  const machineIssues = world.machine.map((m) => [m, W.machineIssues(world, m)] as const);
+  const repoIssues = new Map(world.projects.map((p) => [p.name, W.repoIssues(world, p.name)]));
+  const machineIssues = [...new Set(world.machine.map((m) => m.name))].map((name) => [name, W.issuesAt(world, null, name)] as const);
   // Health's count: doctor's issues.
   const healthCount = world.issues.length;
   const healthWorst = W.worst(world.issues.map(W.issueOf));
@@ -756,11 +747,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     choose({ label: issue.fixes[0]!.label, fix: issue.fixes[0]! });
   }
   function fixAllList(from: Item[]) {
+    // An issue on several rows (a repo's out-of-date skills) is fixed once.
     const seen = new Set<string>();
     return from.flatMap((i) =>
       i.issues
-        .filter((x) => !x.decision && !seen.has(`${i.key}|${x.id}`) && seen.add(`${i.key}|${x.id}`))
-        .map((x) => ({ label: `${i.name}: ${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
+        .filter((x) => !x.decision && !seen.has(x.id) && seen.add(x.id))
+        // Doctor's titles say which skill or repo.
+        .map((x) => ({ label: `${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
     );
   }
   function toggleFold(key: string) {
@@ -1227,17 +1220,16 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const confirmH = modal?.kind === "confirm" ? confirmLines.length + 2 : 0;
   const bodyH = Math.max(8, termRows - (sidebar ? 0 : 1) - bottomH - confirmH);
   // Same count as Global's Issues tab: skills with something to fix.
-  const globalFlagged = machineIssues.filter(([, issues]) => issues.length).map(([m, issues]) => [m.name, issues] as const);
-  const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
+  const globalFlagged = machineIssues.filter(([, issues]) => issues.length);
+  const globalIssues = globalFlagged.length;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
-  // Plugins' count turns yellow when one repeats your skills; hints (unused, updates) don't color it.
-  const pluginsWorst = W.worst([...pluginIssues.values()].flat().filter((i) => i.severity !== "hint"));
+  // Plugins' count takes the color of the worst plugin that repeats your skills.
+  const pluginsWorst = W.worst([...pluginIssues.values()].flat());
 
   /** The sidebar: places, then every repo. Moving onto a row opens it. */
   // Like Global's count: skills with something to fix, marked by the worst of them.
   const badge = (p: string): Cell => {
-    const found = repoIssues.get(p) ?? W.projectIssues(world, p);
-    const top = W.worst(found.map((x) => x.issue));
+    const top = W.worst(repoIssues.get(p) ?? W.repoIssues(world, p));
     return { text: top ? SEV[top.severity].icon : "", width: 3, color: top ? SEV[top.severity].color : undefined };
   };
   const sideRow = (key: string, label: string, here: boolean, go: () => void, count: Cell[] = []) => ({
@@ -1664,7 +1656,7 @@ function Help({ width, height }: { width: number; height: number }) {
         </Text>
       ))}
       <Text> </Text>
-      <Text color={color.muted}>{"✕ problem · ⚠ warning · · hint · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
+      <Text color={color.muted}>{"✕ problem · ⚠ suggestion · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
       <Text color={color.muted}>{"Source: lib = from your library · repo = committed by the team · untracked = only on this machine"}</Text>
       <Text color={color.muted}>{"Usage counts Claude Code sessions only: other agents don't record skill use."}</Text>
     </Panel>
