@@ -506,8 +506,10 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
 export function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
   const dep = readManifest(root).skills[name];
   if (!dep) return [];
-  const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
-  const linksOk = (dep.links ?? []).every((d) => existsSync(join(root, d, name, "SKILL.md")));
+  const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
+  const local = treeHash(copy);
+  // Each recorded link reaches this skill's copy (not just any folder with a SKILL.md).
+  const linksOk = (dep.links ?? []).every((d) => realpathOrNull(join(root, d, name)) === realpathOrNull(copy));
   if (local === dep.hash && linksOk) return [];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
@@ -523,8 +525,8 @@ function relinkPinned(root: string, name: string, dep: Dependency): Change {
   const to = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
   for (const dir of dep.links ?? []) {
     const link = join(root, dir, name);
-    if (existsSync(join(link, "SKILL.md"))) continue;
-    if (isLink(link)) unlinkSync(link); // a link to nothing
+    if (realpathOrNull(link) === realpathOrNull(to)) continue;
+    if (isLink(link)) unlinkSync(link); // a link to nothing, or to another skill
     else if (entryExists(link)) return { name, action: "skipped", reason: `${dir}/${name} is in the way of its link: move it, then sync` };
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
@@ -543,7 +545,7 @@ function pinnedVersion(name: string, dep: Dependency): number | string {
 
 /**
  * Puts a managed skill back to the version skilllib.json pins. The edited copy goes to
- * ~/.skilllib/edit-backup first, restorable from Health; nothing moves when the pin can't be met.
+ * ~/.skilllib/edit-backup first, restorable with skilllib restore; nothing moves when the pin can't be met.
  */
 export function discardEdits(root: string, name: string): Change {
   const dep = readManifest(root).skills[name];
@@ -624,9 +626,11 @@ export function stash(dir: string, bucket: string): string {
   while (entryExists(join(skilllibHome(), bucket, entryAt(at)))) at++;
   const entry = entryAt(at);
   const target = join(skilllibHome(), bucket, entry);
+  // The index first: if it can't be read, nothing has moved yet.
+  const index = readBackupIndex(bucket);
   mkdirSync(join(skilllibHome(), bucket), { recursive: true });
   move(dir, target);
-  writeState(backupIndexFile(bucket), { ...readBackupIndex(bucket), [entry]: dir });
+  writeState(backupIndexFile(bucket), { ...index, [entry]: dir });
   return target;
 }
 
@@ -656,7 +660,7 @@ export function deleteLibrarySkill(name: string): { ok: true; movedTo: string } 
 /**
  * Deletes one of your global skills without keeping a copy in Your skills.
  * Like everything skilllib removes, it goes to ~/.skilllib/global-backup and
- * can be restored from Health.
+ * can be restored with skilllib restore.
  */
 export function deleteGlobal(path: string, links: string[] = []) {
   return unloadGlobal(path, links, { requireLibrary: false });

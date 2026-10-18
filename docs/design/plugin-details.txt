@@ -22,9 +22,9 @@
 │     status-page          ││       Turn the plugin stripe-tools@acme off                                            │
 │    ───────────────────── ││       Uninstall the plugin stripe-tools@acme                                           │
 │   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Actions  Turn it off · Replace stripe-tools with library skills… · Uninstall           │
-│                          ││          Open its folder · Review prompt                                               │
+│   ? Help                 ││ Actions  Replace stripe-tools with library skills… · Open its folder · Review prompt   │
 │                          ││                                                                                        │
 │                          ││ Skills      stripe-payments (unused) · stripe-webhooks (unused)                        │
+│                          ││ Also brings MCP servers                                                                │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                 ↑↓ ←→ choose · enter apply · esc back

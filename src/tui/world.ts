@@ -268,6 +268,7 @@ function shortOf(found: Found): string {
     usable: "Not every agent can use it",
     sync: "Folder missing",
     unavailable: "Pinned, not in your library",
+    pin: "Pinned version not in your library",
     update: "Out of date",
     uncommitted: "Commit it first",
     local: "Not in your library",
@@ -419,22 +420,10 @@ function removeAgentSkillFix(): Fix {
  * (it needs your OK, e.g. git tracks the folder); its message says what and why.
  */
 export function runAll(w: World, fixes: Fix[]): Result {
-  const held: string[] = [];
-  const bad: string[] = [];
-  for (const fix of fixes) {
-    let r: Result;
-    try {
-      r = fix.run(w);
-    } catch (e) {
-      r = failed((e as Error).message);
-    }
-    if (isFailure(r)) bad.push(said(r));
-    else if (followUp(r)) held.push(said(r));
-  }
-  const ok = fixes.length - held.length - bad.length;
+  const bad = fixes.map((fix) => fix.run(w)).filter(isFailure).map(said);
+  const ok = fixes.length - bad.length;
   const message = [
     `Applied ${ok}${ok === fixes.length ? "" : ` of ${fixes.length}`} fix${fixes.length === 1 ? "" : "es"}${ok ? " (anything removed is in Settings › Backups)" : ""}`,
-    held.length ? `${held.join("; ")} (fix ${held.length === 1 ? "it" : "them"} on ${held.length === 1 ? "its" : "their"} own to go ahead)` : "",
     bad.length ? `couldn't: ${bad.join("; ")}` : "",
   ]
     .filter(Boolean)
@@ -537,7 +526,8 @@ export function replacePluginFix(p: Plugin): Fix {
 export function pluginSwitchFix(p: Plugin, on: boolean): Fix {
   const where = p.repo ? ` in ${p.repo} (${p.scope} install)` : p.scope === "claude.ai" ? " on this machine" : " in every repo";
   return {
-    label: on ? "Turn it on" : "Turn it off",
+    // doctor's wording, so the details list it once when an issue offers it too.
+    label: `Turn the plugin ${p.id} ${on ? "on" : "off"}`,
     preview: `Turns ${p.id} ${on ? "on" : "off"}${where}${p.parts.length ? `, with its ${p.parts.join(", ")}` : ""}. ${
       p.scope === "claude.ai" ? `Sets "${p.id}": ${on} in ~/.claude/settings.json.` : `Runs claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""}.`
     } Claude Code picks it up in its next session.`,
@@ -547,7 +537,7 @@ export function pluginSwitchFix(p: Plugin, on: boolean): Fix {
 
 export function uninstallPluginFix(p: Plugin): Fix {
   return {
-    label: "Uninstall",
+    label: `Uninstall the plugin ${p.id}`,
     preview: `Runs claude plugin uninstall ${p.id} --keep-data --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""}: its ${[plural(p.skills.length, "skill"), ...p.parts].join(", ")} go, its saved data stays. Settings › Backups reinstalls it.`,
     run: (w) => w.ops.uninstallPlugin(p),
   };

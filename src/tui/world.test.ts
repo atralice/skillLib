@@ -73,26 +73,13 @@ test("replacing a plugin: its skills join your library, grouped by the plugin", 
   expect(w.library.filter((l) => l.origin === "plugin: vercel@claude-plugins-official").map((l) => l.name)).toEqual(["vercel-deploy", "vercel-env", "nextjs"]);
 });
 
-test("fix all says what it held back and why, and what failed", () => {
+test("fix all counts what it applied, and names what failed", () => {
   const w = sampleWorld();
   const fix = (r: Result): Fix => ({ label: "", preview: "", run: () => r });
-  const ask = fix({ message: "shared-skill: held back .claude/skills/shared-skill: duplicate copy → link, because git tracks it", then: fix("done") });
   expect(runAll(w, [fix("a"), fix("b")])).toBe("Applied 2 fixes (anything removed is in Settings › Backups)");
-  const held = runAll(w, [fix("a"), ask]);
-  expect(isFailure(held)).toBe(false);
-  expect(said(held)).toBe(
-    "Applied 1 of 2 fixes (anything removed is in Settings › Backups) · shared-skill: held back .claude/skills/shared-skill: duplicate copy → link, because git tracks it (fix it on its own to go ahead)",
-  );
-  const broken: Fix = {
-    label: "",
-    preview: "",
-    run: () => {
-      throw new Error("x: gone");
-    },
-  };
-  const bad = runAll(w, [fix(failed("y: nope")), broken]);
+  const bad = runAll(w, [fix("a"), fix(failed("y: nope"))]);
   expect(isFailure(bad)).toBe(true);
-  expect(said(bad)).toBe("Applied 0 of 2 fixes · couldn't: y: nope; x: gone");
+  expect(said(bad)).toBe("Applied 1 of 2 fixes (anything removed is in Settings › Backups) · couldn't: y: nope");
 });
 
 test("turning a plugin off takes its skills out of what loads everywhere; on brings them back", () => {

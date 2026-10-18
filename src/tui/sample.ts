@@ -265,7 +265,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     title: "frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-official",
     detail: "Claude Code loads both (the plugin's as /frontend-design:frontend-design). Your skill wins.",
     choices: [
-      { label: "Remove the plugin frontend-design@claude-plugins-official", hint: "restorable from Health", change: off("frontend-design@claude-plugins-official") },
+      { label: "Remove the plugin frontend-design@claude-plugins-official", hint: "restorable with skilllib restore", change: off("frontend-design@claude-plugins-official") },
       { label: "Turn the plugin frontend-design@claude-plugins-official off", hint: "stays installed", change: off("frontend-design@claude-plugins-official") },
     ],
     at: at(null, "frontend-design"),
@@ -304,7 +304,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     id: "tidy:global",
     severity: "suggestion",
     title: "1 global skill with duplicate copies",
-    detail: "tailwind-tips: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable from Health.",
+    detail: "tailwind-tips: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable with skilllib restore.",
     fix: { label: "Keep one copy of each", said: "1 global skill now has one copy" },
     at: at(null, "tailwind-tips"),
   });
@@ -312,7 +312,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     id: "conflict:global:commit-style",
     severity: "problem",
     title: "commit-style in your global folders: the copies differ",
-    detail: "Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex). Keep one; the others become links to it and are restorable from Health.",
+    detail: "Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex). Keep one; the others become links to it and are restorable with skilllib restore.",
     choices: [
       { label: "Keep the ~/.claude/skills copy", hint: "the others become links to it" },
       { label: "Keep the ~/.agents/skills copy", hint: "the others become links to it" },
@@ -339,8 +339,8 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     id: "twice:stripe-payments",
     severity: "suggestion",
     title: "stripe-payments: in web-app, api-server and also loaded globally",
-    detail: "The project copies are enough; the global one loads it in every other project too. Stop loading it globally, or keep it global on purpose (Global → Enter).",
-    choices: [{ label: "Stop loading it globally", hint: "restorable from Health", change: () => drop(global("stripe-payments")), said: "stripe-payments no longer loads globally" }],
+    detail: "The project copies are enough; the global one loads it in every other project too. Stop loading it globally, or keep it global on purpose (skilllib global keep).",
+    choices: [{ label: "Stop loading it globally", hint: "restorable with skilllib restore", change: () => drop(global("stripe-payments")), said: "stripe-payments no longer loads globally" }],
     at: [...at("web-app", "stripe-payments"), ...at("api-server", "stripe-payments"), ...at(null, "stripe-payments")],
   });
   add(issues, {
@@ -382,7 +382,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     id: `conflict:${root("api-server")}:db-seed`,
     severity: "problem",
     title: "db-seed in api-server: the copies differ",
-    detail: "Your agents run different versions: .claude/skills (Claude Code, Cursor) vs .agents/skills (Codex). Keep one; the others become links to it and are restorable from Health.",
+    detail: "Your agents run different versions: .claude/skills (Claude Code, Cursor) vs .agents/skills (Codex). Keep one; the others become links to it and are restorable with skilllib restore.",
     choices: [
       { label: "Keep the .claude/skills copy", hint: "the others become links to it" },
       { label: "Keep the .agents/skills copy", hint: "the others become links to it" },
@@ -408,7 +408,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     detail: "It no longer matches v1 from Your skills. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.",
     choices: [
       { label: "Save as a new version in Your skills", hint: "becomes v2; web-app uses it", change: () => Object.assign(skill("web-app", "api-conventions"), { edited: false, version: ++w.library.find((l) => l.name === "api-conventions")!.latest }) },
-      { label: "Discard the edits", hint: "back to v1; the edited copy is restorable from Health", change: () => void (skill("web-app", "api-conventions").edited = false) },
+      { label: "Discard the edits", hint: "back to v1; the edited copy is restorable with skilllib restore", change: () => void (skill("web-app", "api-conventions").edited = false) },
     ],
     at: at("web-app", "api-conventions"),
   });
@@ -463,7 +463,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
       detail: `No Claude Code session used ${skills.map((s) => `/${name}:${s}`).join(", ")}. Each one's name and description still takes context in every session.`,
       choices: [
         { label: `Turn the plugin ${id} off`, hint: "stays installed", change: off(id) },
-        { label: `Uninstall the plugin ${id}`, hint: "its data stays; restorable from Health", change: off(id) },
+        { label: `Uninstall the plugin ${id}`, hint: "its data stays; restorable with skilllib restore", change: off(id) },
       ],
       plugin: id,
       pluginAt: at,
@@ -474,7 +474,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     severity: "suggestion",
     title: "4 skills in Your skills: in no repo, unused in 30 days",
     detail: "lean, lean-audit, lean-review, sql-migrations. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.",
-    choices: [{ label: "Delete all 4 from Your skills", hint: "restorable from Health", change: () => void (w.library = w.library.filter((l) => !["lean", "lean-audit", "lean-review", "sql-migrations"].includes(l.name))), said: "Deleted 4 skills from Your skills" }],
+    choices: [{ label: "Delete all 4 from Your skills", hint: "restorable with skilllib restore", change: () => void (w.library = w.library.filter((l) => !["lean", "lean-audit", "lean-review", "sql-migrations"].includes(l.name))), said: "Deleted 4 skills from Your skills" }],
     at: at(null, "lean", "lean-audit", "lean-review", "sql-migrations"),
   });
   return { issues, unused };

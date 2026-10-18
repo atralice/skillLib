@@ -15,7 +15,7 @@
 │     design-system        │╭── Copies differ ───────────────────────────────────────────────────────────────────────╮
 │     e2e-tests            ││ Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs          │
 │     infra                ││ ~/.agents/skills (Codex). Keep one; the others become links to it and are restorable   │
-│     landing              ││ from Health.                                                                           │
+│     landing              ││ with skilllib restore.                                                                 │
 │     marketing-site       ││                                                                                        │
 │     playground           ││ ✕ commit-style in your global folders: the copies differ  · your call                  │
 │     scripts              ││       Keep the ~/.claude/skills copy                                                   │

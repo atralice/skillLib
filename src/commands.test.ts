@@ -410,6 +410,18 @@ describe("round 2: what agents rely on", () => {
   });
 });
 
+describe("round 3: a flag a command doesn't use is an error", () => {
+  test("add --dry-run doesn't add; status --days=7 still works", () => {
+    const web = join(tmp, "code", "web");
+    mkdirSync(join(web, ".git"), { recursive: true });
+    const r = cli(web, "add", "alpha", "--dry-run", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).error).toBe("skilllib add doesn't take --dry-run");
+    expect(existsSync(join(web, ".agents", "skills", "alpha"))).toBe(false);
+    expect(cli(web, "status", "--days=7", "--json").code).toBe(0);
+  });
+});
+
 describe("what the plain commands say", () => {
   const skill = (dir: string) => {
     mkdirSync(dir, { recursive: true });

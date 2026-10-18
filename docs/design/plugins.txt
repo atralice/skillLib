@@ -22,9 +22,9 @@
 │     status-page          ││ ⚠ vercel@claude-plugins-official: update available (0.50.0 → 0.51.0)  · your call      │
 │    ───────────────────── ││       Update to 0.51.0                                                                 │
 │   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Actions  Turn it off · Replace vercel with library skills… · Uninstall                 │
-│                          ││          Open its folder · Review prompt                                               │
+│   ? Help                 ││ Actions  Replace vercel with library skills…                                           │
+│                          ││          Uninstall the plugin vercel@claude-plugins-official · Open its folder         │
+│                          ││          Review prompt                                                                 │
 │                          ││                                                                                        │
-│                          ││ Skills      vercel-deploy (unused) · vercel-env (unused) · nextjs (5 uses)             │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back
