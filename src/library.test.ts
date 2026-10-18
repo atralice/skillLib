@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, syncProject, updateProject } from "./library.js";
+import { addSkill, discardEdits, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { copySkill, treeHash } from "./skills.js";
 import { readManifest } from "./project.js";
@@ -611,5 +611,72 @@ describe("damaged folders and pins from another library", () => {
     writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: latestVersion("alpha")!.hash } } }));
     syncProject(project);
     expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v2");
+  });
+});
+
+describe("round 2: sync, discard, remove and state files never lose a copy", () => {
+  const manifest = () => JSON.parse(readFileSync(join(project, "skilllib.json"), "utf-8"));
+  const pin = (hash: string) => writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { ...manifest().skills.alpha, hash } } }));
+
+  test("a missing link is put back; the pinned copy isn't replaced by newer library content", () => {
+    setHarnesses(["claude-code", "codex"]);
+    addSkill(project, "alpha"); // real copy in .agents/skills, a link in .claude/skills
+    const pinned = manifest().skills.alpha.hash;
+    rmSync(join(project, ".claude", "skills", "alpha"));
+    writeSkill(join(tmp, "src", "alpha"), "v2");
+    importSkill(join(tmp, "src", "alpha"), { force: true });
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "relinked", to: 1 }]);
+    expect(readFileSync(join(project, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+    expect(manifest().skills.alpha.hash).toBe(pinned);
+  });
+
+  test("a pin this library has no copy of is skipped, never filled with other content", () => {
+    addSkill(project, "alpha");
+    pin("0000000000000000");
+    rmSync(local("alpha"), { recursive: true });
+    const [c] = syncProject(project);
+    expect(c).toMatchObject({ name: "alpha", action: "skipped" });
+    expect(c!.reason).toContain("no copy of the version skilllib.json pins");
+    expect(existsSync(local("alpha"))).toBe(false);
+  });
+
+  test("discarding edits when the pin can't be met leaves the edited copy in place", () => {
+    addSkill(project, "alpha");
+    writeSkill(local("alpha"), "my edits");
+    pin("0000000000000000");
+    expect(discardEdits(project, "alpha").action).toBe("skipped");
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("my edits");
+  });
+
+  test("removing a copy your library has no version of keeps it in a backup", () => {
+    addSkill(project, "alpha");
+    writeSkill(local("alpha"), "a teammate's version");
+    pin(treeHash(local("alpha"))!); // pinned as it is, from another library
+    const r = removeSkill(project, "alpha");
+    expect(r.action).toBe("removed");
+    expect(r.backedUp).toBeString();
+    expect(readFileSync(join(r.backedUp!, "SKILL.md"), "utf-8")).toContain("a teammate's version");
+  });
+
+  test("a damaged version index is an error, and no stored version is written over", () => {
+    writeSkill(join(tmp, "src", "alpha"), "v2");
+    importSkill(join(tmp, "src", "alpha"), { force: true });
+    expect(latestVersion("alpha")!.version).toBe(2);
+    const index = join(tmp, "home", "store", "alpha", "versions.json");
+    writeFileSync(index, readFileSync(index, "utf-8").slice(0, 20));
+    forgetLatest();
+    expect(() => versionHistory("alpha")).toThrow("isn't valid JSON");
+    expect(() => latestVersion("alpha")).toThrow("isn't valid JSON");
+    expect(readFileSync(join(tmp, "home", "store", "alpha", "1", "SKILL.md"), "utf-8")).toContain("v1");
+  });
+
+  test("a project backup whose origin was lost isn't restored to a guessed place", () => {
+    addSkill(project, "alpha");
+    stash(local("alpha"), "edit-backup");
+    rmSync(join(tmp, "home", "edit-backup", "index.json"));
+    const [backup] = listBackups().filter((b) => b.kind === "edit-backup");
+    const r = restoreBackup(backup!);
+    expect(r.ok).toBe(false);
+    expect(existsSync(join(tmp, ".claude", "skills", "alpha"))).toBe(false);
   });
 });

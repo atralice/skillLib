@@ -1,6 +1,6 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 /** The user's home folder; reads $HOME each time so tests (and odd setups) can redirect it. */
 export function userHome(): string {
@@ -78,4 +78,31 @@ export function realpathOrNull(path: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * One of skilllib's own state files (config, version index, backup index, projects, origins): null
+ * when it isn't there. A file that won't parse is an error, never "empty": the next write would wipe it.
+ */
+export function readState<T>(path: string): T | null {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${path} isn't valid JSON: fix it, or move it away to start that file over`);
+  }
+}
+
+/** Writes JSON whole or not at all (a temp file, then a rename), so a reader never sees half of it. */
+export function writeState(path: string, data: unknown) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(data, null, 2) + "\n");
+  renameSync(temp, path);
 }

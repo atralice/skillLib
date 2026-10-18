@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { libraryDir, skilllibHome } from "./paths.js";
+import { libraryDir, readState, skilllibHome, writeState } from "./paths.js";
 import { copySkill, treeHash } from "./skills.js";
 
 /**
@@ -20,11 +20,7 @@ function indexFile(name: string): string {
 }
 
 export function versionHistory(name: string): Version[] {
-  try {
-    return JSON.parse(readFileSync(indexFile(name), "utf-8")) as Version[];
-  } catch {
-    return [];
-  }
+  return readState<Version[]>(indexFile(name)) ?? [];
 }
 
 export function versionDir(name: string, version: number): string {
@@ -56,9 +52,11 @@ export function latestVersion(name: string): Version | null {
       result = last;
     } else {
       const next: Version = { version: (last?.version ?? 0) + 1, hash, date: new Date().toISOString() };
+      // A stored version is immutable: never write over one, even if the index lost track of it.
+      if (existsSync(versionDir(name, next.version))) throw new Error(`${versionDir(name, next.version)} exists but ${indexFile(name)} doesn't list it: fix the index before adding versions`);
       mkdirSync(storeDir(name), { recursive: true });
       copySkill(source, versionDir(name, next.version));
-      writeFileSync(indexFile(name), JSON.stringify([...history, next], null, 2) + "\n");
+      writeState(indexFile(name), [...history, next]);
       result = next;
     }
   }

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, realpathOrNull, skilllibHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -372,7 +372,8 @@ export function linkAll(
 export type Change = {
   name: string;
   /** reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`). */
-  action: "installed" | "updated" | "reset" | "removed" | "skipped";
+  /** relinked: the copy was as pinned; only the links skilllib.json records were put back. */
+  action: "installed" | "updated" | "reset" | "relinked" | "removed" | "skipped";
   reason?: string;
   from?: number;
   to?: number;
@@ -476,14 +477,16 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
 
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(dir);
-  const edited = local !== null && local !== recorded.hash && !versionForHash(name, local);
+  // Content your library has a version of can be deleted; anything else is kept in a backup.
+  const inLibrary = local !== null && versionForHash(name, local) !== null;
+  const edited = local !== null && local !== recorded.hash && !inLibrary;
   if (edited && !force) return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
   for (const linkDir of recorded.links ?? []) {
     const link = join(root, linkDir, name);
     if (isLink(link)) unlinkSync(link);
   }
-  // Forced over local edits: the edited copy goes to ~/.skilllib/edit-backup, as update and sync do.
-  const backedUp = edited ? stash(dir, "edit-backup") : undefined;
+  // Forced over local edits, or pinned from another library: the copy goes to ~/.skilllib/edit-backup, as update and sync do.
+  const backedUp = local !== null && !inLibrary ? stash(dir, "edit-backup") : undefined;
   if (!backedUp) rmSync(dir, { recursive: true, force: true });
   delete manifest.skills[name];
   writeManifest(root, manifest);
@@ -506,32 +509,50 @@ export function syncSkill(root: string, name: string, { force = false } = {}): C
   const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
   const linksOk = (dep.links ?? []).every((d) => existsSync(join(root, d, name, "SKILL.md")));
   if (local === dep.hash && linksOk) return [];
+  // The real copy is as pinned and only links are gone: put those back, never reinstall content.
+  if (local === dep.hash) return [relinkPinned(root, name, dep)];
   if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
-  const change = addSkill(root, name, { force: true, version: pinnedVersion(name, dep) });
-  // Only skipped when the library has no version of it: a teammate's skill, or another machine's library.
-  if (change.action === "skipped") return [{ ...change, reason: `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it` }];
+  const version = pinnedVersion(name, dep);
+  if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
+  const change = addSkill(root, name, { force: true, version });
   return [{ ...change, action: local === null ? "installed" : change.action }];
 }
 
-/**
- * The library version a pin means. By its hash first: version numbers are each library's own, so on a
- * teammate's machine the same number can be other content. Then by number; none means the newest.
- */
-function pinnedVersion(name: string, dep: Dependency): number | undefined {
-  return versionForHash(name, dep.hash)?.version ?? (dep.version > 0 && getVersion(name, dep.version) ? dep.version : undefined);
+/** Puts back the links skilllib.json records for a skill whose real copy is as pinned. */
+function relinkPinned(root: string, name: string, dep: Dependency): Change {
+  const to = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
+  for (const dir of dep.links ?? []) {
+    const link = join(root, dir, name);
+    if (existsSync(join(link, "SKILL.md"))) continue;
+    if (isLink(link)) unlinkSync(link); // a link to nothing
+    else if (entryExists(link)) return { name, action: "skipped", reason: `${dir}/${name} is in the way of its link: move it, then sync` };
+    mkdirSync(join(root, dir), { recursive: true });
+    linkDir(to, link);
+  }
+  return { name, action: "relinked", to: dep.version };
 }
 
 /**
- * Puts a managed skill back to the version skilllib.json pins (or the newest,
- * if none is pinned). The edited copy goes to ~/.skilllib/edit-backup first,
- * restorable from Health.
+ * The library version a pin means, found by its hash: version numbers are each library's own, so on
+ * a teammate's machine the same number can be other content. A string says why there's none here.
+ */
+function pinnedVersion(name: string, dep: Dependency): number | string {
+  if (!latestVersion(name)) return `not in your library (${tildify(libraryDir())}); import it, or set SKILLLIB_HOME to the library that has it`;
+  return versionForHash(name, dep.hash)?.version ?? `your library has no copy of the version skilllib.json pins (pinned from another library?); skilllib update ${name} installs your newest`;
+}
+
+/**
+ * Puts a managed skill back to the version skilllib.json pins. The edited copy goes to
+ * ~/.skilllib/edit-backup first, restorable from Health; nothing moves when the pin can't be met.
  */
 export function discardEdits(root: string, name: string): Change {
   const dep = readManifest(root).skills[name];
   if (!dep) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
+  const version = pinnedVersion(name, dep);
+  if (typeof version === "string") return { name, action: "skipped", reason: version };
   const dir = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
   if (existsSync(dir) && !isLink(dir)) stash(dir, "edit-backup");
-  return addSkill(root, name, { force: true, version: pinnedVersion(name, dep) });
+  return addSkill(root, name, { force: true, version });
 }
 
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
@@ -578,11 +599,7 @@ function backupIndexFile(bucket: string): string {
 }
 
 function readBackupIndex(bucket: string): Record<string, string> {
-  try {
-    return JSON.parse(readFileSync(backupIndexFile(bucket), "utf-8")) as Record<string, string>;
-  } catch {
-    return {};
-  }
+  return readState<Record<string, string>>(backupIndexFile(bucket)) ?? {};
 }
 
 /** rename, or copy then delete when `from` and `to` are on different disks (EXDEV). Links stay links. */
@@ -609,7 +626,7 @@ export function stash(dir: string, bucket: string): string {
   const target = join(skilllibHome(), bucket, entry);
   mkdirSync(join(skilllibHome(), bucket), { recursive: true });
   move(dir, target);
-  writeFileSync(backupIndexFile(bucket), JSON.stringify({ ...readBackupIndex(bucket), [entry]: dir }, null, 2) + "\n");
+  writeState(backupIndexFile(bucket), { ...readBackupIndex(bucket), [entry]: dir });
   return target;
 }
 
@@ -724,7 +741,9 @@ export function listBackups(): Backup[] {
         const match = entry.match(/^(.*)-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-\d{3}Z$/);
         if (!match) return [];
         const name = match[1]!;
-        const from = index[entry] ?? (kind === "trash" ? librarySkillDir(name) : join(claudeDir(), "skills", name));
+        // No index entry (an older skilllib, or a lost index): only the library and the global folder
+        // are safe to guess; a project's backup has no right answer, so it isn't restored by guessing.
+        const from = index[entry] ?? (kind === "trash" ? librarySkillDir(name) : kind === "global-backup" ? join(claudeDir(), "skills", name) : "");
         return [{ name, kind, path: join(dir, entry), movedAt: `${match[2]} ${match[3]}:${match[4]}`, from }];
       });
     })
@@ -735,6 +754,7 @@ export function listBackups(): Backup[] {
 /** Where a backup came from, as lists show it: "library (deleted)", or the folder it was in (e.g. "~/Projects/web/.cursor/skills"). */
 export function backupFrom(backup: Backup): string {
   if (backup.kind === "plugin") return "Claude Code plugin";
+  if (!backup.from) return "unknown";
   return backup.from === librarySkillDir(backup.name) ? "library (deleted)" : tildify(dirname(backup.from));
 }
 
@@ -746,6 +766,7 @@ export function backupFrom(backup: Backup): string {
  */
 export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: false; reason: string } {
   const to = backup.from;
+  if (!to) return { ok: false, reason: `skilllib doesn't know where it came from; its files are in ${tildify(backup.path)}` };
   if (backup.kind === "tidy-backup" && isLink(to)) unlinkSync(to);
   if (backup.kind === "edit-backup" && !isLink(to) && versionForHash(backup.name, treeHash(to) ?? "") !== null) rmSync(to, { recursive: true, force: true });
   let taken = existsSync(to);

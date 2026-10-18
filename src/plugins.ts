@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { importSkill, type Backup } from "./library.js";
-import { claudeDir, readJson, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, readJson, readState, skilllibHome, userHome, writeState } from "./paths.js";
 import { skillDirsIn } from "./skills.js";
 import { enabledPlugins, installedPluginsJson, pluginDirCandidates, type InstallEntry, type SourcedSkill } from "./sources.js";
 import { latestVersion } from "./versions.js";
@@ -242,8 +242,7 @@ function setPluginIn(file: string, id: string, on: boolean): { ok: true } | { ok
   const settings = existsSync(file) ? readJson<Record<string, unknown>>(file) : {};
   if (!settings) return { ok: false, reason: `can't read ${file}` };
   const enabled = (settings.enabledPlugins as Record<string, boolean> | undefined) ?? {};
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ ...settings, enabledPlugins: { ...enabled, [id]: on } }, null, 2) + "\n");
+  writeState(file, { ...settings, enabledPlugins: { ...enabled, [id]: on } });
   return { ok: true };
 }
 
@@ -404,14 +403,14 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
 export function recordRemovedPlugin(id: string, scope: string, projectPath?: string, on = true) {
-  const list = readJson<Removed[]>(removedFile()) ?? [];
+  const list = readState<Removed[]>(removedFile()) ?? [];
   mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(removedFile(), JSON.stringify([...list, { id, scope, ...(projectPath ? { projectPath } : {}), on, at: new Date().toISOString() }], null, 2) + "\n");
+  writeState(removedFile(), [...list, { id, scope, ...(projectPath ? { projectPath } : {}), on, at: new Date().toISOString() }]);
 }
 
 /** Plugins skilllib removed, as Health backups. */
 export function pluginBackups(): Backup[] {
-  return (readJson<Removed[]>(removedFile()) ?? []).map((r) => ({
+  return (readState<Removed[]>(removedFile()) ?? []).map((r) => ({
     name: r.id,
     kind: "plugin",
     // Project and local installs go back into their project.
@@ -427,12 +426,12 @@ export function restorePlugin(backup: Backup): { ok: true; to: string } | { ok: 
   const projectPath = rest.join(":") || undefined;
   const r = claude(["plugin", "install", backup.from, "--scope", scope], projectPath);
   if (!r.ok) return r;
-  const records = readJson<Removed[]>(removedFile()) ?? [];
+  const records = readState<Removed[]>(removedFile()) ?? [];
   const same = (x: Removed) => x.id === backup.from && (x.projectPath ?? undefined) === projectPath && x.scope === scope;
   // Installing turns it on: one that was off when it was uninstalled goes back off.
   const wasOff = records.filter(same).pop()?.on === false;
   const off = wasOff ? claude(["plugin", "disable", backup.from, "--scope", scope], projectPath) : null;
-  writeFileSync(removedFile(), JSON.stringify(records.filter((x) => !same(x)), null, 2) + "\n");
+  writeState(removedFile(), records.filter((x) => !same(x)));
   const where = `Claude Code plugins (${scope}${projectPath ? ` in ${basename(projectPath)}` : ""}${wasOff ? (off?.ok ? ", off as it was" : ", but it's on: turn it off from Plugins") : ""})`;
   return { ok: true, to: where };
 }

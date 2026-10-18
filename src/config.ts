@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { realPath, skilllibHome, MANIFEST_FILE } from "./paths.js";
+import { readState, realPath, skilllibHome, MANIFEST_FILE, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
@@ -23,17 +23,12 @@ function configFile(): string {
 }
 
 export function readConfig(): Config {
-  try {
-    const data = JSON.parse(readFileSync(configFile(), "utf-8")) as Partial<Config>;
-    return { ...data, roots: data.roots ?? [], hidden: data.hidden ?? [] };
-  } catch {
-    return { roots: [], hidden: [] };
-  }
+  const data = readState<Partial<Config>>(configFile()) ?? {};
+  return { ...data, roots: data.roots ?? [], hidden: data.hidden ?? [] };
 }
 
 function writeConfig(config: Config) {
-  mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(configFile(), JSON.stringify(config, null, 2) + "\n");
+  writeState(configFile(), config);
 }
 
 export function expandHome(path: string): string {

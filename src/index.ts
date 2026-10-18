@@ -65,9 +65,14 @@ function packageVersion(): string {
 }
 
 async function main() {
-  const [command, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
   // Before parsing, so a bad flag is reported as JSON too.
-  setJsonMode(rest.includes("--json"));
+  setJsonMode(argv.includes("--json"));
+  // Flags may come first (`skilllib --json status`): the command is the first word after them.
+  let at = 0;
+  while (argv[at]?.startsWith("--") && !["--version", "--help"].includes(argv[at]!)) at += ["--days", "--keep", "--to"].includes(argv[at]!) ? 2 : 1;
+  const command = argv[at];
+  const rest = [...argv.slice(0, at), ...argv.slice(at + 1)];
   const args = commands.parseArgs(rest);
   // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
   if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
@@ -127,7 +132,8 @@ async function main() {
     case "--version":
     case "-v":
     case "version":
-      console.log(packageVersion());
+      // With --json, still one JSON document: the version as a string.
+      console.log(isJsonMode() ? JSON.stringify(packageVersion()) : packageVersion());
       return;
     case "help":
     case "--help":

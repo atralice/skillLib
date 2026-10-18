@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { MANIFEST_FILE, realPath, skilllibHome, userHome } from "./paths.js";
+import { MANIFEST_FILE, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
 
 /**
@@ -76,8 +76,9 @@ export function readManifest(root: string): Manifest {
 }
 
 export function writeManifest(root: string, manifest: Manifest) {
-  const skills = Object.fromEntries(Object.entries(manifest.skills).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(join(root, MANIFEST_FILE), JSON.stringify({ ...manifest, skills }, null, 2) + "\n");
+  // A fixed locale: the file is shared, so its order must not depend on whose machine wrote it.
+  const skills = Object.fromEntries(Object.entries(manifest.skills).sort(([a], [b]) => a.localeCompare(b, "en")));
+  writeState(join(root, MANIFEST_FILE), { ...manifest, skills });
 }
 
 // ─── Known projects ─────────────────────────────────────
@@ -90,7 +91,7 @@ function projectsFile(): string {
 export function knownProjects(): string[] {
   const path = projectsFile();
   if (!existsSync(path)) return [];
-  const list = JSON.parse(readFileSync(path, "utf-8")) as string[];
+  const list = readState<string[]>(path) ?? [];
   return onePerFolder(list.filter((p) => existsSync(p) && isProjectCandidate(p) && !isAgentWorktree(p)));
 }
 
@@ -130,6 +131,5 @@ export function isProjectCandidate(root: string): boolean {
 export function rememberProjects(roots: string[]) {
   const incoming = roots.map((r) => resolve(r)).filter((r) => isProjectCandidate(r) && !isAgentWorktree(r));
   const all = onePerFolder([...knownProjects(), ...incoming]).sort();
-  mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(projectsFile(), JSON.stringify(all, null, 2) + "\n");
+  writeState(projectsFile(), all);
 }

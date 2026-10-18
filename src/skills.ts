@@ -49,7 +49,8 @@ export function treeHash(dir: string): string | null {
   const hash = createHash("sha256");
   const files = listFiles(dir)
     .map((f) => ({ path: relative(dir, f).split(sep).join("/"), full: f }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+    // A fixed locale: hashes are shared in skilllib.json, so they mustn't depend on the machine's language.
+    .sort((a, b) => a.path.localeCompare(b.path, "en"));
   for (const file of files) {
     hash.update(file.path).update("\0").update(createHash("sha256").update(readFileSync(file.full)).digest("hex")).update("\n");
   }

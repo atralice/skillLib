@@ -123,7 +123,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       report.skipped.push({ name, reason: `${rel(external.path)} links outside the repo` });
       continue;
     }
-    const reals = entries.filter((e) => !e.link);
+    // One real folder reached two ways (a skills folder that's a link to another) is one copy, as in planGlobalTidy (#54).
+    const reals = entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && realpathOrNull(o.path) === realpathOrNull(e.path)) === i);
     if (reals.length === 0) continue;
     hashReals(reals);
 
@@ -156,7 +157,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     const wanted = new Set([...installDirs(enabled, rel(primary.dir)), ...(dep?.links ?? [])].map(abs));
     const steps: TidyStep[] = [];
     for (const e of entries) {
-      if (e === primary) continue;
+      // The primary itself, or the same real folder reached through a linked skills folder.
+      if (e === primary || (!e.link && e.real === primary.real)) continue;
       const needed = wanted.has(e.dir);
       if (e.link) {
         if (e.real === primary.real) {
@@ -243,6 +245,8 @@ export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep"
   for (const step of plan.steps) {
     // Planned earlier (Health builds plans on load); skip what changed since.
     if (held.includes(step) || !entryExists(step.path) || ("target" in step && !entryExists(step.target))) continue;
+    // Never replace a folder with a link to itself: it would loop, and the skill would be gone.
+    if ("target" in step && realpathOrNull(step.path) === realpathOrNull(step.target)) continue;
     if (step.kind === "link" || step.kind === "unlink") {
       if (isLink(step.path)) unlinkSync(step.path);
     } else stash(step.path, "tidy-backup");

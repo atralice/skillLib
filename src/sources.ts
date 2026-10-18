@@ -1,8 +1,8 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync } from "node:fs";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve } from "node:path";
-import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, realPath, realpathOrNull, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify as homeRelative } from "./output.js";
 
@@ -312,14 +312,14 @@ function originsFile(): string {
 
 /** Where each library skill was imported from, e.g. "skills.sh: vercel-labs/agent-skills". */
 export function libraryOrigins(): Record<string, string> {
-  return readJson<Record<string, string>>(originsFile()) ?? {};
+  return readState<Record<string, string>>(originsFile()) ?? {};
 }
 
 export function recordOrigin(name: string, origin: string) {
   const origins = libraryOrigins();
   if (origins[name] === origin) return;
   mkdirSync(skilllibHome(), { recursive: true });
-  writeFileSync(originsFile(), JSON.stringify({ ...origins, [name]: origin }, null, 2) + "\n");
+  writeState(originsFile(), { ...origins, [name]: origin });
 }
 
 /** Origin label for a folder being imported into the library. */

@@ -61,7 +61,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
     groupBy<StatusSkillGroup>(
       list.map((s) => {
         const loadedBy = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
-        const behind = s.managed && s.latest !== null && s.version !== null && s.latest > s.version;
+        const behind = s.state.endsWith("update available");
         const gitState = git?.of(relativeTo(root, s.path));
         // A copy git tracks is the team's wherever it lives (.claude/skills too), as the TUI shows it.
         const repo = !s.managed && (s.state.startsWith("repo skill") || gitState === "committed" || gitState === "changed");
@@ -106,7 +106,8 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   const usesHere = Object.fromEntries([...uses].filter(([, n]) => n > 0));
   return {
     project: tildify(root),
-    files: topLevel(root),
+    // Outside a repo there are no project files to read (and the folder may be your home).
+    files: inRepo ? topLevel(root) : [],
     agents,
     skills,
     nested: nested.length > 0 ? nested : undefined,

@@ -15,11 +15,12 @@ import {
   linkAll,
   syncProject,
   updateProject,
+  type Backup,
   type Change,
   type ProjectSkill,
   type SkillState,
 } from "./library.js";
-import { claudeDir, libraryDir, MANIFEST_FILE, userHome } from "./paths.js";
+import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, userHome } from "./paths.js";
 import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
@@ -74,6 +75,7 @@ const FLAGS = {
 export function parseArgs(argv: string[]): Args {
   const { values: v, positionals } = parseFlags({ args: argv, options: FLAGS, allowPositionals: true, strict: true });
   const days = Number(v.days ?? USAGE_DAYS);
+  if (!Number.isInteger(days) || days <= 0) throw new Error(`--days takes a whole number of days, like --days 30 (got ${v.days})`);
   return {
     positional: positionals,
     force: !!v.force,
@@ -82,7 +84,7 @@ export function parseArgs(argv: string[]): Args {
     fix: !!v.fix,
     allowTracked: !!v["allow-tracked"],
     json: !!v.json,
-    days: Number.isFinite(days) && days > 0 ? days : USAGE_DAYS,
+    days,
     dryRun: !!v["dry-run"],
     allowGit: !!v["allow-git"],
     ...(v.keep ? { keep: v.keep } : {}),
@@ -101,7 +103,7 @@ function colorState(state: SkillState): string {
 function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
   return changes.map((c): ChangeJson => {
-    const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" ? skills[c.name] : undefined;
+    const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" || c.action === "relinked" ? skills[c.name] : undefined;
     return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
   });
 }
@@ -110,6 +112,9 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
  * Prints what changed. A skipped skill is a failure: the command exits 1, so
  * scripts and agents can tell (the other skills' changes still happened).
  */
+/** A change that didn't do all it was asked: skipped, or a link held back where git tracks the folder. */
+const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length;
+
 /** The links a change held back where git tracks the folder, and how to add them. */
 function warnHeldLinks(c: Change, where = "here") {
   if (c.blocked?.length) warn(`${c.name}: git tracks ${c.blocked.join(", ")} ${where}, so no link was added there. Re-run with --allow-tracked to add it.`);
@@ -118,13 +123,13 @@ function warnHeldLinks(c: Change, where = "here") {
 }
 
 function printChanges(root: string, changes: Change[], args: Args) {
-  if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
+  if (changes.some(incomplete)) process.exitCode = 1;
   if (args.json) return json("changes", withDirs(root, changes));
   for (const c of changes) {
     warnHeldLinks(c);
     if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
-      const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : "↑");
+      const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
       const versions = c.action === "removed" ? "" : c.from && c.from !== c.to ? ` v${c.from} → v${c.to}` : c.to ? ` v${c.to}` : "";
       info(`  ${icon} ${c.name}${versions} ${dim(c.action)}`);
     }
@@ -201,15 +206,8 @@ export async function status(args: Args) {
   info(`${basename(root)} ${dim(tildify(root))}\n`);
   if (skills.length === 0 && nested.length === 0) info("No skills in this project yet. Add one from your library with: skilllib add <name>");
   const usage = await usageBySkill(args.days, root);
-  // A copy git tracks is the team's wherever it lives, as `skilllib` and `status --json` show it.
-  const git = gitInfo(root, [...new Set(nested.map((s) => s.location))]);
-  const committed = (path: string) => ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
-  const asRepo: Partial<Record<SkillState, SkillState>> = {
-    "local only": "repo skill",
-    "untracked copy of library skill": "repo skill, in library",
-    "untracked, differs from library": "repo skill, differs from library",
-  };
-  const stateOf = (s: { state: SkillState; path: string }) => colorState((committed(s.path) && asRepo[s.state]) || s.state);
+  const teamState = teamStateIn(root, nested.map((s) => s.location));
+  const stateOf = (s: { state: SkillState; path: string }) => colorState(teamState(s));
   // Your agents that load it here: "all", or which.
   const agentsOf = (s: { visibility: { id: HarnessId; paths: number }[] }) => {
     const ids = s.visibility.filter((v) => v.paths > 0).map((v) => v.id);
@@ -317,20 +315,31 @@ export async function list(args: Args) {
   }
 }
 
+/** A skill's state, with a copy git tracks shown as the repo's own (the team's) wherever it lives, as `skilllib` and `status --json` show it. */
+function teamStateIn(root: string, extraDirs: string[] = []): (s: { state: SkillState; path: string }) => SkillState {
+  const git = gitInfo(root, [...new Set(extraDirs)]);
+  const committed = (path: string) => ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+  const asRepo: Partial<Record<SkillState, SkillState>> = {
+    "local only": "repo skill",
+    "untracked copy of library skill": "repo skill, in library",
+    "untracked, differs from library": "repo skill, differs from library",
+  };
+  return (s) => (committed(s.path) && asRepo[s.state]) || s.state;
+}
+
 export function projects(args: Args) {
   const roots = visibleProjects();
   if (args.json) {
     return json(
       "projects",
-      roots.map(
-        (root): ProjectsJson[number] => ({
+      roots.map((root): ProjectsJson[number] => {
+        const teamState = teamStateIn(root);
+        return {
           name: basename(root),
           path: root,
-          skills: projectStatus(root).map(
-            (s): ProjectsJson[number]["skills"][number] => ({ name: s.name, managed: s.managed, state: s.state, version: s.version, latest: s.latest }),
-          ),
-        }),
-      ),
+          skills: projectStatus(root).map((s) => ({ name: s.name, managed: s.managed, state: teamState(s), version: s.version, latest: s.latest })),
+        };
+      }),
     );
   }
   if (roots.length === 0) {
@@ -377,7 +386,7 @@ function changeEach(args: Args, change: (root: string) => Change[], nothing: (ro
   const results = roots.map((root): AllChangesJson[number] => {
     if (args.allowTracked) allowTrackedLinks(root);
     const changes = change(root);
-    if (changes.some((c) => c.action === "skipped")) process.exitCode = 1;
+    if (changes.some(incomplete)) process.exitCode = 1;
     if (!args.json) {
       if (args.all) info(`${basename(root)} ${dim(tildify(root))}`);
       if (changes.length === 0) nothing(root);
@@ -420,7 +429,8 @@ export function outdated(args: Args) {
   const roots = projectsFor(args);
   const behind = roots.flatMap((root) =>
     projectStatus(root)
-      .filter((s): s is ProjectSkill & { version: number; latest: number } => s.managed && s.latest !== null && s.version !== null && s.latest > s.version)
+      // By state, which compares content (hashes): a pin's number alone can be another library's.
+      .filter((s): s is ProjectSkill & { version: number; latest: number } => s.state.endsWith("update available") && s.latest !== null && s.version !== null)
       .map((s): OutdatedJson[number] => ({ project: basename(root), path: root, skill: s.name, installed: s.version, latest: s.latest, state: s.state })),
   );
   if (args.json) return json("outdated", behind);
@@ -435,6 +445,7 @@ export function outdated(args: Args) {
  * a project, the project is marked in sync with the new library version.
  */
 export function importSkills(args: Args) {
+  if (args.global && args.positional.length) throw new Error("skilllib import --global takes no folders: it imports all your global skills");
   const dirs = args.global ? yourGlobals().map((m) => m.path) : args.positional.map((p) => resolve(p));
   if (dirs.length === 0) {
     throw new Error("Usage: skilllib import <skill-dir>... [--force] | skilllib import --global");
@@ -456,15 +467,13 @@ export function importSkills(args: Args) {
     }
     success(`${name} ${dim(result === "unchanged" ? "already in library" : result === "added" ? "added to library" : "library updated")}`);
 
-    // Importing a project's own skill folder: that project now uses the library copy.
-    const skillsDir = resolve(dir, "..");
-    const root = resolve(skillsDir, "..", "..");
-    if (skillsDir === join(root, ".claude", "skills") && isProjectCandidate(root)) {
-      if (readManifest(root).skills[name]?.hash !== treeHash(dir)) {
-        const change = addSkill(root, name);
-        if (change.action !== "skipped") info(dim(`  ${basename(root)} now depends on ${name} v${change.to}`));
-      }
-      rememberProjects([root]);
+    // The real copy of a skill a project tracks (in whichever folder skilllib.json says): the project now
+    // pins the new library version. Any other folder (a clone, a repo that doesn't track it) is left alone.
+    const root = resolve(dir, "..", "..", "..");
+    const dep = projectHere(root) === root ? readManifest(root).skills[name] : undefined;
+    if (dep && resolve(root, dep.dir ?? PROJECT_SKILLS_DIR, name) === resolve(dir) && dep.hash !== treeHash(dir)) {
+      const change = addSkill(root, name);
+      if (change.action !== "skipped") info(dim(`  ${basename(root)} now depends on ${name} v${change.to}`));
     }
   }
   if (args.json) json("import", results);
@@ -498,6 +507,7 @@ export function scan(args: Args) {
 
 export function folders(args: Args) {
   const [action, ...paths] = args.positional;
+  if (action && !["add", "remove", "rm"].includes(action)) throw new Error("Usage: skilllib folders [add|remove <folder>...]");
   let failed = false;
   if (action === "add") {
     for (const p of paths) {
@@ -512,7 +522,10 @@ export function folders(args: Args) {
   } else if (action === "remove" || action === "rm") {
     for (const p of paths) {
       if (removeRoot(p)) success(`Removed ${tildify(expandHome(p))}`);
-      else warn(`${tildify(expandHome(p))} wasn't a project folder`);
+      else {
+        warn(`${tildify(expandHome(p))} wasn't a project folder`);
+        failed = true;
+      }
     }
   }
   const { roots, hidden } = readConfig();
@@ -559,15 +572,18 @@ export function restore(args: Args) {
     info(dim("\n→ skilllib restore <name>"));
     return;
   }
-  const backup = backups.find((b) => b.name === name);
-  if (!backup) {
-    throw new Error(`No backup named ${name}`);
-  }
-  const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
-  if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
-  else {
-    error(`Can't restore ${name}: ${r.reason}`);
-    process.exitCode = 1;
+  const newest = backups.find((b) => b.name === name);
+  if (!newest) throw new Error(`No backup named ${name}`);
+  // Copies moved out in one go (a global skill and its link in another agent's folder) come back together.
+  const second = (b: Backup) => b.path.slice(-24, -5);
+  const together = newest.kind === "plugin" ? [newest] : backups.filter((b) => b.name === name && b.kind === newest.kind && second(b) === second(newest));
+  for (const backup of together) {
+    const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
+    if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
+    else {
+      error(`Can't restore ${name}: ${r.reason}`);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -878,11 +894,12 @@ export function tidy(args: Args) {
     const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
     if (!plans.length && !conflicts.length && !args.all) success(`${label}: every skill has one copy and the links your agents need`);
     for (const plan of plans) {
-      const result = args.dryRun ? { applied: [], held: gitVisibleSteps(plan) } : applyTidy(plan, { git: args.allowGit ? "go" : "keep" });
-      const show = args.dryRun ? plan.steps : result.applied;
-      if (show.length) info(`${args.dryRun ? dim("would") : green("✓")} ${label} · ${plan.name}: ${show.map((s) => describeStep(s, plan.root)).join(", ")}`);
-      if (!args.dryRun) for (const step of result.held) info(`${yellow("!")} ${label} · ${plan.name}: held back, git would see it: ${describeStep(step, plan.root)}`);
-      held += args.dryRun ? 0 : result.held.length;
+      // The dry run says what the real one would do: the same steps held back unless --allow-git.
+      const wouldHold = args.allowGit ? [] : gitVisibleSteps(plan);
+      const result = args.dryRun ? { applied: plan.steps.filter((s) => !wouldHold.includes(s)), held: wouldHold } : applyTidy(plan, { git: args.allowGit ? "go" : "keep" });
+      if (result.applied.length) info(`${args.dryRun ? dim("would") : green("✓")} ${label} · ${plan.name}: ${result.applied.map((s) => describeStep(s, plan.root)).join(", ")}`);
+      for (const step of result.held) info(`${yellow("!")} ${label} · ${plan.name}: ${args.dryRun ? "would be held" : "held"} back, git would see it: ${describeStep(step, plan.root)}`);
+      held += result.held.length;
       changed += result.applied.length;
     }
     // You picked a copy and it couldn't win (only skilllib's copy can, for a skill it manages).
@@ -922,6 +939,7 @@ export function agentSkill(args: Args) {
     if (args.json) return json("agent-skill", { state: agentSkillState(), removed });
     return removed.length ? success(`Removed from ${removed.map((d) => tildify(d)).join(" and ")}`) : info("The skilllib skill isn't installed.");
   }
+  if (action) throw new Error("Usage: skilllib agent-skill [install|remove]");
   const state = agentSkillState();
   if (args.json) return json("agent-skill", { state, dirs: agentSkillDirs() });
   if (state === "installed") success(`Your agents can use skilllib ${dim(`(${agentSkillDirs().map((d) => tildify(d)).join(", ")})`)}`);

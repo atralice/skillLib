@@ -259,3 +259,14 @@ describe("folders that aren't one agent's", () => {
     ]);
   });
 });
+
+test("a skills folder that's a link to another isn't a second copy: tidy never links a skill to itself", () => {
+  setHarnesses(["claude-code", "codex"]);
+  mkdirSync(join(project, ".claude", "skills", "foo"), { recursive: true });
+  writeFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+  mkdirSync(join(project, ".agents"));
+  symlinkSync(join(project, ".claude", "skills"), join(project, ".agents", "skills"), "junction");
+  const report = planProjectTidy(project);
+  expect(report.plans.flatMap((p) => p.steps)).toEqual([]);
+  expect(readFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "utf-8")).toContain("body");
+});

@@ -346,6 +346,70 @@ describe("for agents: flags, errors and exit codes", () => {
   });
 });
 
+describe("round 2: what agents rely on", () => {
+  // A repo that commits .claude/skills: with Claude Code and Codex, a skill's real copy goes in
+  // .agents/skills and Claude Code needs a link in .claude/skills, which git would see.
+  const tracked = () => {
+    const r = join(tmp, "code", "eta");
+    mkdirSync(join(r, ".claude", "skills", "team"), { recursive: true });
+    writeFileSync(join(r, ".claude", "skills", "team", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: r });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "team skill");
+    return r;
+  };
+
+  test("global move keeps a skill global when an agent couldn't see it in the repo", () => {
+    const repo = tracked();
+    const r = cli(repo, "global", "move", "mine", "--to", repo, "--json");
+    expect(r.code).toBe(1);
+    const [move] = JSON.parse(r.out);
+    expect(move.moved).toBe(false);
+    expect(move.reason).toContain("Claude Code in eta couldn't see it");
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+  });
+
+  test("add exits 1 when git kept a link out", () => {
+    const r = cli(tracked(), "add", "alpha", "--json");
+    expect(r.code).toBe(1);
+    // The real copy (.agents/skills) isn't committed, so a link in the committed .claude/skills would break for teammates.
+    expect(JSON.parse(r.out)[0].uncommitted).toEqual([".claude/skills"]);
+  });
+
+  test("flags may come before the command, and --days must be a number of days", () => {
+    const web = join(tmp, "code", "web");
+    mkdirSync(join(web, ".git"), { recursive: true });
+    expect(JSON.parse(cli(web, "--json", "status").out).project).toContain("web");
+    const bad = cli(web, "usage", "--days", "abc", "--json");
+    expect(bad.code).toBe(1);
+    expect(JSON.parse(bad.out).error).toContain("--days takes a whole number");
+    expect(JSON.parse(cli(web, "--version", "--json").out)).toBeString();
+  });
+
+  test("importing from a clone adds to the library and leaves the clone alone", () => {
+    const clone = join(tmp, "clone");
+    mkdirSync(join(clone, ".git"), { recursive: true });
+    mkdirSync(join(clone, ".claude", "skills", "baz"), { recursive: true });
+    writeFileSync(join(clone, ".claude", "skills", "baz", "SKILL.md"), "---\ndescription: d\n---\nbaz\n");
+    expect(cli(tmp, "import", join(clone, ".claude", "skills", "baz"), "--json").code).toBe(0);
+    expect(existsSync(join(tmp, ".skilllib", "library", "baz", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(clone, "skilllib.json"))).toBe(false);
+    expect(existsSync(join(clone, ".agents"))).toBe(false);
+  });
+
+  test("restore brings back every copy moved out together", () => {
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const web = join(tmp, "code", "web");
+    mkdirSync(join(web, ".git"), { recursive: true });
+    expect(cli(web, "global", "move", "mine", "--to", web).code).toBe(0);
+    expect(cli(web, "restore", "mine").code).toBe(0);
+    expect(existsSync(join(tmp, ".claude", "skills", "mine", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"))).toBe(true);
+  });
+});
+
 describe("what the plain commands say", () => {
   const skill = (dir: string) => {
     mkdirSync(dir, { recursive: true });

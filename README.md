@@ -382,7 +382,7 @@ skilllib link [--all]           make every skill here usable by all your agents
 skilllib tidy [--all|--global]  one real copy per skill, plus only the links your agents need
 
 skilllib list | show <name>     your library
-skilllib import <dir>...        add skill folders to your library (--global: all your global skills)
+skilllib import <dir>...        add skill folders to your library (--global: all your global skills); a repo that tracks that copy pins the new version
 skilllib global [keep|unkeep]   your global skills; mark the ones you keep global on purpose
 skilllib global move <name> --to <repo>   load a global skill only in those repos
 skilllib new <name> [desc]      create a skill
@@ -390,7 +390,9 @@ skilllib new <name> [desc]      create a skill
 skilllib usage [--days N]       which skills Claude Code used
 skilllib doctor [--fix]         find (and fix) problems
 skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from status or doctor --json)
-skilllib restore [name]         put back something skilllib moved out
+skilllib restore [name]         put back something skilllib moved out (copies moved together come back together)
+skilllib unhide <path>          show a hidden project again
+skilllib ui                     open the app (only in a terminal)
 skilllib agent-skill [install|remove]   teach your agents to use skilllib
 skilllib --version
 ```
