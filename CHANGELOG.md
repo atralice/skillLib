@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/atralice/skillLib/compare/v1.11.0...v1.11.1) (2026-10-18)
+
+
+### Miscellaneous Chores
+
+* release 1.11.1 to publish the new README on npm ([7e297b1](https://github.com/atralice/skillLib/commit/7e297b1be3d12bb1503f4236375df021e623c6d3))
+
 ## [1.11.0](https://github.com/atralice/skillLib/compare/v1.10.0...v1.11.0) (2026-10-17)
 
 
