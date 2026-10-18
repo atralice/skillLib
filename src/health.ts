@@ -1,11 +1,12 @@
-import { lstatSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { existsSync, lstatSync, readdirSync, unlinkSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
-import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
+import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, syncSkill, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
-import { libraryDir } from "./paths.js";
+import { libraryDir, PROJECT_SKILLS_DIR } from "./paths.js";
+import { readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
@@ -113,6 +114,54 @@ function conflictIssue(c: Conflict): Issue {
 function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held: number } {
   const results = plans.map((p) => applyTidy(p, { git }));
   return { skills: results.filter((r) => r.applied.length).length, held: results.reduce((n, r) => n + r.held.length, 0) };
+}
+
+/**
+ * Links in a repo's skill folders that point at nothing, so they load nothing. One that skilllib.json records
+ * is put back by sync (the copy is still there); any other is removed, unless git tracks it: then it's the team's
+ * link, and removing it is a choice git will see.
+ */
+function brokenLinksIn(root: string): Issue[] {
+  const where = basename(root);
+  const recorded = readManifest(root).skills;
+  let git: ReturnType<typeof gitInfo> | undefined;
+  return ALL_PROJECT_DIRS.flatMap((dir) => {
+    const folder = join(root, dir);
+    if (!existsSync(folder)) return [];
+    return readdirSync(folder).flatMap((name): Issue[] => {
+      const path = join(folder, name);
+      if (!isLink(path) || existsSync(path)) return [];
+      const relink = recorded[name]?.links?.includes(dir) && existsSync(join(root, recorded[name]!.dir ?? PROJECT_SKILLS_DIR, name));
+      const remove: Choice = {
+        label: "Remove the link",
+        run: () => {
+          unlinkSync(path);
+          return `Removed the broken link ${dir}/${name} in ${where}`;
+        },
+      };
+      const sync: Choice = {
+        label: "Put the link back",
+        hint: "skilllib.json records it",
+        run: () => {
+          const [c] = syncSkill(root, name);
+          if (!c || c.action === "skipped") throw new Error(`${name}: ${c?.reason ?? "nothing to put back"}`);
+          return `${name}: link in ${dir} put back`;
+        },
+      };
+      git ??= gitInfo(root);
+      const tracked = ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+      return [
+        {
+          id: `broken:${root}:${dir}/${name}`,
+          severity: "problem",
+          title: `${name}: broken link in ${where}/${dir}`,
+          detail: `It points at a folder that no longer exists, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}`,
+          at: rows(root, [name]),
+          ...(relink ? { fix: sync } : tracked ? { choices: [remove] } : { fix: remove }),
+        },
+      ];
+    });
+  });
 }
 
 /**
@@ -399,6 +448,7 @@ export function findIssues(
   for (const root of projects) {
     const where = basename(root);
     const status = statuses.get(root)!;
+    issues.push(...brokenLinksIn(root));
     // sync restores a missing folder from your library: a skill the library doesn't have can't come back that way.
     const restorable = status.filter((s) => s.state === "folder missing" && s.latest !== null);
     if (restorable.length > 0) {

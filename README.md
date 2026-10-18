@@ -169,6 +169,7 @@ What skilllib flags:
 | **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
 | **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
 | **Unused 30 days** | Remove the ones skilllib installed from the repo |
+| **Broken link** (in a repo) | Put the link back when skilllib.json records it, else remove it (your call when git tracks the link) |
 | **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it (the row's actions) |
 | **Not every agent can use it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
 
