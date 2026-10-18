@@ -86,6 +86,8 @@ export function removeAgentSkill(): string[] {
   // Decide before deleting: once the real copy is gone, links no longer show the marker.
   const removed = all.filter((d) => entryExists(d) && (isOurs(d) || isDangling(d)));
   for (const d of removed) {
+    // Two of these can be one folder (~/.claude/skills a link to ~/.agents/skills): the second is already gone.
+    if (!entryExists(d)) continue;
     if (lstatSync(d).isSymbolicLink()) unlinkSync(d);
     else rmSync(d, { recursive: true, force: true });
   }

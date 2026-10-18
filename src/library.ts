@@ -407,6 +407,9 @@ export function addSkill(
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
 
+  // A copy git tracks that skilllib.json doesn't pin is the team's: never replaced, even with --force.
+  if (local !== null && !recorded && local !== target.hash && isGitTracked(root, `${primary}/${name}`))
+    return { name, action: "skipped", reason: `${primary}/${name} is the repo's own (committed): skilllib doesn't replace it; remove it in the repo first if the library's should win` };
   if (local !== null && local !== target.hash && !knownContent && !force) {
     return {
       name,
@@ -421,7 +424,8 @@ export function addSkill(
   if (local !== target.hash || isLink(to)) {
     mkdirSync(join(root, primary), { recursive: true });
     if (isLink(to)) unlinkSync(to);
-    else if (local !== null && !knownContent) backedUp = stash(to, "edit-backup");
+    // Content your library has no version of (edits, or a pin from another library) goes to a backup first.
+    else if (local !== null && versionForHash(name, local) === null) backedUp = stash(to, "edit-backup");
     copySkill(versionDir(name, target.version), to);
   }
 

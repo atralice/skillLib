@@ -464,3 +464,12 @@ test("a plugin that's on and whose skills nobody used: turn it off or uninstall 
   // Without uses by recorded name, nothing to say about plugins.
   expect(usageIssues([web], machineSkills(), new Set(), { inProject: () => 0, total: () => 0, days: 30 }).filter((i) => i.id.startsWith("plugin-unused:"))).toEqual([]);
 });
+
+test.skipIf(process.platform === "win32")("removing a plugin from its duplicate issue keeps its data, and remembers whether it was on", () => {
+  fakeClaude();
+  skill(join(tmp, "p", "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  const plugin: ClaudePlugin = { id: "pt@mk", scope: "user", synced: false, skills: [join(tmp, "p", "skills", "alpha")], extras: [] };
+  withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "delete")).toMatchObject({ ok: true }));
+  expect(readFileSync(join(tmp, "calls"), "utf-8")).toContain("plugin uninstall pt@mk --keep-data --scope user");
+});

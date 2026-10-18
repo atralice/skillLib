@@ -391,15 +391,17 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
   if (!viaSettings && !claudeBinary()) {
     return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   }
+  const wasOn = enabledPlugins(plugin.projectPath)[plugin.id] === true;
   const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];
   const r = viaSettings
     ? // Synced plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
       setPluginIn(join(claudeDir(), "settings.json"), plugin.id, false)
-    : claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...scope], plugin.projectPath);
+    : // --keep-data, as uninstallPlugin: its saved data stays, so a restore brings it back as it was.
+      claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...(how === "delete" ? ["--keep-data"] : []), ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
-  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath, true);
+  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath, wasOn);
   return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? "removed" : "turned off"}${saved}` };
 }
 

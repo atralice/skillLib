@@ -646,3 +646,21 @@ test("a missing folder pinned to a version your library doesn't have is a choice
   expect(runFix(pin.choices![0]!).ok).toBe(true);
   expect(existsSync(join(project, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
+
+test.skipIf(process.platform === "win32")("a broken link in .grok/skills is reported even next to a copy elsewhere", () => {
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".claude", "skills", "bar"));
+  mkdirSync(join(project, ".grok", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(project, ".grok", "skills", "bar"));
+  expect(findIssues([project], machineSkills(), new Set()).some((i) => i.id === `broken:${project}:.grok/skills/bar`)).toBe(true);
+});
+
+test("an agent that loads a global copy isn't offered a link to the repo's copy (it would load twice)", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".claude", "skills", "react-best")); // Claude Code only
+  skill(join(tmp, ".agents", "skills", "react-best")); // Codex loads this one everywhere
+  expect(findIssues([project], machineSkills(), new Set()).some((i) => i.id === `usable:${project}`)).toBe(false);
+});

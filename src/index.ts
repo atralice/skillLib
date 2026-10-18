@@ -74,7 +74,7 @@ const FLAGS_OF: Record<string, string[]> = {
   sync: ["all", "force", "allow-tracked"],
   update: ["all", "force", "allow-tracked"],
   outdated: ["all"],
-  list: [],
+  list: ["days"],
   show: [],
   import: ["force", "global"],
   scan: [],

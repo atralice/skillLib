@@ -6,8 +6,8 @@ import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesse
 import { visibilityOf } from "./library.js";
 import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
-import { libraryDir } from "./paths.js";
-import { readManifest } from "./project.js";
+import { GROK_SKILLS_DIR, libraryDir } from "./paths.js";
+import { readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionForHash, versionHistory } from "./versions.js";
@@ -134,14 +134,16 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
  */
 function brokenLinksIn(root: string): Issue[] {
   const where = basename(root);
-  const hasCopy = (name: string) => ALL_PROJECT_DIRS.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
+  // tidy works in every repo skill folder except .grok/skills (the team's, for Grok): there a broken link is always ours to report.
+  const tidied = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+  const hasCopy = (name: string) => tidied.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
   let git: ReturnType<typeof gitInfo> | undefined;
   return ALL_PROJECT_DIRS.flatMap((dir) => {
     const folder = join(root, dir);
     if (!existsSync(folder)) return [];
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
-      if (!isLink(path) || existsSync(path) || hasCopy(name)) return [];
+      if (!isLink(path) || existsSync(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
       const remove: Choice = {
         label: "Remove the link",
         run: () => {
@@ -174,14 +176,22 @@ function brokenLinksIn(root: string): Issue[] {
  * skill folders below a repo's root (monorepos); they count for skills loaded twice.
  */
 export function findIssues(
-  projects: string[],
+  roots: string[],
   machine: SourcedSkill[],
   libraryNames: Set<string>,
   statusOf: (root: string) => ProjectSkill[] = projectStatus,
   loadedIn: (root: string) => SourcedSkill[] = (root) => skillsLoadedIn(root, machine),
   nestedOf: (root: string) => ProjectSkill[] = nestedSkills,
 ): Issue[] {
-  const issues: Issue[] = [];
+  // A repo whose skilllib.json can't be read (a merge conflict) is one problem, not the end of the scan.
+  const { readable: projects, unreadable } = readableRoots(roots);
+  const issues: Issue[] = unreadable.map(({ root, reason }) => ({
+    id: `manifest:${root}`,
+    severity: "problem",
+    title: `${basename(root)}: skilllib.json can't be read`,
+    detail: `${reason}. Until it's fixed, skilllib leaves ${basename(root)} out.`,
+    at: [],
+  }));
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
   const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
@@ -441,7 +451,7 @@ export function findIssues(
     });
   }
 
-  const alsoGlobal = new Map<string, { root: string; managed: boolean }[]>(); // skill → projects with a copy
+  const alsoGlobal = new Map<string, { root: string; managed: boolean; nested?: boolean }[]>(); // skill → projects with a copy
   // A repo copy and a global copy load twice only if one of your agents loads both.
   const globalCopies = loaded.filter((m) => m.kind !== "plugin");
   const alsoLoadedGlobally = (s: ProjectSkill) =>
@@ -543,9 +553,11 @@ export function findIssues(
     }
     issues.push(...tidy.conflicts.map(conflictIssue));
 
-    // Skills some of your agents can't reach here: links fix that (nothing is copied or moved).
+    // Skills some of your agents can't reach here: links fix that (nothing is copied or moved). An agent that
+    // already loads a global copy by that name isn't missing it: a link would make it load twice (that's twice:).
+    const loadsGlobally = (name: string, id: HarnessId) => globalCopies.some((m) => m.name === name && m.harnesses.includes(id));
     const blindHere = status
-      .filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0))
+      .filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0 && !loadsGlobally(s.name, v.id)))
       .map((s) => ({ s, would: linkEverywhere(root, s.name, s.location, { dryRun: true }) }));
     // Only links into folders git tracks would help, and git doesn't share the real copy: those links would be
     // broken for teammates, so skilllib never adds them (see linkEverywhere). Committing it comes first.
@@ -770,7 +782,7 @@ export function findIssues(
   for (const root of projects) {
     for (const n of nested.get(root)!) {
       const copies = alsoGlobal.get(n.name) ?? [];
-      if (alsoLoadedGlobally(n) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false }]);
+      if (alsoLoadedGlobally(n) && !copies.some((c) => c.root === root)) alsoGlobal.set(n.name, [...copies, { root, managed: false, nested: true }]);
     }
   }
 
@@ -826,7 +838,8 @@ export function findIssues(
               hint: "restorable with skilllib restore",
               run: () => {
                 // Only when every agent you use still has it in each repo: one that sees just the global copy would lose it.
-                const blind = copies.flatMap((c) => visibilityOf(c.root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${basename(c.root)}`] : [])));
+                // (A nested copy loads where it lives, in its package: no link at the repo root is needed there.)
+                const blind = copies.filter((c) => !c.nested).flatMap((c) => visibilityOf(c.root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${basename(c.root)}`] : [])));
                 if (blind.length) throw new Error(`${name}: ${blind.join(", ")} only see the global copy; link the repo copies first (skilllib link)`);
                 if (!libraryNames.has(name)) importSkill(movable.path);
                 for (const m of machine.filter((x) => x.name === name && x.movable)) {

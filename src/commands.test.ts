@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, setHarnesses, setHidden } from "./config.js";
@@ -419,6 +419,46 @@ describe("round 3: a flag a command doesn't use is an error", () => {
     expect(JSON.parse(r.out).error).toBe("skilllib add doesn't take --dry-run");
     expect(existsSync(join(web, ".agents", "skills", "alpha"))).toBe(false);
     expect(cli(web, "status", "--days=7", "--json").code).toBe(0);
+  });
+});
+
+describe("round 4", () => {
+  const repo = (name: string) => {
+    const r = join(tmp, "code", name);
+    mkdirSync(join(r, ".git"), { recursive: true });
+    return r;
+  };
+
+  test("one skilllib.json with conflict markers is an issue for that repo, not the end of doctor or projects", () => {
+    const bad = repo("bad");
+    const good = repo("good");
+    writeFileSync(join(bad, "skilllib.json"), "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> other\n");
+    expect(cli(good, "add", "alpha").code).toBe(0);
+    cli(tmp, "scan", join(tmp, "code"));
+    const doctor = JSON.parse(cli(good, "doctor", "--json").out);
+    expect(doctor.find((i: { id: string }) => i.id === `manifest:${bad}`)?.severity).toBe("problem");
+    const projects = cli(good, "projects", "--json");
+    expect(projects.code).toBe(1);
+    expect(JSON.parse(projects.out).map((p: { name: string }) => p.name)).toEqual(["good"]);
+    expect(projects.err).toContain("isn't valid JSON");
+  });
+
+  test("add --force never replaces a copy the repo commits", () => {
+    const web = repo("web");
+    mkdirSync(join(web, ".claude", "skills", "alpha"), { recursive: true });
+    writeFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nthe team's\n");
+    const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: web });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "team");
+    const r = cli(web, "add", "alpha", "--force", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)[0].reason).toContain("the repo's own (committed)");
+    expect(readFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("the team's");
+  });
+
+  test("list takes --days", () => {
+    expect(cli(repo("web"), "list", "--days", "7", "--json").code).toBe(0);
   });
 });
 
