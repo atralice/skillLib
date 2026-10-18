@@ -162,6 +162,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       const needed = wanted.has(e.dir);
       if (e.link) {
         if (e.real === primary.real) {
+          // A link the repo commits for its own skill is the team's: a teammate's agent may need it.
+          if (!needed && !dep && ["committed", "changed"].includes((git ??= gitInfo(root))?.of(rel(e.path)) ?? "")) continue;
           if (!needed) steps.push({ kind: "unlink", path: e.path });
         } else steps.push(needed ? { kind: "link", path: e.path, target: primary.path } : { kind: "unlink", path: e.path });
       } else {

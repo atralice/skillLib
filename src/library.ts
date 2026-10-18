@@ -96,10 +96,11 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  * recorded ones plus any your current harnesses need; adding one moves nothing.
  */
 function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
-  const wanted = installDirs(enabledHarnesses());
   // .grok/skills is the team's folder. Adopting it would make add overwrite it and remove delete it.
   const untracked = ALL_PROJECT_DIRS.find((d) => d !== GROK_SKILLS_DIR && existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
-  const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? wanted[0]!);
+  const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? installDirs(enabledHarnesses())[0]!);
+  // The fewest folders, counted from where the real copy is: no link an agent doesn't need.
+  const wanted = installDirs(enabledHarnesses(), primary);
   return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
 }
 

@@ -409,14 +409,13 @@ test("tidying asks before changing what git tracks", () => {
   git("commit", "-qm", "skills");
   let w = loadWorld();
   const tidy = issue(w, `tidy:${repo}`, "notes")!;
-  // What git would see makes it your call: two choices, no ★ fix.
+  // What git would see makes it your call, and with every step one git would see, "keep git as it is"
+  // would do nothing: one choice, no ★ fix.
   expect(tidy.decision).toBe(true);
-  expect(tidy.fixes.map((f) => f.label)).toEqual(["Tidy, but keep git as it is", "Tidy everything"]);
-  expect(tidy.fixes[1]!.preview).toStartWith("1 change will show in git status. notes: .claude/skills/notes: duplicate copy → link. Git would see");
+  expect(tidy.fixes.map((f) => f.label)).toEqual(["Tidy everything"]);
+  expect(tidy.fixes[0]!.preview).toStartWith("1 change will show in git status. notes: .claude/skills/notes: duplicate copy → link. Git would see");
   const links = () => [".claude", ".agents"].filter((d) => isLink(join(repo, d, "skills", "notes")));
-  expect(said(tidy.fixes[0]!.run(w))).toBe("app: nothing tidied; left 1 change git would see");
   expect(links()).toEqual([]);
-  w = loadWorld();
   pick(issue(w, `tidy:${repo}`, "notes"), "Tidy everything").run(w);
   expect(links()).toEqual([".claude"]);
 });

@@ -6,7 +6,8 @@ import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesse
 import { visibilityOf } from "./library.js";
 import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
-import { GROK_SKILLS_DIR, libraryDir } from "./paths.js";
+import { grokDir, GROK_SKILLS_DIR, libraryDir, realPath as realPathOf } from "./paths.js";
+import { skillDirsIn, treeHash } from "./skills.js";
 import { readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
@@ -168,6 +169,39 @@ function brokenLinksIn(root: string): Issue[] {
 }
 
 /**
+ * A skill Grok runs from its own folder (~/.grok/skills, or a repo's .grok/skills, the team's) while your other
+ * agents run a different copy. tidy never rewrites Grok's folder, so this is reported, with what would line them up.
+ */
+function grokDiffers(projects: string[], machine: SourcedSkill[], statusOf: (root: string) => ProjectSkill[]): Issue[] {
+  if (!enabledHarnesses().includes("grok")) return [];
+  const issue = (root: string | null, name: string, grokCopy: string, other: string): Issue => ({
+    id: `grok-differs:${root ?? "global"}:${name}`,
+    severity: "suggestion",
+    title: `${name}${root ? ` in ${basename(root)}` : ""}: Grok runs a different copy`,
+    detail: `Grok reads ${grokCopy} first; your other agents run ${other}, and the two differ. skilllib doesn't change Grok's folder: update or remove that copy there to make them match.`,
+    at: rows(root, [name]),
+  });
+  const grokGlobal = join(grokDir(), "skills");
+  const global = skillDirsIn(grokGlobal)
+    .filter((path) => !isLink(path))
+    .flatMap((path) => {
+      const name = basename(path);
+      const other = machine.find((m) => m.name === name && m.movable && !m.broken && m.harnesses.some((id) => id !== "grok") && realPathOf(dirname(m.path)) !== realPathOf(grokGlobal));
+      return other && treeHash(other.path) !== treeHash(path) ? [issue(null, name, tildify(path), tildify(other.path))] : [];
+    });
+  const repos = projects.flatMap((root) =>
+    skillDirsIn(join(root, GROK_SKILLS_DIR))
+      .filter((path) => !isLink(path))
+      .flatMap((path) => {
+        const name = basename(path);
+        const other = statusOf(root).find((s) => s.name === name && !s.path.startsWith(join(root, GROK_SKILLS_DIR)));
+        return other && treeHash(other.path) !== treeHash(path) ? [issue(root, name, `${GROK_SKILLS_DIR}/${name}`, relativeTo(root, other.path))] : [];
+      }),
+  );
+  return [...global, ...repos];
+}
+
+/**
  * Things worth fixing across the machine: broken links, skills loaded twice
  * (duplicate copies, plugins that duplicate your skills), copies that differ,
  * projects behind the library, and skills that only live in one project.
@@ -193,6 +227,7 @@ export function findIssues(
     at: [],
   }));
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
+  issues.push(...grokDiffers(projects, machine, (root) => statuses.get(root)!));
   const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
   for (const skill of machine.filter((m) => m.broken)) {
@@ -403,7 +438,7 @@ export function findIssues(
 
   // Your global skills you haven't decided about load in every repo. Where each lives is your call: no fix.
   const kept = keptGlobal();
-  const unreviewed = [...new Set(loaded.filter((m) => m.movable && !kept.has(m.name)).map((m) => m.name))];
+  const unreviewed = [...new Set(loaded.filter((m) => m.movable && m.harnesses.length && !kept.has(m.name)).map((m) => m.name))];
   if (unreviewed.length) {
     issues.push({
       id: "review:global",
@@ -544,7 +579,10 @@ export function findIssues(
         ...(visible.length
           ? {
               choices: [
-                { label: "Tidy, but keep git as it is", hint: `skips the ${plural(visible.length, "change")} git would see`, run: run("keep") },
+                // "Keep git as it is" only when it leaves something to do.
+                ...(visible.length < tidy.plans.reduce((n, p) => n + p.steps.length, 0)
+                  ? [{ label: "Tidy, but keep git as it is", hint: `skips the ${plural(visible.length, "change")} git would see`, run: run("keep") }]
+                  : []),
                 { label: "Tidy everything", hint: `${plural(visible.length, "change")} will show in git status`, run: run("go") },
               ],
             }

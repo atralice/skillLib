@@ -97,7 +97,7 @@ Then a good first session looks like this:
 
 ## Use it from your agents
 
-`skilllib agent-skill install` puts a small `skilllib` skill in `~/.claude/skills` (Claude Code, Cursor and Grok read it there), with a link in `~/.agents/skills` (Codex and Zed). This is the one skill that should be global, because it's about every repo. Upgrading skilllib keeps it up to date, and `skilllib agent-skill remove` takes it out. Agents use it from their next session.
+`skilllib agent-skill install` puts a small `skilllib` skill where your agents look: `~/.claude/skills` when one of them reads it (Claude Code, and Cursor and Grok too), and `~/.agents/skills` (a link, or the real copy) for Codex and Zed. This is the one skill that should be global, because it's about every repo. Upgrading skilllib keeps it up to date, and `skilllib agent-skill remove` takes it out. Agents use it from their next session.
 
 Then ask in plain words. A few examples, with what the agent runs:
 

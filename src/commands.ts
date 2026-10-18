@@ -911,7 +911,7 @@ export function tidy(args: Args) {
   for (const { label, report } of reports) {
     const plans = report.plans.filter((p) => !names.length || names.includes(p.name));
     const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
-    if (!plans.length && !conflicts.length && !args.all) success(`${label}: every skill has one copy and the links your agents need`);
+    if (!plans.length && !conflicts.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
     for (const plan of plans) {
       // The dry run says what the real one would do: the same steps held back unless --allow-git.
       const wouldHold = args.allowGit ? [] : gitVisibleSteps(plan);

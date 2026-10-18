@@ -727,3 +727,12 @@ test("update backs up a pinned copy your library has no version of before replac
   expect(c?.backedUp).toBeString();
   expect(readFileSync(join(c!.backedUp!, "SKILL.md"), "utf-8")).toContain("another library's version");
 });
+
+test("tracking an untracked copy adds only the links your agents need from where it is", () => {
+  setHarnesses(["grok"]);
+  writeSkill(local("alpha"), "v1"); // the library's content, untracked in .claude/skills
+  addSkill(project, "alpha");
+  // Grok reads .claude/skills itself: no .agents/skills link.
+  expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+  expect(readManifest(project).skills.alpha?.links).toBeUndefined();
+});
