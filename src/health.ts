@@ -2,8 +2,8 @@ import { lstatSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
-import { HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type ProjectSkill } from "./library.js";
+import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { libraryDir } from "./paths.js";
 import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
@@ -44,8 +44,16 @@ export type Issue = {
   choices?: Choice[];
 };
 
+/** What a sync or update fix did: the skills it changed and the ones it skipped. It fails when it changed none. */
+function summarize(where: string, verb: string, changes: Change[]): string {
+  const done = changes.filter((c) => c.action !== "skipped");
+  const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
+  if (!done.length) throw new Error(`${where}: nothing ${verb}${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
+  return `${where}: ${verb} ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const agentNames = (ids: HarnessId[]) => ids.map((id) => HARNESSES.find((h) => h.id === id)!.name).join(", ");
+const agentNames = (ids: HarnessId[]) => ids.map((id) => harness(id).name).join(", ");
 
 /** Differing copies of one skill: which agent runs which, and a choice per copy that can win. */
 function conflictIssue(c: Conflict): Issue {
@@ -343,13 +351,7 @@ export function findIssues(
         detail: `${restorable.map((s) => s.name).join(", ")}: the folder is missing`,
         fix: {
           label: "Sync the project",
-          run: () => {
-            const changes = syncProject(root);
-            const done = changes.filter((c) => c.action !== "skipped");
-            const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
-            if (!done.length) throw new Error(`${where}: nothing restored${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
-            return `${where}: restored ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
-          },
+          run: () => summarize(where, "restored", syncProject(root)),
         },
       });
     }
@@ -382,13 +384,7 @@ export function findIssues(
         detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
         fix: {
           label: "Update to the newest versions",
-          run: () => {
-            const changes = updateProject(root, behind.map((s) => s.name));
-            const done = changes.filter((c) => c.action !== "skipped");
-            const skipped = changes.filter((c) => c.action === "skipped").map((c) => `${c.name}: ${c.reason}`);
-            if (!done.length) throw new Error(`${where}: nothing updated${skipped.length ? `; ${skipped.join("; ")}` : ""}`);
-            return `${where}: updated ${plural(done.length, "skill")}${skipped.length ? `; skipped ${skipped.join("; ")}` : ""}`;
-          },
+          run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
         },
       });
 

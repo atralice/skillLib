@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
-import { ALL_PROJECT_DIRS, CURSOR_PICKS, HARNESSES, installDirs, type HarnessId } from "./harnesses.js";
-import { entryExists, isLink, linkDir, realpathOrNull, stash } from "./library.js";
-import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, PROJECT_SKILLS_DIR, realPath, userHome } from "./paths.js";
+import { ALL_PROJECT_DIRS, CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
+import { entryExists, isLink, linkDir, stash } from "./library.js";
+import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
@@ -112,7 +112,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   const { skills } = readManifest(root);
   const abs = (dir: string) => join(root, dir);
   const rel = (dir: string) => relativeTo(root, dir);
-  const readsOf = (id: HarnessId) => HARNESSES.find((h) => h.id === id)!.projectDirs.map(abs);
+  const readsOf = (id: HarnessId) => harness(id).projectDirs.map(abs);
   let git: GitInfo | null | undefined; // looked up once, only if needed
   const skillsLock = projectSkillsLock(root);
 
@@ -174,7 +174,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
 
 /** The global folders an agent reads. */
 function globalReadsOf(id: HarnessId): string[] {
-  return HARNESSES.find((h) => h.id === id)!.globalDirs().map(globalDirAs);
+  return harness(id).globalDirs().map(globalDirAs);
 }
 
 /** A "skills-directory plugin": a folder in a skills dir that is really a Claude Code plugin. Never touched. */

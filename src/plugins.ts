@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { importSkill, type Backup } from "./library.js";
-import { claudeDir, skilllibHome, userHome } from "./paths.js";
+import { claudeDir, readJson, skilllibHome, userHome } from "./paths.js";
 import { skillDirsIn } from "./skills.js";
-import { enabledPlugins, pluginDirCandidates, type SourcedSkill } from "./sources.js";
+import { enabledPlugins, installedPluginsJson, pluginDirCandidates, type InstallEntry, type SourcedSkill } from "./sources.js";
 import { latestVersion } from "./versions.js";
 
 /** Which install of a Claude Code plugin to act on. */
@@ -28,14 +28,6 @@ export type ClaudePlugin = PluginRef & {
   extras: string[];
 };
 
-function readJson<T>(path: string): T | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf-8")) as T;
-  } catch {
-    return null;
-  }
-}
-
 function nonEmptyDir(path: string): boolean {
   try {
     return readdirSync(path).some((f) => !f.startsWith("."));
@@ -56,17 +48,15 @@ function extrasOf(root: string): string[] {
 
 /** Claude Code plugins behind the plugin skills in `machine` (machineSkills, or skillsLoadedIn for the repo `root`). */
 export function claudePlugins(machine: SourcedSkill[], root?: string): ClaudePlugin[] {
-  const installed =
-    readJson<{ plugins?: Record<string, { scope?: string; projectPath?: string }[]> }>(join(claudeDir(), "plugins", "installed_plugins.json"))?.plugins ?? {};
+  const installed = installedPluginsJson();
   const byOrigin = new Map<string, string[]>();
   for (const m of machine) if (m.kind === "plugin") byOrigin.set(m.origin, [...(byOrigin.get(m.origin) ?? []), m.path]);
   return [...byOrigin].map(([origin, skills]) => {
     const synced = origin.endsWith("@synced");
-    const id = origin;
     const entries = installed[origin] ?? [];
     const entry = entries.find((e) => root && e.projectPath === root) ?? entries.find((e) => (e.scope ?? "user") === "user") ?? entries[0];
     return {
-      id,
+      id: origin,
       scope: synced ? null : (entry?.scope ?? "user"),
       ...(entry?.projectPath ? { projectPath: entry.projectPath } : {}),
       synced,
@@ -90,8 +80,6 @@ export type InstalledPlugin = PluginRef & {
   skills: string[];
   extras: string[];
 };
-
-type InstallEntry = { scope?: string; projectPath?: string; installPath?: string; version?: string; gitCommitSha?: string };
 
 /** "1.10.0" > "1.9.2": compares the numbers in each part. */
 function newer(a: string, b: string): boolean {
@@ -140,7 +128,7 @@ function describe(root: string) {
  */
 export function installedPlugins(): InstalledPlugin[] {
   const plugins = join(claudeDir(), "plugins");
-  const installed = readJson<{ plugins?: Record<string, InstallEntry[]> }>(join(plugins, "installed_plugins.json"))?.plugins ?? {};
+  const installed = installedPluginsJson();
   const catalogs = new Map<string, Listed[]>();
   const fromMarketplaces = Object.entries(installed).flatMap(([id, entries]) =>
     entries.map((entry): InstalledPlugin => {

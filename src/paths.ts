@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -61,3 +61,21 @@ export function isRepoSkillLocation(location: string): boolean {
 
 /** Marks the skill skilllib installs for agents, so it's reported as skilllib's own and not a global to clean up. */
 export const OWN_SKILL_MARKER = ".managed-by-skilllib";
+
+/** A JSON file's contents, or null when it's missing or not valid JSON. */
+export function readJson<T>(path: string): T | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** The real path, or null when nothing is there (a missing folder, a link to nothing). */
+export function realpathOrNull(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}

@@ -887,7 +887,7 @@ export function tidy(args: Args) {
     for (const c of conflicts) {
       warn(`${label} · ${c.name}: the copies differ`);
       for (const copy of c.copies) {
-        const runs = copy.runs.map((id) => HARNESSES.find((h) => h.id === id)!.name);
+        const runs = copy.runs.map((id) => harness(id).name);
         info(`    ${copyLabel(c, copy.dir)}${runs.length ? dim(`  run by ${runs.join(", ")}`) : ""}${c.managed === copy.dir ? dim("  (skilllib's copy)") : ""}`);
       }
       const pick = copyLabel(c, c.managed ?? c.copies[0]!.dir);
