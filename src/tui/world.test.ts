@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { sampleWorld } from "./sample.js";
-import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
+import { addRows, agentSkillIssue, assignGroups, failed, isFailure, pluginIssues, pluginSwitchFix, pluginUses, replacePluginFix, groupCandidates, groupLabel, issueOf, issuesOf, machineActions, machineIssues, projectIssues, runAll, said, usable, type Fix, type Result, type World } from "./world.js";
 
 const ids = (w: World, p: string) => projectIssues(w, p).map((x) => x.issue.id);
 
@@ -270,4 +270,30 @@ test("a plugin installed for one repo only repeats what loads in that repo", () 
   api.skills = api.skills.filter((s) => s.name !== "stripe-payments");
   w.machine = w.machine.filter((m) => !(m.source === "global" && m.name === "stripe-payments"));
   expect(pluginIssues(w, stripe).map((i) => i.short)).not.toContain("Repeats 1 of yours");
+});
+
+test("doctor's issues in the app: the fix is the ★ one, choices are your call, a fix that throws is a failure", () => {
+  const w = sampleWorld();
+  const fixed = issueOf({ id: "x", severity: "problem", title: "t", detail: "What it is.", fix: { label: "Fix it", run: () => "fixed" } });
+  expect([fixed.decision, fixed.fixes.map((f) => f.label), fixed.fixes[0]!.preview]).toEqual([false, ["Fix it"], "What it is."]);
+  expect(fixed.fixes[0]!.run(w)).toBe("fixed");
+  const choice = issueOf({
+    id: "y",
+    severity: "suggestion",
+    title: "t",
+    detail: "What it is.",
+    choices: [
+      { label: "One", hint: "the first", run: () => "one" },
+      {
+        label: "Two",
+        run: () => {
+          throw new Error("two: no");
+        },
+      },
+    ],
+  });
+  expect([choice.decision, choice.fixes.map((f) => f.label), choice.fixes[0]!.preview]).toEqual([true, ["One", "Two"], "The first. What it is."]);
+  expect(choice.fixes[1]!.run(w)).toEqual(failed("two: no"));
+  // Nothing skilllib can do: still your call, with no fix to run.
+  expect(issueOf({ id: "z", severity: "suggestion", title: "t", detail: "d" })).toMatchObject({ decision: true, fixes: [] });
 });

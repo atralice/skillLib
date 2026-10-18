@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
-import { addSkill, createSkill, deleteGlobal, importSkill, linkAll, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
+import { addSkill, createSkill, deleteGlobal, deleteLibrarySkill, importSkill, linkAll, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
@@ -502,4 +502,34 @@ test("a committed skill that isn't in your library is copied into it, never trac
   expect(readManifest(project).skills["house-style"]).toBeUndefined();
   // A copy only on this machine is still imported and tracked.
   expect(issues.find((i) => i.id === `local:${project}:scratch`)!.choices!.map((c) => c.label)).toEqual(["Import into the library"]);
+});
+
+test("a tracked skill your library no longer has: copy it back, a choice", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha");
+  deleteLibrarySkill("alpha");
+  const issue = () => findIssues([project], machineSkills(), new Set()).find((i) => i.id === `not-in-lib:${project}:alpha`);
+  expect(issue()!.title).toBe("alpha in web is tracked, but no longer in your library");
+  expect(issue()!.fix).toBeUndefined();
+  expect(runFix(issue()!.choices![0]!)).toEqual({ ok: true, message: "alpha copied back into your library" });
+  expect(issue()).toBeUndefined();
+});
+
+test("each issue says which rows the app shows it on", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".claude", "skills", "shipit"));
+  skill(join(tmp, ".claude", "skills", "shipit"));
+  symlinkSync(join(tmp, "nowhere"), join(tmp, ".claude", "skills", "gone"));
+  const at = (id: string) => findIssues([project], machineSkills(), new Set()).find((i) => i.id === id)!.at;
+  expect(at("broken:gone")).toEqual([{ root: null, skill: "gone" }]);
+  expect(at(`local:${project}:shipit`)).toEqual([{ root: project, skill: "shipit" }]);
+  // A repo copy also loaded globally: on the repo's row and on Global's.
+  expect(at("twice:shipit")).toEqual([
+    { root: project, skill: "shipit" },
+    { root: null, skill: "shipit" },
+  ]);
 });
