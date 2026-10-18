@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { findIssues, runFix } from "./health.js";
+import { findIssues, runFix, usageIssues } from "./health.js";
 import { addSkill, importSkill } from "./library.js";
 import { claudeBinary, forgetClaudeBinary, installedPlugins, pluginBackups, removePlugin, restorePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin } from "./plugins.js";
 import { machineSkills, skillsLoadedIn } from "./sources.js";
@@ -437,4 +437,30 @@ test.skipIf(process.platform === "win32")("an update that finds nothing newer sa
   writeFileSync(join(bin, "claude"), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.284 (Claude Code)"; exit 0; fi\necho '${line}'\n`);
   chmodSync(join(bin, "claude"), 0o755);
   withPath("/usr/bin:/bin", () => expect(updatePlugin(installedPlugins()[0]!)).toEqual({ ok: true, message: "a@mk is already the newest version (1.0.0)" }));
+});
+
+test.skipIf(process.platform === "win32")("a plugin with a newer version in its marketplace: updating is a choice, per install, never doctor --fix", () => {
+  const web = installs();
+  const updates = findIssues([web], machineSkills(), new Set()).filter((i) => i.id.startsWith("plugin-update:"));
+  expect(updates.map((i) => [i.id, i.title, i.fix, i.choices?.map((c) => c.label), i.plugin, i.pluginAt])).toEqual([
+    ["plugin-update:a@mk", "a@mk: update available (1.0.0 → 1.10.0)", undefined, ["Update to 1.10.0"], "a@mk", null],
+    ["plugin-update:b@mk", "b@mk: its marketplace has a newer commit", undefined, ["Update it"], "b@mk", null],
+  ]);
+  fakeClaude();
+  forgetClaudeBinary();
+  withPath("/usr/bin:/bin", () => expect(runFix(updates[0]!.choices![0]!).ok).toBe(true));
+  expect(readFileSync(join(tmp, "calls"), "utf-8")).toContain("plugin update a@mk --scope user --json");
+});
+
+test("a plugin that's on and whose skills nobody used: turn it off or uninstall it, your call", () => {
+  const web = installs();
+  const used = (key: string) => (key === "a:alpha" ? 1 : 0);
+  const unused = usageIssues([web], machineSkills(), new Set(), { inProject: () => 0, total: () => 0, days: 30, asUsed: used }).filter((i) => i.id.startsWith("plugin-unused:"));
+  // a's skill was used; b and rail@synced are off: only c, installed for web.
+  expect(unused.map((i) => [i.id, i.title, i.choices?.map((c) => c.label), i.pluginAt])).toEqual([
+    [`plugin-unused:${web}:c@mk`, "c@mk in web: its skills weren't used in 30 days", ["Turn the plugin c@mk off", "Uninstall the plugin c@mk"], web],
+  ]);
+  expect(unused[0]!.detail).toStartWith("No Claude Code session used /c:gamma.");
+  // Without uses by recorded name, nothing to say about plugins.
+  expect(usageIssues([web], machineSkills(), new Set(), { inProject: () => 0, total: () => 0, days: 30 }).filter((i) => i.id.startsWith("plugin-unused:"))).toEqual([]);
 });

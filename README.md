@@ -90,7 +90,7 @@ On first run, skilllib asks two things:
 Then a good first session looks like this:
 
 1. **You land in Places, on the repo you're in.** `enter` opens its skills; `enter` again opens a skill's issues and actions.
-2. **Open Health** to see everything worth fixing, in every repo and in your global skills. **✦ Fix N issues automatically…** does the safe ones; the rest are your call, one skill at a time.
+2. **Open Health** to see everything worth fixing, in every repo and in your global skills: what `skilllib doctor` reports. **✦ Fix N issues automatically…** does the safe ones; the rest are your call, one at a time.
 3. **Add skills** to a repo with **+ Add a skill…**, the top row of its list.
 
 ---
@@ -125,7 +125,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | **Your skills** | Your library: master copies, versioned. Nothing here loads anywhere until you add it to a repo. |
 | **Global** | Everything your agents load in *every* repo: yours, plus vendor skills (plugins, claude.ai, Cursor built-ins). |
 | **Plugins** | Every plugin installed, on or off: what it brings, where it's installed, and how much its skills get used. Turn it on or off, update it, uninstall it, or replace it with library skills. |
-| **Health** | Every skill with something to fix, in every repo and in Global, with its fixes. |
+| **Health** | What `skilllib doctor` reports, in every repo and in Global, each with its fix or choices. |
 | **Projects** | Every repo found in your project folders. `◆` marks the one you're in; `✕` `⚠` `·` its worst issue. |
 | **Settings** | Your agents and the skilllib skill for them, your project folders, hidden repos, and backups. |
 | **Help** | The keys and symbols. |
@@ -162,15 +162,17 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global. Your call: stopping a global skill changes every repo, so the fix names the repos that used it |
-| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`, a local-only file git ignores). Cursor ignores repo settings, so once the repo turns the plugin off, only replacing the plugin helps there |
-| **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
-| **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
-| ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
-| **Differs from library** · **Not tracked** · **Only in this repo** | Update your library from it, or replace it · track it · import it |
-| **Unused 30 days** | Remove it from the repo |
-| **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it |
-| ***Agent* can't see it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
+| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo. If you keep it global on purpose, remove the repo copies skilllib installed instead |
+| **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
+| **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
+| **Out of date** · **Edited here** | Update every out-of-date skill in the repo (or one, from its *Update to vN* action) · save the edits as a new version, or discard them |
+| **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
+| **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
+| **Unused 30 days** | Remove the ones skilllib installed from the repo |
+| **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it (the row's actions) |
+| **Not every agent can use it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
+
+These are the issues `skilllib doctor` reports, with the same fixes and choices.
 
 ### Adding and removing skills
 
@@ -226,7 +228,7 @@ Plugins are a big part of what agents load (one plugin can bring dozens of skill
 | Brings | Its skills, and `+N` for the other kinds of things it brings: commands, agents, hooks, MCP servers |
 | On | `on` · `off` · `?` for Cursor, which keeps that in its own database |
 | Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart; two installs of one plugin share a count |
-| Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** · **Update to vN** |
+| Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** (on, ships skills, none used) · **Update available** (its marketplace has a newer version or commit) |
 
 Every plugin issue is *your call*: turning plugins on or off, or updating them, changes code that runs in your sessions, so **Fix automatically** never does it.
 
@@ -257,7 +259,7 @@ It's in every skill's actions, in a repo's **⋯** menu (all its skills), and at
 
 ### Duplicates
 
-The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case on the skill it's about, with its fix. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
+The same skill often reaches your agents more than once: a copy in `.claude/skills` *and* in `.agents/skills`, a global copy *and* a repo copy, a plugin *and* your skill. skilllib keeps **one real copy per skill, plus only the links your agents need**. **Health** lists each case with its fix, and the skill's row in a repo or Global shows it too. From the command line, `skilllib doctor` lists them and `skilllib tidy` fixes the folder ones.
 
 | What it finds | What it does |
 |---|---|

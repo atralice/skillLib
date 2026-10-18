@@ -1,12 +1,12 @@
 ╭── ◆ skilllib ────────────╮╭── Skills ──────────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     10   ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3     ⌕ re▏               │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
-│   ⧉ Plugins         7    ││ ▌ ⚠ react-patterns     lib v1            9  Also in a Cursor plugin                    │
-│   ✓ Health          19   ││   ⚠ deploy-preview     repo              4  Claude Code can't see it                   │
+│   ⧉ Plugins         7    ││ ▌ ⚠ react-patterns     lib v1            9  Also in Cursor's react-kit                 │
+│   ✓ Health          27   ││   ⚠ deploy-preview     repo              4  Not every agent can use it                 │
 │   Projects ───────────── ││     pr-review          global ✓          4                                             │
 │ ▌ ◆ web-app          ✕   ││     release-notes      repo              2                                             │
 │     api-server       ✕   ││     create-rule        cursor            –                                             │
-│     docs-site        ·   ││                                                                                        │
+│     docs-site        ⚠   ││                                                                                        │
 │     mobile-app       ⚠   ││                                                                                        │
 │     billing              ││                                                                                        │
 │     blog                 ││                                                                                        │
@@ -15,12 +15,12 @@
 │     design-system        │╭── react-patterns ──────────────────────────────────────────────────────────────────────╮
 │     e2e-tests            ││ Component patterns for React 19: composition, server components, suspense boundaries.  │
 │     infra                ││                                                                                        │
-│     landing              ││ ⚠ Also in the Cursor plugin react-kit: Cursor lists both while it's on  · your call    │
-│     marketing-site       ││       Turn the plugin off in Cursor (Settings › Plugins)                               │
-│     playground           ││ ⚠ Update available: v1 → v2                                                            │
-│     scripts              ││     ★ Update to v2                                                                     │
-│     status-page          ││                                                                                        │
-│    ───────────────────── ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
+│     landing              ││ ⚠ react-patterns: also in the Cursor plugin react-kit  · your call                     │
+│     marketing-site       ││ ⚠ web-app: 1 skill out of date                                                         │
+│     playground           ││     ★ Update to the newest versions                                                    │
+│     scripts              ││                                                                                        │
+│     status-page          ││ Actions  Update to v2 · Edit in library · Other versions… · Remove from repo           │
+│    ───────────────────── ││          Review prompt                                                                 │
 │   ⚙ Settings             ││                                                                                        │
 │   ? Help                 ││ Usage here   last used yesterday                                                       │
 │                          ││   █                                                                                    │

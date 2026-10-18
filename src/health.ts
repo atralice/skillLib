@@ -3,10 +3,10 @@ import { basename, dirname } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { libraryDir } from "./paths.js";
-import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
+import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
@@ -29,6 +29,25 @@ function orThrow(r: { ok: boolean; message: string }): string {
   return r.message;
 }
 
+/** Copies a skill folder into your library; throws unless it went in (or was already there). */
+function intoLibrary(path: string, force = false): string {
+  const r = importSkill(path, { force });
+  if (r.status === "exists") throw new Error(`${r.name}: your library has a different ${r.name}; update or delete it first`);
+  return r.name;
+}
+
+/** Tracks a library skill in a repo's skilllib.json; throws when it couldn't. */
+function track(root: string, name: string): Change {
+  const c = addSkill(root, name);
+  if (c.action === "skipped") throw new Error(`${name}: ${c.reason}`);
+  return c;
+}
+
+/** A Claude Code install's place, for titles: " in web" for a project or local install. */
+const installedIn = (p: InstalledPlugin) => (p.projectPath ? ` in ${basename(p.projectPath)}` : "");
+/** Issue ids for one install: the plugin's, with the project first for a project or local install. */
+const installId = (p: InstalledPlugin) => `${p.projectPath ? `${p.projectPath}:` : ""}${p.id}`;
+
 export type Issue = {
   id: string;
   severity: "problem" | "suggestion";
@@ -42,6 +61,15 @@ export type Issue = {
   fix?: Choice;
   /** Fixes that need a decision; the person picks one. Never set together with `fix`. */
   choices?: Choice[];
+  /**
+   * Where the app shows it: the rows of the skills it names, in a repo (`root`) or in Global (`root`
+   * null). doctor and `status --json` leave it out.
+   */
+  at?: { root: string | null; skill: string }[];
+  /** The plugin it's about (name@marketplace; a Cursor plugin's name), for the app's Plugins rows. */
+  plugin?: string;
+  /** Which install of it, when the issue is about one: a project or local install's project, null for the user's (or synced) one. */
+  pluginAt?: string | null;
 };
 
 /** What a sync or update fix did: the skills it changed and the ones it skipped. It fails when it changed none. */
@@ -53,6 +81,8 @@ function summarize(where: string, verb: string, changes: Change[]): string {
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+/** Issue.at for skills in one repo, or in Global (`root` null). */
+const rows = (root: string | null, skills: string[]) => skills.map((skill) => ({ root, skill }));
 const agentNames = (ids: HarnessId[]) => ids.map((id) => harness(id).name).join(", ");
 
 /** Differing copies of one skill: which agent runs which, and a choice per copy that can win. */
@@ -66,6 +96,7 @@ function conflictIssue(c: Conflict): Issue {
     detail: `Your agents run different versions: ${c.copies
       .map((x) => `${copyLabel(c, x.dir)}${x.runs.length ? ` (${agentNames(x.runs)})` : ""}`)
       .join(" vs ")}. Keep one; the others become links to it and are restorable from Health.`,
+    at: rows(c.root, [c.name]),
     choices: winners.map((x) => ({
       label: `Keep the ${copyLabel(c, x.dir)} copy`,
       hint: x.dir === c.managed ? "skilllib's version" : "the others become links to it",
@@ -110,6 +141,7 @@ export function findIssues(
       severity: "problem",
       title: `${skill.name}: broken link in ${tildify(dirname(skill.path))}`,
       detail: "It points at a folder that no longer exists, so it loads nothing.",
+      at: rows(null, [skill.name]),
       fix: {
         label: "Remove the link",
         run: () => {
@@ -136,6 +168,7 @@ export function findIssues(
       severity: "problem",
       title: `${name}: loaded twice in ${harnesses.join(" and ")}`,
       detail: `${copies.map((c) => `${c.kind} (${c.origin})`).join(" and ")}. Your skill wins: turn the ${vendor.map((c) => c.kind).join(" and ")} copy off at its source${vendor.some((c) => c.kind === "claude.ai") ? " (claude.ai → Settings → Skills)" : ""}${vendor.some((c) => c.kind === "system") ? ` (whoever manages ${vendor.find((c) => c.kind === "system")!.origin})` : ""}.`,
+      at: rows(null, [name]),
     });
   }
 
@@ -228,8 +261,26 @@ export function findIssues(
         .filter(Boolean)
         .join(" "),
       choices: [...(plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off]), ...inRepos.flatMap(([root, d]) => repoChoices(plugin, root, d))],
+      // Global's rows (yours and the plugin's), and the repos where both load.
+      at: [...rows(null, dupes), ...[...inRepos, ...cursorRepos].flatMap(([root, d]) => rows(root, d))],
+      plugin: plugin.id,
     });
   }
+
+  // A newer version in a plugin's marketplace. Updating changes code that runs in your sessions: a choice, never `doctor --fix`.
+  if (enabledHarnesses().includes("claude-code"))
+    for (const p of installedPlugins().filter((x) => x.update && !x.synced && !x.settingsOnly)) {
+      const update: Choice = { label: p.update === "newer" ? "Update it" : `Update to ${p.update}`, hint: `runs claude plugin update ${p.id}`, run: () => orThrow(updatePlugin(p)) };
+      issues.push({
+        id: `plugin-update:${installId(p)}`,
+        severity: "suggestion",
+        title: `${p.id}${installedIn(p)}: ${p.update === "newer" ? "its marketplace has a newer commit" : `update available (${p.version ?? "?"} → ${p.update})`}`,
+        detail: "Updates can bring new commands, hooks or MCP servers. If the marketplace asks to run a command, skilllib stops and you update it yourself. Claude Code uses the new version after a restart.",
+        choices: [update],
+        plugin: p.id,
+        pluginAt: p.projectPath ?? null,
+      });
+    }
 
   // Plugins a repo's own Claude Code settings turn on: they collide only there.
   const machinePluginSkills = new Set(machinePlugins.flatMap((p) => p.skills));
@@ -247,6 +298,8 @@ export function findIssues(
         title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}, on in ${where}`,
         detail: `${where}'s Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /${plugin.id.split("@")[0]}:${dupes[0]}). Your skill wins.`,
         choices: repoChoices(plugin, root, inRepo),
+        at: rows(root, dupes),
+        plugin: plugin.id,
       });
     }
   }
@@ -261,6 +314,8 @@ export function findIssues(
         severity: "suggestion",
         title: `${names.join(", ")}: also in the Cursor plugin ${plugin}`,
         detail: `Cursor lists both copies when that plugin is on. Your skill wins: turn the plugin off in Cursor (Settings → Plugins).`,
+        at: [...rows(null, names.filter((n) => globalYours.has(n))), ...projects.flatMap((root) => rows(root, names.filter((n) => statuses.get(root)!.some((s) => s.name === n))))],
+        plugin,
       });
     }
   }
@@ -273,6 +328,7 @@ export function findIssues(
       severity: "suggestion",
       title: `${plural(global.plans.length, "global skill")} with duplicate copies`,
       detail: `${global.plans.map((p) => p.name).join(", ")}: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable from Health.`,
+      at: rows(null, global.plans.map((p) => p.name)),
       fix: {
         label: "Keep one copy of each",
         run: () => {
@@ -294,6 +350,7 @@ export function findIssues(
       severity: "suggestion",
       title: `${plural(unreviewed.length, "global skill")} of yours ${unreviewed.length === 1 ? "loads" : "load"} in every repo`,
       detail: `${unreviewed.join(", ")}. Move each to the repos that need it (skilllib global move <name> --to <repo>...), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).`,
+      at: rows(null, unreviewed),
     });
   }
 
@@ -329,6 +386,7 @@ export function findIssues(
           ? "A link in each agent's global folder makes the one real copy reach every agent you use."
           : `Link ${skills.length === 1 ? "it" : "them"} for every agent, or move ${skills.length === 1 ? "it" : "them"} to the repos that need ${skills.length === 1 ? "it" : "them"} (skilllib global move), which works for every agent too.`
       }`,
+      at: rows(null, [...new Set(skills.map((m) => m.name))]),
       ...(onPurpose ? { fix: link } : { choices: [link] }),
     });
   }
@@ -349,6 +407,7 @@ export function findIssues(
         severity: "problem",
         title: `${where}: ${plural(restorable.length, "skill")} in skilllib.json not installed`,
         detail: `${restorable.map((s) => s.name).join(", ")}: the folder is missing`,
+        at: rows(root, restorable.map((s) => s.name)),
         fix: {
           label: "Sync the project",
           run: () => summarize(where, "restored", syncProject(root)),
@@ -361,6 +420,7 @@ export function findIssues(
         severity: "problem",
         title: `${s.name}: pinned in ${where}'s skilllib.json, but not in your library`,
         detail: `Its folder is missing, and your library (${tildify(libraryDir())}) has no copy to restore: import it, or set SKILLLIB_HOME to the library that has it.`,
+        at: rows(root, [s.name]),
         // Editing skilllib.json is the team's call: a choice, never run by `doctor --fix`.
         choices: [
           {
@@ -382,6 +442,7 @@ export function findIssues(
         severity: "suggestion",
         title: `${where}: ${plural(behind.length, "skill")} out of date`,
         detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
+        at: rows(root, behind.map((s) => s.name)),
         fix: {
           label: "Update to the newest versions",
           run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
@@ -405,6 +466,7 @@ export function findIssues(
         detail:
           tidy.plans.map((p) => `${p.name}: ${p.steps.map((s) => describeStep(s, root)).join(", ")}`).join(" · ") +
           (visible.length ? `. Git would see ${plural(visible.length, "of these change")}: ${visible.join(", ")}.` : ". Replaced copies are restorable from Health."),
+        at: rows(root, tidy.plans.map((p) => p.name)),
         ...(visible.length
           ? {
               choices: [
@@ -429,6 +491,7 @@ export function findIssues(
         severity: "suggestion",
         title: `${s.name} in ${where}: ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))} can't use it until it's committed`,
         detail: `Git tracks ${would.uncommitted.join(", ")}, but not ${s.location}/${s.name}: a link there would be broken for teammates. Commit it, then link it (\`skilllib link --allow-tracked\`, or from Health).`,
+        at: rows(root, [s.name]),
       });
     const partial = blindHere.filter(({ would }) => would.created.length || would.blocked.length).map(({ s }) => s);
     if (partial.length) {
@@ -452,6 +515,7 @@ export function findIssues(
           .join(", ")}. Adding links makes the one real copy reach every agent you use; nothing is copied or moved.${
           tracked.length ? ` Git tracks ${tracked.join(", ")}, so links there show in git status.` : ""
         }`,
+        at: rows(root, partial.map((s) => s.name)),
         ...(tracked.length
           ? {
               choices: [
@@ -481,12 +545,13 @@ export function findIssues(
           severity: "suggestion",
           title: `${s.name} in ${where} isn't in your library`,
           detail: "Copy it into the library to reuse it in other projects. The repo's copy stays as it is: it's the team's (committed).",
+          at: rows(root, [s.name]),
           choices: [
             {
               label: "Copy into the library",
               hint: `${where}'s copy stays as it is`,
               run: () => {
-                importSkill(s.path);
+                intoLibrary(s.path);
                 return `${s.name} copied into your library; ${where}'s copy stays as it is`;
               },
             },
@@ -498,13 +563,14 @@ export function findIssues(
           severity: "suggestion",
           title: `${s.name} in ${where} isn't in your library`,
           detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in skilllib.json.",
+          at: rows(root, [s.name]),
           choices: [
             {
               label: "Import into the library",
               hint: `${where} then tracks it`,
               run: () => {
-                importSkill(s.path);
-                addSkill(root, s.name);
+                intoLibrary(s.path);
+                track(root, s.name);
                 return `${s.name} imported and tracked in ${where}`;
               },
             },
@@ -516,9 +582,88 @@ export function findIssues(
           severity: "suggestion",
           title: `${s.name} in ${where} isn't tracked`,
           detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
-          choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
+          at: rows(root, [s.name]),
+          choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${track(root, s.name).name} tracked in ${where}` }],
+        });
+      } else if (s.state === "untracked, differs from library" || s.state === "repo skill, differs from library") {
+        // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
+        const teams = s.state.startsWith("repo skill") || committed(s);
+        issues.push({
+          id: `differs:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} differs from your library`,
+          detail: teams
+            ? `It's the team's copy (committed), and no version in Your skills matches it. Update your library from it if it's the one to keep; ${where}'s copy stays as it is.`
+            : `No version in Your skills matches it. Update your library from it (${where} then tracks it), or replace it with your library's.`,
+          at: rows(root, [s.name]),
+          choices: [
+            {
+              label: "Update your library from it",
+              hint: teams ? `a new version in Your skills; ${where}'s copy stays as it is` : `a new version in Your skills; ${where} then tracks it`,
+              run: () => {
+                intoLibrary(s.path, true);
+                if (teams) return `${s.name}: your library has ${where}'s copy; ${where}'s copy stays as it is`;
+                const c = track(root, s.name);
+                return `${s.name}: your library has ${where}'s copy as v${c.to}; ${where} tracks it`;
+              },
+            },
+            ...(teams
+              ? []
+              : [
+                  {
+                    label: "Replace it with your library's",
+                    hint: "this copy is restorable from Health",
+                    run: () => {
+                      stash(s.path, "edit-backup");
+                      const c = track(root, s.name);
+                      return `${s.name} in ${where} is your library's v${c.to} now; the old copy is restorable from Health`;
+                    },
+                  },
+                ]),
+          ],
+        });
+      } else if (s.state === "from npx skills") {
+        // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it.
+        const teams = committed(s);
+        issues.push({
+          id: `npx:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} came from npx skills, not your library`,
+          detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (committed)` : `; ${where} then tracks it in skilllib.json`}.`,
+          at: rows(root, [s.name]),
+          choices: [
+            {
+              label: "Import it into your library",
+              hint: teams ? `${where}'s copy stays as it is` : `${where} then tracks it`,
+              run: () => {
+                intoLibrary(s.path);
+                if (teams) return `${s.name} copied into your library; ${where}'s copy stays as it is`;
+                track(root, s.name);
+                return `${s.name} imported and tracked in ${where}`;
+              },
+            },
+          ],
         });
       }
+      // Tracked, but deleted from your library: sync can't bring it back, and no other repo can add it. Copying it back adds to your library: a choice.
+      if (s.state === "not in library")
+        issues.push({
+          id: `not-in-lib:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} is tracked, but no longer in your library`,
+          detail: `${where}'s skilllib.json pins it, but your library has no copy: if the folder goes, sync can't restore it, and your other repos can't add it. Copy ${where}'s copy back into the library.`,
+          at: rows(root, [s.name]),
+          choices: [
+            {
+              label: "Copy it back into your library",
+              hint: `${where}'s copy stays as it is`,
+              run: () => {
+                intoLibrary(s.path);
+                return `${s.name} copied back into your library`;
+              },
+            },
+          ],
+        });
       if (s.state === "edited locally" || s.state === "edited locally, update available") {
         // Keeping the edits is also fine: skilllib never overwrites them. So these are choices, and "keep" is doing nothing.
         const newer = s.state !== "edited locally";
@@ -528,6 +673,7 @@ export function findIssues(
           severity: "suggestion",
           title: `${s.name} in ${where} has local edits`,
           detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.`,
+          at: rows(root, [s.name]),
           choices: [
             {
               label: "Save as a new version in Your skills",
@@ -570,6 +716,8 @@ export function findIssues(
     // Only copies skilllib installed can be removed from here; a repo's own skill is the team's.
     const removable = copies.filter((c) => c.managed).map((c) => c.root);
     const repoOwn = copies.filter((c) => !c.managed).map((c) => basename(c.root));
+    // Each repo's row, and Global's.
+    const at = [...copies.flatMap((c) => rows(c.root, [name])), ...rows(null, [name])];
     if (kept.has(name)) {
       // You keep it global on purpose: the project copies are the extra ones (Claude Code runs the global one anyway).
       const removeWheres = removable.map((r) => basename(r)).join(", ");
@@ -580,6 +728,7 @@ export function findIssues(
         detail: `The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.${
           repoOwn.length ? ` ${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : ""
         }`,
+        at,
         choices: removable.length
           ? [
               {
@@ -597,6 +746,7 @@ export function findIssues(
     }
     const movable = machine.find((m) => m.name === name && m.movable);
     issues.push({
+      at,
       id: `twice:${name}`,
       severity: "suggestion",
       title: `${name}: in ${wheres} and also loaded globally`,
@@ -638,6 +788,7 @@ export function findIssues(
       severity: "suggestion",
       title: agentSkill === "missing" ? "Your agents don't know about skilllib" : "The skilllib skill for your agents is out of date",
       detail: "The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.",
+      at: rows(null, ["skilllib"]),
       ...(agentSkill === "missing" ? { choices: [install] } : { fix: install }),
     });
   }
@@ -666,7 +817,13 @@ export function usageIssues(
   projects: string[],
   machine: SourcedSkill[],
   libraryNames: Set<string>,
-  uses: { inProject: (root: string, skill: string) => number; total: (skill: string) => number; days: number },
+  uses: {
+    inProject: (root: string, skill: string) => number;
+    total: (skill: string) => number;
+    days: number;
+    /** Uses by the name sessions record it under (a plugin's skill as plugin:skill); without it, no plugin hints. */
+    asUsed?: (key: string) => number;
+  },
   statusOf: (root: string) => { name: string; managed: boolean; path: string; state: string }[] = projectStatus,
 ): Issue[] {
   if (!enabledHarnesses().includes("claude-code")) return [];
@@ -685,6 +842,7 @@ export function usageIssues(
       detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
         unused.length > removable.length ? " The repo's own skills are the team's: remove those in the repo if nobody needs them." : ""
       }`,
+      at: rows(root, unused.map((s) => s.name)),
       choices: removable.length
         ? [
             {
@@ -702,6 +860,27 @@ export function usageIssues(
     });
   }
 
+  // Plugins that are on and ship skills, none used: they still take context in every session. Turning one off is a choice.
+  if (uses.asUsed)
+    for (const p of installedPlugins().filter((x) => x.agent === "claude-code" && x.on && x.skills.length)) {
+      const name = p.id.split("@")[0]!;
+      if (p.skills.some((path) => uses.asUsed!(`${name}:${basename(path)}`) > 0)) continue;
+      issues.push({
+        id: `plugin-unused:${installId(p)}`,
+        severity: "suggestion",
+        title: `${p.id}${installedIn(p)}: its skills weren't used in ${uses.days} days`,
+        detail: `No Claude Code session used ${p.skills.map((path) => `/${name}:${basename(path)}`).join(", ")}. Each one's name and description still takes context in every session.${
+          p.extras.length ? ` It also brings ${p.extras.join(", ")}: turning it off pauses those too.` : ""
+        }`,
+        choices: [
+          { label: `Turn the plugin ${p.id} off`, hint: "stays installed", run: () => orThrow(setPluginOn(p, false)) },
+          ...(p.synced || p.settingsOnly ? [] : [{ label: `Uninstall the plugin ${p.id}`, hint: "its data stays; restorable from Health", run: () => orThrow(uninstallPlugin(p)) }]),
+        ],
+        plugin: p.id,
+        pluginAt: p.projectPath ?? null,
+      });
+    }
+
   // Library skills in no repo and not loaded globally, unused everywhere.
   const installed = new Set([...projects.flatMap((root) => statusOf(root).map((s) => s.name)), ...machine.filter((m) => !m.broken).map((m) => m.name)]);
   const idle = [...libraryNames].filter((name) => {
@@ -715,6 +894,8 @@ export function usageIssues(
       severity: "suggestion",
       title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${uses.days} days`,
       detail: `${idle.sort().join(", ")}. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.`,
+      // Your skills' rows (none loads globally, so none is in Global).
+      at: rows(null, idle),
       choices: [
         {
           label: `Delete ${idle.length === 1 ? "it" : `all ${idle.length}`} from Your skills`,

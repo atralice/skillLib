@@ -9,8 +9,8 @@ import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSk
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
-import { gitInfo, relativeTo, type GitInfo } from "../git.js";
-import { addedAt } from "../health.js";
+import { gitInfo, relativeTo } from "../git.js";
+import { findIssues, usageIssues } from "../health.js";
 import {
   addSkill,
   createSkill,
@@ -19,7 +19,6 @@ import {
   importSkill,
   librarySkills,
   linkEverywhere,
-  linkGlobal,
   listBackups,
   projectStatus,
   relinkDependency,
@@ -28,8 +27,6 @@ import {
   projectsUsing,
   removeUntracked,
   restoreBackup,
-  syncSkill,
-  unloadGlobal,
   updateProject,
   visibilityOf,
   type Backup,
@@ -44,25 +41,21 @@ import { projectHere, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
 import {
   claudeBinary,
-  claudePlugins,
   cursorPlugins,
-  cursorPluginSkills,
   forgetClaudeBinary,
   installedPlugins,
   pluginBackups,
   restorePlugin,
   setPluginOn,
-  turnOffIn,
   uninstallPlugin,
   updatePlugin,
   type InstalledPlugin,
   type PluginRef,
 } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type SourcedSkill } from "../sources.js";
-import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "../tidy.js";
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import { failed, followUp, type Dupes, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
+import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
@@ -84,31 +77,23 @@ export function uniqueNames(roots: string[]): Map<string, string> {
 
 function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInfo>): LocalSkill {
   const managed: Partial<Record<ProjectSkill["state"], Partial<LocalSkill>>> = {
-    ok: {},
-    "update available": {},
     "edited locally": { edited: true },
     "edited locally, update available": { edited: true },
-    // sync restores it from your library, unless the library doesn't have it (a teammate's skill, another library).
-    "folder missing": { missing: true, ...(s.latest === null && { library: "missing" as const }) },
-    "not in library": { library: "missing" },
+    "folder missing": { missing: true },
   };
   const other: Partial<Record<ProjectSkill["state"], Partial<LocalSkill>>> = {
-    "untracked copy of library skill": { source: "untracked", library: "same" },
-    "untracked, differs from library": { source: "untracked", library: "differs" },
+    "untracked copy of library skill": { source: "untracked" },
+    "untracked, differs from library": { source: "untracked" },
     "local only": { source: "untracked" },
     // Installed with `npx skills add` (the repo's skills-lock.json): not skilllib's, so not a library skill.
     "from npx skills": { source: "untracked" },
     "repo skill": { source: "repo" },
-    "repo skill, in library": { source: "repo", library: "same" },
-    "repo skill, differs from library": { source: "repo", library: "differs" },
+    "repo skill, in library": { source: "repo" },
+    "repo skill, differs from library": { source: "repo" },
   };
   const state = git ? git.of(relativeTo(root, s.path)) : null;
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
   const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
-  // Agents only a link in a folder git tracks would reach, while git doesn't share the real copy: never linked (see linkEverywhere).
-  const blind = s.state === "folder missing" ? [] : s.visibility.filter((v) => v.paths === 0).map((v) => v.id);
-  const uncommitted = blind.length ? linkEverywhere(root, s.name, s.location, { dryRun: true }).uncommitted : [];
-  const unshared = blind.filter((id) => uncommitted.includes(harness(id).projectDirs[0]!));
   return {
     name: s.name,
     source: "lib",
@@ -116,10 +101,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     path: s.path,
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
-    ...(s.managed ? { library: "same" as const, version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
-    ...(unshared.length && { unshared }),
+    ...(s.managed ? { version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
-    added: addedAt(s.path),
     git: state,
   };
 }
@@ -177,15 +160,6 @@ function refOf(p: Plugin): PluginRef {
   return { id: p.id, scope: p.scope === "claude.ai" ? null : p.scope, ...(p.projectPath ? { projectPath: p.projectPath } : {}), synced: p.scope === "claude.ai", ...(p.settingsOnly ? { settingsOnly: true as const } : {}) };
 }
 
-/** tidy.ts's plans and conflicts, per skill; `root` null for your global folders. */
-function dupesOf(r: TidyReport, root: string | null, git: GitInfo | null = null): Map<string, Dupes> {
-  const out = new Map<string, Dupes>();
-  for (const p of r.plans) out.set(p.name, { steps: p.steps.map((s) => describeStep(s, root)), git: gitVisibleSteps(p, git).map((s) => describeStep(s, root)) });
-  for (const c of r.conflicts)
-    out.set(c.name, { steps: [], git: [], differ: c.copies.map((x) => ({ dir: x.dir, label: root ? copyLabel(c, x.dir) : tildify(x.dir), runs: x.runs, canWin: !c.managed || x.dir === c.managed })) });
-  return out;
-}
-
 /** Everything on disk the screens show, except usage. */
 export function loadWorld(): World {
   forgetLatest();
@@ -210,19 +184,14 @@ export function loadWorld(): World {
     descriptions[s.name] = s.description;
     return { name: s.name, latest: latestVersion(s.name)?.version ?? 1, origin: origins[s.name] };
   });
+  const libraryNames = new Set(library.map((l) => l.name));
   const kept = keptGlobal();
   // Cursor plugins: reported only (Cursor's plugin state can't be read).
   const cursorList = agents.includes("cursor") ? cursorPlugins() : [];
-  const cursorPlugin = new Map(cursorPluginSkills(cursorList).map((s) => [s.name, s.plugin]));
-  const globalDupes = dupesOf(planGlobalTidy({ enabled: agents }), null);
   const sourced = machineSkills(agents);
   const machine = sourced.map((s) => {
     descriptions[s.name] ??= s.description;
-    const m = machineSkill(s, kept);
-    if (m.source !== "global" || m.broken) return m;
-    const dupes = globalDupes.get(m.name);
-    const plugin = cursorPlugin.get(m.name);
-    return { ...m, ...(dupes ? { dupes } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
+    return machineSkill(s, kept);
   });
   // A repo's Claude Code settings can turn a plugin on or off just there.
   const loadedHere = (root: string): Pick<Project, "machine"> => {
@@ -231,21 +200,17 @@ export function loadWorld(): World {
     for (const s of loaded) descriptions[s.name] ??= s.description;
     return { machine: loaded.map((s) => machine[sourced.indexOf(s)] ?? machineSkill(s, kept)) };
   };
+  const statuses = new Map(roots.map((root) => [root, projectStatus(root)]));
   const projects = roots.map((root): Project => {
-    const status = projectStatus(root);
+    const status = statuses.get(root)!;
     const hasManifest = existsSync(join(root, "skilllib.json"));
     const git = status.length || hasManifest ? gitInfo(root) : null;
     for (const s of status) if (!descriptions[s.name] && !s.state.includes("missing")) descriptions[s.name] = readSkillInfo(s.path).description;
-    const dupes = status.length ? dupesOf(planProjectTidy(root, { enabled: agents }), root, git) : new Map<string, Dupes>();
     return {
       name: names.get(root)!,
       path: root,
       manifest: hasManifest ? (git ? git.of("skilllib.json") : "no git") : "none",
-      skills: status.map((s) => {
-        const d = dupes.get(s.name);
-        const plugin = cursorPlugin.get(s.name);
-        return { ...localSkill(root, s, git), ...(d ? { dupes: d } : {}), ...(plugin ? { cursorPlugin: plugin } : {}) };
-      }),
+      skills: status.map((s) => localSkill(root, s, git)),
       ...loadedHere(root),
     };
   });
@@ -265,12 +230,13 @@ export function loadWorld(): World {
     ...(({ roots, hidden }) => ({ roots, hidden }))(readConfig()),
     agentsChosen: harnessesChosen(),
     agentSkill: agentSkillState(agents),
-    ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups),
+    issues: findIssues(roots, sourced, libraryNames, (root) => statuses.get(root)!),
+    ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups, sourced, libraryNames),
   };
 }
 
 /** Uses per repo and per day over the last 30 days, from Claude Code's transcripts. */
-export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">> {
+export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" | "totals">> {
   const repoOf = new Map(w.projects.map((p) => [p.path, p.name]));
   const projectOf = projectOfFactory(w.projects.map((p) => p.path));
   const usage: World["usage"] = {};
@@ -278,7 +244,12 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
   // Calendar days in local time (index 29 = today), so "today" and each bar mean a real day.
   const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);
   const today = midnight(Date.now());
+  const totals: Record<string, number> = {};
   for (const use of await scanUsage(30)) {
+    // As doctor counts them: every session, and a plugin's copy (/plugin:name) counts for the skill.
+    const skill = use.skill.split(":").pop()!;
+    totals[skill] = (totals[skill] ?? 0) + 1;
+    if (skill !== use.skill) totals[use.skill] = (totals[use.skill] ?? 0) + 1;
     const root = projectOf(use.cwd);
     const repo = root ? repoOf.get(root) : undefined;
     const day = 29 - Math.round((today - midnight(Date.parse(use.at))) / 86_400_000);
@@ -286,7 +257,7 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days">
     (usage[repo] ??= {})[use.skill] = (usage[repo][use.skill] ?? 0) + 1;
     ((days[repo] ??= {})[use.skill] ??= new Array<number>(30).fill(0))[day]! += 1;
   }
-  return { usage, days };
+  return { usage, days, totals };
 }
 
 /** What a change did, in a few words. */
@@ -301,7 +272,7 @@ function said(c: Change, repo: string): string {
   return c.backedUp ? `${done} (your edits are in Settings › Backups)` : done;
 }
 
-function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
+function realOps(roots: Map<string, string>, backups: Backup[], machine: SourcedSkill[], libraryNames: Set<string>): Ops {
   const rootOf = (repo: string) => roots.get(repo)!;
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
 
@@ -356,9 +327,8 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     return {
       label: `Also link ${new Set(held.map((h) => h.name)).size === 1 ? "it" : "them"} in ${dirs.join(", ")}`,
       preview: `${dirs.join(", ")} ${dirs.length === 1 ? "is" : "are"} committed in ${repos.join(", ")}: the links will show in git status. skilllib remembers this for ${repos.join(", ")}.`,
-      run: (w) => {
+      run: () => {
         for (const repo of repos) allowTrackedLinks(rootOf(repo));
-        if (held.length === 1) return w.ops.link(held[0]!.repo, held[0]!.name, true);
         const results = held.map((h) => ({ ...h, r: linkIn(h.repo, h.name, true) }));
         const linked = results.filter((x) => x.r.created.length);
         const names = [...new Set(linked.map((x) => x.name))];
@@ -405,74 +375,16 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
       if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
     },
-    restore: (repo, name) => {
-      const [c] = syncSkill(rootOf(repo), name);
-      return c ? result(c, repo) : `${name} is already in place`;
-    },
     update: (repo, name) => {
       const c = updateProject(rootOf(repo), [name])[0];
       return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!) : `${name} is up to date`;
     },
-    saveEdits: (repo, name) => {
-      const s = find(repo, name)!;
-      const saved = toLibrary(s.path);
-      addSkill(rootOf(repo), name);
-      return saved;
-    },
-    discardEdits: (repo, name) => {
-      // The edited copy goes to the backups; then the library's copy goes in its place.
-      const s = find(repo, name)!;
-      removeUntracked(rootOf(repo), name, s.path);
-      return withLinks(addSkill(rootOf(repo), name, s.managed && s.version ? { version: s.version } : {}), repo, name);
-    },
-    link: (repo, name, allow = false) => {
-      const r = linkIn(repo, name, allow);
-      const message = linkSaid(name, r);
-      if (!r.blocked.length || allow) return r.created.length ? message : failed(message);
-      return { message: `${message}; not linked in ${r.blocked.join(", ")}: git tracks ${r.blocked.length === 1 ? "it" : "them"}`, then: allowTracked([{ repo, name, blocked: r.blocked }]) };
-    },
-    track: (repo, name) => withLinks(addSkill(rootOf(repo), name), repo, name),
-    importLocal: (repo, name) => {
-      const s = find(repo, name)!;
-      importSkill(s.path);
-      return withLinks(addSkill(rootOf(repo), name), repo, name);
-    },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
-    tidy: (repo, name, { keep, allowGit = false } = {}) => {
-      // Planned again: the folders may have changed since the world was read.
-      const root = repo === null ? null : rootOf(repo);
-      const opts = keep ? { keep: { [name]: keep } } : {};
-      const plan = (root ? planProjectTidy(root, opts) : planGlobalTidy(opts)).plans.find((p) => p.name === name);
-      if (!plan) return `${name}: nothing to tidy`;
-      const r = applyTidy(plan, { git: allowGit ? "go" : "keep" });
-      const steps = (list: typeof r.applied) => list.map((s) => describeStep(s, root)).join(", ");
-      if (!r.held.length) return r.applied.length ? `${name}: ${steps(r.applied)}` : `${name}: nothing changed`;
-      return {
-        message: `${name}: ${r.applied.length ? `${steps(r.applied)}; ` : ""}held back ${steps(r.held)}, because git tracks it`,
-        then: {
-          label: "Also change what git tracks",
-          preview: `${steps(r.held)}: these changes will show in git status in ${repo}. Replaced copies go to Settings › Backups.`,
-          run: (w) => w.ops.tidy(repo, name, { keep, allowGit: true }),
-        },
-      };
-    },
-    unloadGlobal: (m) => {
-      if (!m.broken && !latestVersion(m.name)) importSkill(m.path);
-      const r = unloadGlobal(m.path, m.links);
-      return r.ok ? `${m.name} no longer loads globally (in Settings › Backups)` : failed(`${m.name}: ${r.reason}`);
-    },
     deleteGlobal: (m) => {
       const r = deleteGlobal(m.path, m.links);
       return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : failed(`${m.name}: ${r.reason}`);
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
-    linkGlobal: (m, agents) => {
-      const r = linkGlobal(m.path, agents);
-      const linked = r.linked.map(tildify).join(", ");
-      const skipped = r.skipped.length ? `; ${r.skipped.map(tildify).join(", ")} already holds a different skill` : "";
-      const message = `${m.name}: ${linked ? `linked ${linked}` : "nothing linked"}${skipped}`;
-      return !linked && skipped ? failed(message) : message;
-    },
     moveGlobal: (skills, repos, group) => {
       const moved: string[] = [];
       const notes: string[] = [];
@@ -522,13 +434,6 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     createSkill: (name) => {
       const r = createSkill(name, "");
       return r.ok ? `Created ${name} in your library: edit its SKILL.md from Your skills` : failed(`${name}: ${r.reason}`);
-    },
-    pluginOffHere: (repo, id) => {
-      const root = rootOf(repo);
-      const plugin = claudePlugins(skillsLoadedIn(root, machineSkills()), root).find((p) => p.id === id);
-      if (!plugin) return failed(`${id} isn't on in ${repo}`);
-      const r = turnOffIn(plugin, root);
-      return r.ok ? r.message : failed(r.message);
     },
     replacePlugin: (p, repos) => {
       const id = p.id;
@@ -623,6 +528,15 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     removeAgentSkill: () => {
       const removed = removeAgentSkill();
       return removed.length ? `Removed the skilllib skill (${removed.map(tildify).join(", ")})` : failed("The skilllib skill isn't installed");
+    },
+    usageIssues: ({ usage, totals = {} }) => {
+      const repoOf = new Map([...roots].map(([name, root]) => [root, name]));
+      return usageIssues([...roots.values()], machine, libraryNames, {
+        inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0,
+        total: (skill) => totals[skill] ?? 0,
+        asUsed: (key) => totals[key] ?? 0,
+        days: 30,
+      });
     },
   };
 }

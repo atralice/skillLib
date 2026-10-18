@@ -2,7 +2,7 @@
  * The TUI: Places (your skills, Global, Health, every repo) → a list → details, with each
  * skill's issues and fixes. It renders a World (world.ts); `reload` reads it again after a change.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -35,8 +35,7 @@ const CHIPS: [Chip, string][] = [
 ];
 const SEV: Record<W.Severity, { icon: string; color: string }> = {
   problem: { icon: "✕", color: color.red },
-  warning: { icon: "⚠", color: color.yellow },
-  hint: { icon: "·", color: color.blue },
+  suggestion: { icon: "⚠", color: color.yellow },
 };
 /** Terminals this wide get the Places sidebar instead of the tab bar. */
 const SIDEBAR_AT = 80;
@@ -175,12 +174,6 @@ function byName(copies: W.Usable[]): W.Usable[][] {
   return [...groups.values()].map((g) => g.sort((a, b) => COPY_RANK[a.source] - COPY_RANK[b.source]));
 }
 
-/** Every copy's issues on one row, each once. */
-function mergeIssues(lists: W.Issue[][]): W.Issue[] {
-  const seen = new Set<string>();
-  return lists.flat().filter((i) => !seen.has(i.id) && seen.add(i.id));
-}
-
 const BLOCKS = " ▁▂▃▄▅▆▇█";
 
 /** Daily values as bars `height` rows tall; a gap between days when there's room. */
@@ -270,10 +263,10 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
   };
 }
 
-/** A repo's skills, seen from the repo: only its own issues; what loads everywhere is Global's business. */
+/** A repo's skills, seen from the repo: only its own copies' issues; what loads everywhere is Global's business. */
 function projectSkillItems(w: W.World, p: string, nameW: number, ui: Ui): Item[] {
   return byName(W.usable(w, p)).map((copies) =>
-    skillItem(w, copies, mergeIssues(copies.filter((c) => c.local).map((c) => W.issuesOf(w, p, c))), nameW, skillActions(w, p, copies[0]!, ui), p),
+    skillItem(w, copies, copies.some((c) => c.local) ? W.issuesAt(w, p, copies[0]!.name) : [], nameW, skillActions(w, p, copies[0]!, ui), p),
   );
 }
 
@@ -340,11 +333,9 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       reviewOption(w, u.name, ui, p),
     ];
+  // Importing or tracking it is doctor's choice, on its issue.
   if (s)
     return [
-      inLibrary
-        ? fixOption({ label: "Track it", preview: `Record ${u.name} in skilllib.json so library updates reach it.`, run: (w) => w.ops.track(p, u.name) })
-        : fixOption({ label: "Import it into your library", preview: `Copy ${u.name} into your library and track it here.`, run: (w) => w.ops.importLocal(p, u.name) }),
       { label: "Edit SKILL.md", action: () => ui.edit(`${s.path}/SKILL.md`) },
       fixOption(remove),
       reviewOption(w, u.name, ui, p),
@@ -393,7 +384,7 @@ function InfoGrid({ rows, columns, width }: { rows: [string, Seg[]][]; columns: 
 
 function projectItems(w: W.World): Item[] {
   return w.projects.map((p) => {
-    const issues = W.projectIssues(w, p.name).map((x) => x.issue);
+    const issues = W.repoIssues(w, p.name);
     const t = W.tally(issues);
     return {
       key: p.name,
@@ -405,8 +396,7 @@ function projectItems(w: W.World): Item[] {
         { text: p.name, width: 18 },
         { text: p.skills.length ? `${p.skills.length} skill${p.skills.length === 1 ? "" : "s"}` : "–", width: 10, color: color.muted },
         { text: t.problem ? `✕ ${t.problem}` : "", width: 5, color: color.red },
-        { text: t.warning ? `⚠ ${t.warning}` : "", width: 5, color: color.yellow },
-        { text: t.hint ? `· ${t.hint}` : "", grow: true, color: color.blue },
+        { text: t.suggestion ? `⚠ ${t.suggestion}` : "", grow: true, color: color.yellow },
       ] as Cell[],
     };
   });
@@ -414,7 +404,7 @@ function projectItems(w: W.World): Item[] {
 
 function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
   const copies = w.machine.map((m): W.Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: W.totalUses(w, m.name), machine: m }));
-  return byName(copies).map((g) => skillItem(w, g, mergeIssues(g.map((c) => W.machineIssues(w, c.machine!))), nameW, globalActions(w, g[0]!, ui), null));
+  return byName(copies).map((g) => skillItem(w, g, W.issuesAt(w, null, g[0]!.name), nameW, globalActions(w, g[0]!, ui), null));
 }
 
 /** What to tell the user for a vendor skill. null: this screen already has actions for that source. */
@@ -448,7 +438,8 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
     const uses = W.totalUses(w, l.name);
     const addFix: W.Fix = { label: "Add to repos…", preview: `Install ${l.name} v${l.latest} into the repos you pick.`, run: () => "", candidates: (w) => w.projects.filter((p) => !p.skills.some((s) => s.name === l.name)).map((p) => p.name), pickRepos: (w, rs) => w.ops.addTo(rs, [l.name]) };
     const delFix = W.deleteLibraryFix(w, [l.name]);
-    const issues: W.Issue[] = repos.length ? [] : [{ id: `nowhere:${l.name}`, severity: "hint", title: "Used in no repo", short: "Used in no repo", decision: true, fixes: [addFix, delFix] }];
+    const issues = W.libraryIssues(w, l.name);
+    const sev = issues[0] && SEV[issues[0].severity];
     const behind = repos.filter((p) => p.skills.some((s) => s.name === l.name && s.source === "lib" && s.version! < l.latest)).length;
     return {
       key: l.name,
@@ -458,12 +449,12 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
       cands: W.groupCandidates(w, l),
       lib: l,
       cells: [
-        { text: issues[0] ? SEV.hint.icon : " ", width: 2, color: color.blue },
+        { text: sev ? sev.icon : " ", width: 2, color: sev?.color },
         { text: clip(l.name, nameW), width: nameW },
         { text: `v${l.latest}`, width: 5, color: color.accent },
         { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
         { text: usesText(uses), width: 6, color: color.muted },
-        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: issues[0] ? color.blue : color.faint },
+        { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: sev ? sev.color : color.faint },
       ],
       detail: (width) => {
         const b = builder(l.name);
@@ -498,41 +489,30 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
   });
 }
 
-/** Health: every skill with something to fix, in every repo and in Global, with the same details and fixes. */
-function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
-  const flagged = (where: string, items: Item[]) =>
-    items
-      .filter((i) => i.issues.length)
-      .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
-  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui)), ...agentSkillItems(w, nameW)];
-}
-
-/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's, unless Global already has its row. */
-function agentSkillItems(w: W.World, nameW: number): Item[] {
-  const issue = W.agentSkillIssue(w);
-  if (!issue || w.machine.some((m) => m.source === "skilllib")) return [];
-  const sev = SEV[issue.severity];
-  return [
-    {
-      key: "agent-skill",
-      name: "skilllib",
+/** Health: what `skilllib doctor` reports, one row per issue, worst first. */
+function healthItems(w: W.World): Item[] {
+  return w.issues.map((found): Item => {
+    const issue = W.issueOf(found);
+    const sev = SEV[issue.severity];
+    return {
+      key: issue.id,
+      name: issue.title,
       issues: [issue],
       uses: 0,
       cells: [
         { text: sev.icon, width: 2, color: sev.color },
-        { text: clip("skilllib", nameW), width: nameW },
-        { text: clip("Your agents", 16), width: 16, color: color.muted },
-        { text: " " + issue.short, grow: true, color: sev.color },
+        { text: issue.title, grow: true },
       ],
       detail: (width) => {
-        const b = builder("skilllib");
-        for (const l of wrap("The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.", width - 4, 3)) b.line([l, color.muted]);
+        const b = builder(issue.short);
+        // All of it: the git sentence that ends tidy's and links' details matters.
+        for (const l of wrap(found.detail, width - 4, Infinity)) b.line([l, color.muted]);
         b.line();
         b.issues([issue]);
         return b.d;
       },
-    },
-  ];
+    };
+  });
 }
 
 /** Plugin names are short; the room goes to Scope and Issue. */
@@ -546,6 +526,7 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
   return w.plugins.map((p): Item => {
     const issues = issuesOf.get(p.key) ?? [];
     const top = W.worst(issues);
+    const repeats = new Set(issues.flatMap((i) => i.skills)).size;
     const cursor = p.agent === "cursor";
     const uses = cursor ? 0 : W.pluginUses(w, p);
     const [state, stateColor] = STATE[p.on === null ? "unknown" : p.on ? "on" : "off"]!;
@@ -573,7 +554,8 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
         { text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted },
         { text: state.padEnd(4), width: 4, color: stateColor },
         { text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted },
-        { text: " " + (top?.short ?? ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+        // Your skills it repeats, across its issues; else its worst issue.
+        { text: " " + (repeats ? `Repeats ${repeats} of yours` : (top?.short ?? "")), grow: true, color: top ? SEV[top.severity].color : color.faint },
       ],
       detail: (width) => {
         const b = builder(p.id);
@@ -620,7 +602,7 @@ function addCursor(rows: W.AddRow[], cursor: number): number {
 /** The message of a result; its follow-up (if any) is asked separately. */
 const said = W.said;
 
-export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days">> }) {
+export function App({ initial, reload, loadUsage }: { initial: W.World; reload: () => W.World; loadUsage?: (w: W.World) => Promise<Pick<W.World, "usage" | "days" | "totals">> }) {
   const { exit, suspendTerminal } = useApp();
   const { columns: termCols, rows: termRows } = useWindowSize();
   const sidebar = termCols >= SIDEBAR_AT;
@@ -628,8 +610,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const columns = sidebar ? termCols - SIDEBAR_W : termCols;
   const [base, setBase] = useState(initial);
   // Usage arrives after the first paint: reading transcripts is slow.
-  const [used, setUsed] = useState<Pick<W.World, "usage" | "days">>();
-  const world: W.World = used ? { ...base, ...used } : base;
+  const [used, setUsed] = useState<Pick<W.World, "usage" | "days" | "totals">>();
+  const withUsage = used ? { ...base, ...used } : base;
+  // What usage says, read again with everything else after a change.
+  const usageIssues = useMemo(() => (withUsage.days ? base.ops.usageIssues(withUsage) : []), [base, used]);
+  const world: W.World = { ...withUsage, issues: [...base.issues, ...usageIssues] };
   useEffect(() => {
     let live = true;
     void loadUsage?.(base).then((u) => live && setUsed(u));
@@ -672,19 +657,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     copy: (text, what) => setToast(said(world.ops.copy(text, what))),
     menu: (title, options) => setModal({ kind: "menu", title, options, cursor: 0 }),
   };
-  // Issues once per render: Health's count, the sidebar's badges and Global's count all need them.
+  // Issues once per render: the sidebar's badges and counts need them.
   const pluginIssues = new Map(world.plugins.map((p) => [p.key, W.pluginIssues(world, p)]));
-  const repoIssues = new Map(world.projects.map((p) => [p.name, W.projectIssues(world, p.name)]));
-  const machineIssues = world.machine.map((m) => [m, W.machineIssues(world, m)] as const);
-  // Health's count (skills with something to fix, per repo and in Global), without building its rows.
-  const flagged = [
-    ...[...repoIssues].flatMap(([name, found]) => found.map((x) => ({ key: `${name}:${x.skill.name}`, issue: x.issue }))),
-    ...machineIssues.flatMap(([m, issues]) => issues.map((issue) => ({ key: `Global:${m.name}`, issue }))),
-    // The skilllib skill's issue is on its Global row when it has one (see agentSkillItems).
-    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "Global:skilllib", issue }] : [])),
-  ];
-  const healthCount = new Set(flagged.map((f) => f.key)).size;
-  const healthWorst = W.worst(flagged.map((f) => f.issue));
+  const repoIssues = new Map(world.projects.map((p) => [p.name, W.repoIssues(world, p.name)]));
+  const machineIssues = [...new Set(world.machine.map((m) => m.name))].map((name) => [name, W.issuesAt(world, null, name)] as const);
+  // Health's count: doctor's issues.
+  const healthCount = world.issues.length;
+  const healthWorst = W.worst(world.issues.map(W.issueOf));
   const all: Item[] =
     place === "projects"
       ? open
@@ -697,7 +676,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           : place === "plugins"
             ? pluginItems(world, nameW, ui, pluginIssues)
           : place === "health"
-            ? healthItems(world, nameW, ui)
+            ? healthItems(world)
             : settingsItems();
   const inChip = (i: Item, c: Chip) => c === "all" || (c === "issues" ? i.issues.length > 0 : i.group === c);
   let items = all.filter((i) => i.header || ((!query || W.matches(i.name, query)) && inChip(i, chip)));
@@ -771,11 +750,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     choose({ label: issue.fixes[0]!.label, fix: issue.fixes[0]! });
   }
   function fixAllList(from: Item[]) {
+    // An issue on several rows (a repo's out-of-date skills) is fixed once.
     const seen = new Set<string>();
     return from.flatMap((i) =>
       i.issues
-        .filter((x) => !x.decision && !seen.has(`${i.key}|${x.id}`) && seen.add(`${i.key}|${x.id}`))
-        .map((x) => ({ label: `${i.name}: ${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
+        .filter((x) => !x.decision && !seen.has(x.id) && seen.add(x.id))
+        // Doctor's titles say which skill or repo.
+        .map((x) => ({ label: `${x.title} → ${x.fixes[0]!.label}`, fix: x.fixes[0]!, on: true })),
     );
   }
   function toggleFold(key: string) {
@@ -1242,17 +1223,16 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const confirmH = modal?.kind === "confirm" ? confirmLines.length + 2 : 0;
   const bodyH = Math.max(8, termRows - (sidebar ? 0 : 1) - bottomH - confirmH);
   // Same count as Global's Issues tab: skills with something to fix.
-  const globalFlagged = machineIssues.filter(([, issues]) => issues.length).map(([m, issues]) => [m.name, issues] as const);
-  const globalIssues = new Set(globalFlagged.map(([name]) => name)).size;
+  const globalFlagged = machineIssues.filter(([, issues]) => issues.length);
+  const globalIssues = globalFlagged.length;
   const globalProblem = globalFlagged.some(([, issues]) => issues.some((x) => x.severity === "problem"));
-  // Plugins' count turns yellow when one repeats your skills; hints (unused, updates) don't color it.
-  const pluginsWorst = W.worst([...pluginIssues.values()].flat().filter((i) => i.severity !== "hint"));
+  // Plugins' count takes the color of the worst plugin that repeats your skills.
+  const pluginsWorst = W.worst([...pluginIssues.values()].flat());
 
   /** The sidebar: places, then every repo. Moving onto a row opens it. */
   // Like Global's count: skills with something to fix, marked by the worst of them.
   const badge = (p: string): Cell => {
-    const found = repoIssues.get(p) ?? W.projectIssues(world, p);
-    const top = W.worst(found.map((x) => x.issue));
+    const top = W.worst(repoIssues.get(p) ?? W.repoIssues(world, p));
     return { text: top ? SEV[top.severity].icon : "", width: 3, color: top ? SEV[top.severity].color : undefined };
   };
   const sideRow = (key: string, label: string, here: boolean, go: () => void, count: Cell[] = []) => ({
@@ -1332,7 +1312,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           : place === "plugins"
             ? titles([["", 2], ["Plugin", pluginW(nameW)], ["", 3], ["Scope", 19], ["Brings", 13], ["On", 4], [" Uses", 6], [" Issue", 0]])
           : place === "health"
-            ? titles([["", 2], ["Skill", nameW], ["Where", 16], [" Issue", 0]])
+            ? titles([["", 2], ["Issue", 0]])
             : null;
   const showChips = chips.length > 0;
   const listHeader = (
@@ -1679,7 +1659,7 @@ function Help({ width, height }: { width: number; height: number }) {
         </Text>
       ))}
       <Text> </Text>
-      <Text color={color.muted}>{"✕ problem · ⚠ warning · · hint · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
+      <Text color={color.muted}>{"✕ problem · ⚠ suggestion · ★ recommended fix · \"your call\" = a decision, never auto-fixed"}</Text>
       <Text color={color.muted}>{"Source: lib = from your library · repo = committed by the team · untracked = only on this machine"}</Text>
       <Text color={color.muted}>{"Usage counts Claude Code sessions only: other agents don't record skill use."}</Text>
     </Panel>
