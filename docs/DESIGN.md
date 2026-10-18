@@ -198,6 +198,7 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 | doctor id | Rows | Short | Severity | Your call | Fix or choices |
 |---|---|---|---|---|---|
 | `broken:<skill>` | Global | Broken link | ✕ | | Remove the link |
+| `broken:<root>:<dir>/<skill>` | Repo | Broken link | ✕ | when git tracks the link | Put the link back (skilllib.json records it) · Remove the link |
 | `dup:<skill>` | Global | Loaded twice (yours and a claude.ai or system copy, in one agent) | ✕ | yes | none: turn that copy off at its source |
 | `plugin:<id>` | Global (yours and the plugin's), each repo where both load, Plugins | Also in ⧉ *plugin* (Plugins: Repeats N of yours) | ✕ when an agent loads both, else ⚠ | yes | Remove the plugin · Turn the plugin off · Turn it off in *repo* only · Remove your *skills* from *repo* (only copies skilllib installed) |
 | `plugin:<root>:<id>` | The repo, Plugins | The same, for a plugin a repo's settings turn on | ✕ | yes | Turn it off in *repo* only · Remove your *skills* from *repo* |

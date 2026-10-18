@@ -594,3 +594,31 @@ test("copying into your library fails, and says so, when the library has a diffe
   importSkill(join(tmp, "src", "notes"));
   expect(runFix(local.choices![0]!)).toEqual({ ok: false, message: "notes: your library has a different notes; update or delete it first" });
 });
+
+// Links to nothing: Windows needs privileges for file symlinks, so these run elsewhere.
+test.skipIf(process.platform === "win32")("a broken link inside a repo is reported and removed", () => {
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(project, ".claude", "skills", "ghost"));
+  const issue = findIssues([project], machineSkills(), new Set()).find((i) => i.id.startsWith(`broken:${project}`));
+  expect(issue).toMatchObject({ severity: "problem", title: "ghost: broken link in web/.claude/skills", fix: { label: "Remove the link" } });
+  expect(runFix(issue!.fix!).ok).toBe(true);
+  expect(lstatSync(join(project, ".claude", "skills", "ghost"), { throwIfNoEntry: false })).toBeUndefined();
+});
+
+test.skipIf(process.platform === "win32")("a broken link skilllib.json records is put back, pointing at the copy", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha"); // the real copy in .agents/skills, a link in .claude/skills
+  const link = join(project, ".claude", "skills", "alpha");
+  rmSync(link);
+  symlinkSync(join(tmp, "nowhere"), link);
+  const issue = findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `broken:${project}:.claude/skills/alpha`);
+  expect(issue?.fix?.label).toBe("Put the link back");
+  expect(runFix(issue!.fix!).ok).toBe(true);
+  expect(existsSync(join(link, "SKILL.md"))).toBe(true);
+});
