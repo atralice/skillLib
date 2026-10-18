@@ -49,7 +49,7 @@
 <text x="1004.3" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="130.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">24  </text>
+<text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">27  </text>
 <text x="245.6" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
@@ -157,40 +157,40 @@
 <text x="51.7" y="453.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
 <text x="245.6" y="453.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="270.9" y="453.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
-<text x="346.8" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Edit in library</text>
-<text x="473.2" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="498.5" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Other versions…</text>
-<text x="625.0" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="650.3" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">Remove from repo</text>
-<text x="785.1" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="810.4" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
+<text x="346.8" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Update to v2</text>
+<text x="447.9" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="473.2" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Edit in library</text>
+<text x="599.7" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="625.0" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Other versions…</text>
+<text x="751.4" y="453.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="776.7" y="453.0" fill="#8a93a6" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">Remove from repo</text>
 <text x="1004.3" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="60.1" y="472.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
 <text x="245.6" y="472.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="346.8" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
 <text x="1004.3" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
 <text x="245.6" y="491.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="491.0" fill="#8b9dff" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">Usage here</text>
-<text x="355.2" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">   last used yesterday</text>
 <text x="1004.3" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="510.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
 <text x="245.6" y="510.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █                                                           </text>
+<text x="270.9" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">Usage here</text>
+<text x="355.2" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">   last used yesterday</text>
 <text x="1004.3" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="529.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █   ▄ ▄   ▄           ▄ ▄                           ▄   ▄   </text>
+<text x="270.9" y="529.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █                                                           </text>
 <text x="1004.3" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="548.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █   █ █   █           █ █                           █   █   </text>
+<text x="270.9" y="548.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █   ▄ ▄   ▄           ▄ ▄                           ▄   ▄   </text>
 <text x="1004.3" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="567.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="567.0" fill="#5a6275" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  30 days ago today</text>
+<text x="270.9" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">  █   █ █   █           █ █                           █   █   </text>
 <text x="1004.3" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="586.0" fill="#4b5578" xml:space="preserve" textLength="994.7" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="447.9" y="605.0" fill="#5a6275" xml:space="preserve" textLength="564.8" lengthAdjust="spacingAndGlyphs">type to filter · space ★ fix · enter actions · tab tabs · esc back </text>

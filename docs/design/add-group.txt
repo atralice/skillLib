@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││ type to search your library, or to name a new skill                                    │
 │   ◈ Global          15   ││   Your library ─────────────────────────────────────────────────────────────────────── │
 │   ⧉ Plugins         7    ││   [ ] mdx-tips                v1    MDX components and frontmatter used across the do… │
-│   ✓ Health          24   ││   [ ] sql-migrations          v1    Write reversible SQL migrations and backfills saf… │
+│   ✓ Health          27   ││   [ ] sql-migrations          v1    Write reversible SQL migrations and backfills saf… │
 │   Projects ───────────── ││ ▌ [x] ⧉ lean plugin                 3 skills: lean, lean-review, lean-audit            │
 │ ▌ ◆ web-app          ✕   ││   [x]   lean                  v1    The simplest change that works: question the task… │
 │     api-server       ✕   ││   [x]   lean-review           v1    Review a diff for code that could be deleted or s… │

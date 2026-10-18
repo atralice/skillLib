@@ -1,8 +1,8 @@
-╭── ◆ skilllib ────────────╮╭── To fix  2/25 ────────────────────────────────────────────────────────────────────────╮
-│   ▤ Your skills     10   ││  All 24                                                                                │
+╭── ◆ skilllib ────────────╮╭── To fix  2/28 ────────────────────────────────────────────────────────────────────────╮
+│   ▤ Your skills     10   ││  All 27                                                                                │
 │   ◈ Global          15   ││     Issue                                                                              │
 │   ⧉ Plugins         7    ││   ✦ Fix 5 issues automatically…                                                        │
-│ ▌ ✓ Health          24   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
+│ ▌ ✓ Health          27   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
 │   Projects ───────────── ││   ✕ db-seed in api-server: the copies differ                                           │
 │   ◆ web-app          ✕   ││   ✕ frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-of… │
 │     api-server       ✕   ││   ✕ old-helper: broken link in ~/.claude/skills                                        │

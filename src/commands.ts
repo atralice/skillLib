@@ -585,10 +585,13 @@ async function allIssues(args: Args, withUsage = true): Promise<Issue[]> {
     const uses = await scanUsage(args.days);
     const inProject = usesByProject(uses, projectOf);
     const total = new Map(summarize(uses, projectOf).map((s) => [s.skill, s.uses]));
+    const asUsed = new Map<string, number>();
+    for (const u of uses) asUsed.set(u.skill, (asUsed.get(u.skill) ?? 0) + 1);
     issues.push(
       ...usageIssues(projects, machine, libraryNames, {
         inProject: (root, skill) => inProject.get(root)?.get(skill) ?? 0,
         total: (skill) => total.get(skill) ?? 0,
+        asUsed: (key) => asUsed.get(key) ?? 0,
         days: args.days,
       }),
     );

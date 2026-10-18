@@ -148,7 +148,7 @@ Every plugin installed, on or off, one row per install (a plugin can be installe
 
 - **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, its skills as `plugin:skill`) · the worst issue.
 - **Tabs:** All · Issues.
-- **Issues:** doctor's, about the skills of yours a plugin repeats: *Repeats N of yours* (`✕` when an agent loads both, else `⚠`). Always *your call* (removing a plugin or turning it off changes code that runs in your sessions, so "fix all" never does): remove it, turn it off, or turn it off in one repo only. A Cursor plugin's is reported only. Updates and unused plugins aren't issues: *Update to vN* is an action, and Uses shows how much its skills get used.
+- **Issues:** doctor's, all *your call* (removing, turning off or updating a plugin changes code that runs in your sessions, so "fix all" never does): *Repeats N of yours* (`✕` when an agent loads both, else `⚠`: remove it, turn it off, or turn it off in one repo only; a Cursor plugin's is reported only), *Update available* (update it), *Unused 30 days* (on, ships skills, none used: turn it off or uninstall it). An install's update or unused issue is only on that install's row.
 - **Actions:** Turn it on / off · Update to vN · Replace *plugin* with library skills… · Uninstall · Open its folder · Review prompt. A synced plugin can't be uninstalled; a Cursor plugin only says to turn it off in Cursor.
 - **Details:** description, issues, actions, then *Skills* (with their uses), *Also brings*, *Installed* (scope, repo, version, marketplace) and *Folder*.
 - **The sidebar count** is the number of plugins, colored by the worst plugin issue.
@@ -193,7 +193,7 @@ A group row shows its worst severity, its label and size, and how many members h
 
 ## Issues
 
-The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findIssues`, plus `usageIssues` once Claude Code's transcripts are read (`ops.usageIssues`). Each health `Issue` names the rows it belongs on (`at`: a skill in a repo, or in Global; `plugin`: a plugin's row), and `world.ts` places it (`issuesAt`, `repoIssues`, `pluginIssues`, `libraryIssues`) and maps it for the screens (`issueOf`): doctor's `fix` is the `★` one; `choices` make it *your call*; neither, and it's reported only. The list shows a `short` label by kind (`shortOf`); the details show its title. Some issues cover several skills (a repo's out-of-date ones, say): they sit on each skill's row, and their fix acts on all of them. **Fix all** runs each fix once.
+The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findIssues`, plus `usageIssues` once Claude Code's transcripts are read (`ops.usageIssues`). Each health `Issue` names the rows it belongs on (`at`: a skill in a repo, or in Global; `plugin`: a plugin's row), and `world.ts` places it (`issuesAt`, `repoIssues`, `pluginIssues`, `libraryIssues`) and maps it for the screens (`issueOf`, once per issue): doctor's `fix` is the `★` one; `choices` make it *your call*; neither, and it's reported only. The list shows a `short` label by kind (`shortOf`); the details show its title. Some issues cover several skills (a repo's out-of-date ones, say): they sit on each skill's row, and their fix acts on all of them. **Fix all** runs each fix once.
 
 | doctor id | Rows | Short | Severity | Your call | Fix or choices |
 |---|---|---|---|---|---|
@@ -209,20 +209,24 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 | `twice:<skill>` | Each repo with a copy, and Global | Repo and global copies | ⚠ | yes | Stop loading it globally (kept global: Remove the copies in *repos*, only ones skilllib installed) |
 | `sync:<root>` | Repo | Folder missing | ✕ | | Sync the project |
 | `unavailable:<root>:<skill>` | Repo | Pinned, not in your library (folder missing, no copy to restore: import it, or set SKILLLIB_HOME) | ✕ | yes | Remove it from skilllib.json |
-| `update:<root>` | Repo | Out of date | ⚠ | | Update to the newest versions |
+| `update:<root>` | Repo | Out of date | ⚠ | | Update to the newest versions (every out-of-date skill in the repo; a skill's own *Update to vN* action updates just that one) |
 | `tidy:<root>` | Repo | Extra copies (identical copies, or links no agent needs) | ⚠ | yes when git would see a change | Tidy · or Tidy, but keep git as it is / Tidy everything |
 | `conflict:<root>:<skill>` | Repo | Copies differ | ✕ | yes | Keep the … copy (one per copy that can win) |
 | `usable:<root>` | Repo | Not every agent can use it | ⚠ | yes when git tracks a folder a link goes in | Add the links · or Add links, but not where git tracks the folder / Add links everywhere |
 | `uncommitted:<root>:<skill>` | Repo | Commit it first (only links into folders git tracks would help, and the copy isn't committed) | ⚠ | yes | none |
 | `local:<root>:<skill>` | Repo | Not in your library | ⚠ | yes | Import into the library (committed: Copy into the library, the repo's copy stays) |
 | `adopt:<root>:<skill>` | Repo | Not tracked | ⚠ | yes | Track it |
+| `differs:<root>:<skill>` | Repo | Differs from your library (no library version matches) | ⚠ | yes | Update your library from it (then tracked) · Replace it with your library's. The team's copy (committed, or the repo's own folder): only Update your library from it |
+| `npx:<root>:<skill>` | Repo | From npx skills | ⚠ | yes | Import it into your library (then tracked; committed, only copied) |
 | `not-in-lib:<root>:<skill>` | Repo | No longer in your library | ⚠ | yes | Copy it back into your library |
 | `edited:<root>:<skill>` | Repo | Edited here | ⚠ | yes | Save as a new version in Your skills · Discard the edits |
 | `unused:<root>` | Repo | Unused 30 days (Claude Code) | ⚠ | yes | Remove the skills skilllib installed from *repo* |
 | `unused:library` | Your skills | In no repo, unused 30 days | ⚠ | yes | Delete them from Your skills |
+| `plugin-update:[<project>:]<id>` | Plugins (that install) | Update available | ⚠ | yes | Update to vN (`claude plugin update`) |
+| `plugin-unused:[<project>:]<id>` | Plugins (that install) | Unused 30 days (on, ships skills, none used; Claude Code) | ⚠ | yes | Turn the plugin off · Uninstall the plugin (not synced or settings-only ones) |
 | `agent-skill` | Global's `skilllib` row, Health | Its title | ⚠ | yes when missing | Install / Update the skilllib skill |
 
-While a skill's copies differ, the library ones (*Not in your library*, *Not tracked*) are left out: the copy they'd compare is arbitrary. Choices that change what git tracks say so in their hint, shown in the confirm before you apply them.
+While a skill's copies differ, the library ones (*Not in your library*, *Not tracked*, *Differs from your library*) are left out: the copy they'd compare is arbitrary. Choices that change what git tracks say so in their hint, shown in the confirm before you apply them.
 
 Severity: `✕` problem (`red`), `⚠` suggestion (`yellow`), as doctor has them. A row shows only its worst; a repo in Places shows the worst of its rows.
 

@@ -284,6 +284,15 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     plugin: "stripe-tools@acme",
   });
   add(issues, {
+    id: "plugin-update:vercel@claude-plugins-official",
+    severity: "suggestion",
+    title: "vercel@claude-plugins-official: update available (0.50.0 → 0.51.0)",
+    detail: "Updates can bring new commands, hooks or MCP servers. If the marketplace asks to run a command, skilllib stops and you update it yourself. Claude Code uses the new version after a restart.",
+    choices: [{ label: "Update to 0.51.0", hint: "runs claude plugin update vercel@claude-plugins-official", change: () => void delete plugin("vercel@claude-plugins-official").update }],
+    plugin: "vercel@claude-plugins-official",
+    pluginAt: null,
+  });
+  add(issues, {
     id: "cursor-plugin:react-kit",
     severity: "suggestion",
     title: "react-patterns: also in the Cursor plugin react-kit",
@@ -442,6 +451,24 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     detail: `expo-release, pr-review: no Claude Code session in mobile-app used them. Each one's name and description still takes context in every session there.${team}`,
     at: at("mobile-app", "expo-release", "pr-review"),
   });
+  for (const [id, at, skills, where] of [
+    ["frontend-design@claude-plugins-official", null, ["frontend-design"], ""],
+    ["stripe-tools@acme", root("api-server"), ["stripe-payments", "stripe-webhooks"], " in api-server"],
+  ] as const) {
+    const name = id.split("@")[0];
+    add(unused, {
+      id: `plugin-unused:${at ? `${at}:` : ""}${id}`,
+      severity: "suggestion",
+      title: `${id}${where}: its skills weren't used in 30 days`,
+      detail: `No Claude Code session used ${skills.map((s) => `/${name}:${s}`).join(", ")}. Each one's name and description still takes context in every session.`,
+      choices: [
+        { label: `Turn the plugin ${id} off`, hint: "stays installed", change: off(id) },
+        { label: `Uninstall the plugin ${id}`, hint: "its data stays; restorable from Health", change: off(id) },
+      ],
+      plugin: id,
+      pluginAt: at,
+    });
+  }
   add(unused, {
     id: "unused:library",
     severity: "suggestion",
@@ -492,6 +519,7 @@ function sampleOps(w: World): Omit<Ops, "usageIssues"> {
       p.skills = p.skills.filter((s) => s.name !== name);
       return `Removed ${name} from ${repo}`;
     },
+    update: (repo, name) => ((skill(repo, name).version = lib(name)!.latest), `${name} updated to v${lib(name)!.latest}`),
     copyToLibrary: (_repo, name) => (toLibrary(name), `${name} copied into your library`),
     deleteGlobal: (m) => (drop(m), m.broken ? `Removed broken link ${m.name}` : `Deleted ${m.name} (backed up)`),
     keepGlobal: (name, keep) => {

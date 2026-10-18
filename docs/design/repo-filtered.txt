@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3     ⌕ re▏               │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
 │   ⧉ Plugins         7    ││ ▌ ⚠ react-patterns     lib v1            9  Also in Cursor's react-kit                 │
-│   ✓ Health          24   ││   ⚠ deploy-preview     repo              4  Not every agent can use it                 │
+│   ✓ Health          27   ││   ⚠ deploy-preview     repo              4  Not every agent can use it                 │
 │   Projects ───────────── ││     pr-review          global ✓          4                                             │
 │ ▌ ◆ web-app          ✕   ││     release-notes      repo              2                                             │
 │     api-server       ✕   ││     create-rule        cursor            –                                             │
@@ -19,12 +19,12 @@
 │     marketing-site       ││ ⚠ web-app: 1 skill out of date                                                         │
 │     playground           ││     ★ Update to the newest versions                                                    │
 │     scripts              ││                                                                                        │
-│     status-page          ││ Actions  Edit in library · Other versions… · Remove from repo · Review prompt          │
-│    ───────────────────── ││                                                                                        │
-│   ⚙ Settings             ││ Usage here   last used yesterday                                                       │
-│   ? Help                 ││   █                                                                                    │
+│     status-page          ││ Actions  Update to v2 · Edit in library · Other versions… · Remove from repo           │
+│    ───────────────────── ││          Review prompt                                                                 │
+│   ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││ Usage here   last used yesterday                                                       │
+│                          ││   █                                                                                    │
 │                          ││   █   ▄ ▄   ▄           ▄ ▄                           ▄   ▄                            │
 │                          ││   █   █ █   █           █ █                           █   █                            │
-│                          ││   30 days ago today                                                                    │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                    type to filter · space ★ fix · enter actions · tab tabs · esc back

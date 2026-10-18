@@ -3,10 +3,10 @@ import { basename, dirname } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { libraryDir } from "./paths.js";
-import { claudePlugins, cursorPluginSkills, removePlugin, turnOffIn, type ClaudePlugin } from "./plugins.js";
+import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
@@ -29,6 +29,25 @@ function orThrow(r: { ok: boolean; message: string }): string {
   return r.message;
 }
 
+/** Copies a skill folder into your library; throws unless it went in (or was already there). */
+function intoLibrary(path: string, force = false): string {
+  const r = importSkill(path, { force });
+  if (r.status === "exists") throw new Error(`${r.name}: your library has a different ${r.name}; update or delete it first`);
+  return r.name;
+}
+
+/** Tracks a library skill in a repo's skilllib.json; throws when it couldn't. */
+function track(root: string, name: string): Change {
+  const c = addSkill(root, name);
+  if (c.action === "skipped") throw new Error(`${name}: ${c.reason}`);
+  return c;
+}
+
+/** A Claude Code install's place, for titles: " in web" for a project or local install. */
+const installedIn = (p: InstalledPlugin) => (p.projectPath ? ` in ${basename(p.projectPath)}` : "");
+/** Issue ids for one install: the plugin's, with the project first for a project or local install. */
+const installId = (p: InstalledPlugin) => `${p.projectPath ? `${p.projectPath}:` : ""}${p.id}`;
+
 export type Issue = {
   id: string;
   severity: "problem" | "suggestion";
@@ -49,6 +68,8 @@ export type Issue = {
   at?: { root: string | null; skill: string }[];
   /** The plugin it's about (name@marketplace; a Cursor plugin's name), for the app's Plugins rows. */
   plugin?: string;
+  /** Which install of it, when the issue is about one: a project or local install's project, null for the user's (or synced) one. */
+  pluginAt?: string | null;
 };
 
 /** What a sync or update fix did: the skills it changed and the ones it skipped. It fails when it changed none. */
@@ -245,6 +266,21 @@ export function findIssues(
       plugin: plugin.id,
     });
   }
+
+  // A newer version in a plugin's marketplace. Updating changes code that runs in your sessions: a choice, never `doctor --fix`.
+  if (enabledHarnesses().includes("claude-code"))
+    for (const p of installedPlugins().filter((x) => x.update && !x.synced && !x.settingsOnly)) {
+      const update: Choice = { label: p.update === "newer" ? "Update it" : `Update to ${p.update}`, hint: `runs claude plugin update ${p.id}`, run: () => orThrow(updatePlugin(p)) };
+      issues.push({
+        id: `plugin-update:${installId(p)}`,
+        severity: "suggestion",
+        title: `${p.id}${installedIn(p)}: ${p.update === "newer" ? "its marketplace has a newer commit" : `update available (${p.version ?? "?"} → ${p.update})`}`,
+        detail: "Updates can bring new commands, hooks or MCP servers. If the marketplace asks to run a command, skilllib stops and you update it yourself. Claude Code uses the new version after a restart.",
+        choices: [update],
+        plugin: p.id,
+        pluginAt: p.projectPath ?? null,
+      });
+    }
 
   // Plugins a repo's own Claude Code settings turn on: they collide only there.
   const machinePluginSkills = new Set(machinePlugins.flatMap((p) => p.skills));
@@ -515,7 +551,7 @@ export function findIssues(
               label: "Copy into the library",
               hint: `${where}'s copy stays as it is`,
               run: () => {
-                importSkill(s.path);
+                intoLibrary(s.path);
                 return `${s.name} copied into your library; ${where}'s copy stays as it is`;
               },
             },
@@ -533,8 +569,8 @@ export function findIssues(
               label: "Import into the library",
               hint: `${where} then tracks it`,
               run: () => {
-                importSkill(s.path);
-                addSkill(root, s.name);
+                intoLibrary(s.path);
+                track(root, s.name);
                 return `${s.name} imported and tracked in ${where}`;
               },
             },
@@ -547,7 +583,66 @@ export function findIssues(
           title: `${s.name} in ${where} isn't tracked`,
           detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
           at: rows(root, [s.name]),
-          choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${addSkill(root, s.name).name} tracked in ${where}` }],
+          choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${track(root, s.name).name} tracked in ${where}` }],
+        });
+      } else if (s.state === "untracked, differs from library" || s.state === "repo skill, differs from library") {
+        // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
+        const teams = s.state.startsWith("repo skill") || committed(s);
+        issues.push({
+          id: `differs:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} differs from your library`,
+          detail: teams
+            ? `It's the team's copy (committed), and no version in Your skills matches it. Update your library from it if it's the one to keep; ${where}'s copy stays as it is.`
+            : `No version in Your skills matches it. Update your library from it (${where} then tracks it), or replace it with your library's.`,
+          at: rows(root, [s.name]),
+          choices: [
+            {
+              label: "Update your library from it",
+              hint: teams ? `a new version in Your skills; ${where}'s copy stays as it is` : `a new version in Your skills; ${where} then tracks it`,
+              run: () => {
+                intoLibrary(s.path, true);
+                if (teams) return `${s.name}: your library has ${where}'s copy; ${where}'s copy stays as it is`;
+                const c = track(root, s.name);
+                return `${s.name}: your library has ${where}'s copy as v${c.to}; ${where} tracks it`;
+              },
+            },
+            ...(teams
+              ? []
+              : [
+                  {
+                    label: "Replace it with your library's",
+                    hint: "this copy is restorable from Health",
+                    run: () => {
+                      stash(s.path, "edit-backup");
+                      const c = track(root, s.name);
+                      return `${s.name} in ${where} is your library's v${c.to} now; the old copy is restorable from Health`;
+                    },
+                  },
+                ]),
+          ],
+        });
+      } else if (s.state === "from npx skills") {
+        // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it.
+        const teams = committed(s);
+        issues.push({
+          id: `npx:${root}:${s.name}`,
+          severity: "suggestion",
+          title: `${s.name} in ${where} came from npx skills, not your library`,
+          detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (committed)` : `; ${where} then tracks it in skilllib.json`}.`,
+          at: rows(root, [s.name]),
+          choices: [
+            {
+              label: "Import it into your library",
+              hint: teams ? `${where}'s copy stays as it is` : `${where} then tracks it`,
+              run: () => {
+                intoLibrary(s.path);
+                if (teams) return `${s.name} copied into your library; ${where}'s copy stays as it is`;
+                track(root, s.name);
+                return `${s.name} imported and tracked in ${where}`;
+              },
+            },
+          ],
         });
       }
       // Tracked, but deleted from your library: sync can't bring it back, and no other repo can add it. Copying it back adds to your library: a choice.
@@ -563,7 +658,7 @@ export function findIssues(
               label: "Copy it back into your library",
               hint: `${where}'s copy stays as it is`,
               run: () => {
-                importSkill(s.path);
+                intoLibrary(s.path);
                 return `${s.name} copied back into your library`;
               },
             },
@@ -722,7 +817,13 @@ export function usageIssues(
   projects: string[],
   machine: SourcedSkill[],
   libraryNames: Set<string>,
-  uses: { inProject: (root: string, skill: string) => number; total: (skill: string) => number; days: number },
+  uses: {
+    inProject: (root: string, skill: string) => number;
+    total: (skill: string) => number;
+    days: number;
+    /** Uses by the name sessions record it under (a plugin's skill as plugin:skill); without it, no plugin hints. */
+    asUsed?: (key: string) => number;
+  },
   statusOf: (root: string) => { name: string; managed: boolean; path: string; state: string }[] = projectStatus,
 ): Issue[] {
   if (!enabledHarnesses().includes("claude-code")) return [];
@@ -758,6 +859,27 @@ export function usageIssues(
         : undefined,
     });
   }
+
+  // Plugins that are on and ship skills, none used: they still take context in every session. Turning one off is a choice.
+  if (uses.asUsed)
+    for (const p of installedPlugins().filter((x) => x.agent === "claude-code" && x.on && x.skills.length)) {
+      const name = p.id.split("@")[0]!;
+      if (p.skills.some((path) => uses.asUsed!(`${name}:${basename(path)}`) > 0)) continue;
+      issues.push({
+        id: `plugin-unused:${installId(p)}`,
+        severity: "suggestion",
+        title: `${p.id}${installedIn(p)}: its skills weren't used in ${uses.days} days`,
+        detail: `No Claude Code session used ${p.skills.map((path) => `/${name}:${basename(path)}`).join(", ")}. Each one's name and description still takes context in every session.${
+          p.extras.length ? ` It also brings ${p.extras.join(", ")}: turning it off pauses those too.` : ""
+        }`,
+        choices: [
+          { label: `Turn the plugin ${p.id} off`, hint: "stays installed", run: () => orThrow(setPluginOn(p, false)) },
+          ...(p.synced || p.settingsOnly ? [] : [{ label: `Uninstall the plugin ${p.id}`, hint: "its data stays; restorable from Health", run: () => orThrow(uninstallPlugin(p)) }]),
+        ],
+        plugin: p.id,
+        pluginAt: p.projectPath ?? null,
+      });
+    }
 
   // Library skills in no repo and not loaded globally, unused everywhere.
   const installed = new Set([...projects.flatMap((root) => statusOf(root).map((s) => s.name)), ...machine.filter((m) => !m.broken).map((m) => m.name)]);

@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││ Pick repos. These 3 skills go into your library and those repos, and stop loading      │
 │ ▌ ◈ Global          15   ││ globally (originals backed up).                                                        │
 │   ⧉ Plugins         7    ││ ticked: repos where it was used · type to filter                                       │
-│   ✓ Health          24   ││ ▌ [x] web-app                                                                          │
+│   ✓ Health          27   ││ ▌ [x] web-app                                                                          │
 │   Projects ───────────── ││   [x] api-server                                                                       │
 │   ◆ web-app          ✕   ││   [ ] docs-site                                                                        │
 │     api-server       ✕   ││   [x] mobile-app                                                                       │

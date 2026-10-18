@@ -162,15 +162,17 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Loaded twice** (also global, or also in a plugin) | Keep the repo's copy and stop loading it globally, or keep it global. Your call: stopping a global skill changes every repo, so the fix names the repos that used it |
-| **Same name as a plugin skill** | Remove the repo's copy, or turn the plugin off in this repo only (`.claude/settings.local.json`, a local-only file git ignores). Cursor ignores repo settings, so once the repo turns the plugin off, only replacing the plugin helps there |
-| **Folder missing** · **Not in your library** | Restore it · copy it back into your library |
-| **Update to vN** · **Edited here** | Update · save the edits as a new version, or discard them |
-| ***Agent* can't see it** | Link it for every agent (links only; nothing is copied or moved) |
-| **Differs from library** · **Not tracked** · **Only in this repo** | Update your library from it, or replace it · track it · import it |
-| **Unused 30 days** | Remove it from the repo |
-| **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it |
-| ***Agent* can't see it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
+| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo. If you keep it global on purpose, remove the repo copies skilllib installed instead |
+| **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
+| **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
+| **Out of date** · **Edited here** | Update every out-of-date skill in the repo (or one, from its *Update to vN* action) · save the edits as a new version, or discard them |
+| **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
+| **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
+| **Unused 30 days** | Remove the ones skilllib installed from the repo |
+| **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it (the row's actions) |
+| **Not every agent can use it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
+
+These are the issues `skilllib doctor` reports, with the same fixes and choices.
 
 ### Adding and removing skills
 
@@ -226,7 +228,7 @@ Plugins are a big part of what agents load (one plugin can bring dozens of skill
 | Brings | Its skills, and `+N` for the other kinds of things it brings: commands, agents, hooks, MCP servers |
 | On | `on` · `off` · `?` for Cursor, which keeps that in its own database |
 | Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart; two installs of one plugin share a count |
-| Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** · **Update to vN** |
+| Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** (on, ships skills, none used) · **Update available** (its marketplace has a newer version or commit) |
 
 Every plugin issue is *your call*: turning plugins on or off, or updating them, changes code that runs in your sessions, so **Fix automatically** never does it.
 

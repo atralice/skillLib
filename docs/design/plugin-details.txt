@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││  All 7   Issues 4                                                                      │
 │   ◈ Global          15   ││     Plugin              Scope              Brings       On   Uses  Issue               │
 │ ▌ ⧉ Plugins         7    ││   ✕ vercel           ✻  user               3 skills +4  on      5  Repeats 1 of yours  │
-│   ✓ Health          24   ││   ✕ frontend-design  ✻  user               1 skill      on      –  Repeats 1 of yours  │
+│   ✓ Health          27   ││   ✕ frontend-design  ✻  user               1 skill      on      –  Repeats 1 of yours  │
 │   Projects ───────────── ││ ▌ ✕ stripe-tools     ✻  project api-server 2 skills +1  on      –  Repeats 1 of yours  │
 │   ◆ web-app          ✕   ││   ⚠ react-kit        ⬡  –                  2 skills     ?       –  Repeats 1 of yours  │
 │     api-server       ✕   ││     railway          ✻  user               1 skill +1   on      2                      │
@@ -18,13 +18,13 @@
 │     landing              ││ ✕ stripe-payments: also in the Claude Code plugin stripe-tools@acme, on in api-server… │
 │     marketing-site       ││   ▸   Turn the plugin stripe-tools@acme off in api-server only                         │
 │     playground           ││       Remove your stripe-payments from api-server                                      │
-│     scripts              ││                                                                                        │
-│     status-page          ││ Actions  Turn it off · Replace stripe-tools with library skills… · Uninstall           │
-│    ───────────────────── ││          Open its folder · Review prompt                                               │
+│     scripts              ││ ⚠ stripe-tools@acme in api-server: its skills weren't used in 30 days  · your call     │
+│     status-page          ││       Turn the plugin stripe-tools@acme off                                            │
+│    ───────────────────── ││       Uninstall the plugin stripe-tools@acme                                           │
 │   ⚙ Settings             ││                                                                                        │
-│   ? Help                 ││ Skills      stripe-payments (unused) · stripe-webhooks (unused)                        │
-│                          ││ Also brings MCP servers                                                                │
-│                          ││ Installed   project scope, in api-server only   v2.1.0   from acme                     │
-│                          ││ Folder      ~/.claude/plugins/cache/acme/stripe-tools                                  │
+│   ? Help                 ││ Actions  Turn it off · Replace stripe-tools with library skills… · Uninstall           │
+│                          ││          Open its folder · Review prompt                                               │
+│                          ││                                                                                        │
+│                          ││ Skills      stripe-payments (unused) · stripe-webhooks (unused)                        │
 ╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                 ↑↓ ←→ choose · enter apply · esc back

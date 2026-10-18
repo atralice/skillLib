@@ -533,3 +533,64 @@ test("each issue says which rows the app shows it on", () => {
     { root: null, skill: "shipit" },
   ]);
 });
+
+test("an untracked copy that differs from your library: update the library from it, or replace it", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"), "library's");
+  importSkill(join(tmp, "src", "alpha"));
+  skill(join(project, ".claude", "skills", "alpha"), "mine");
+  const issue = () => findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `differs:${project}:alpha`);
+  expect(issue()!.title).toBe("alpha in web differs from your library");
+  expect(issue()!.choices!.map((c) => c.label)).toEqual(["Update your library from it", "Replace it with your library's"]);
+  expect(runFix(issue()!.choices![0]!)).toEqual({ ok: true, message: "alpha: your library has web's copy as v2; web tracks it" });
+  expect(readManifest(project).skills.alpha?.version).toBe(2);
+  expect(issue()).toBeUndefined();
+});
+
+test("replacing a differing copy with the library's keeps the old one restorable", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"), "library's");
+  importSkill(join(tmp, "src", "alpha"));
+  skill(join(project, ".claude", "skills", "alpha"), "mine");
+  const issue = findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `differs:${project}:alpha`)!;
+  expect(runFix(issue.choices![1]!)).toEqual({ ok: true, message: "alpha in web is your library's v1 now; the old copy is restorable from Health" });
+  expect(readFileSync(join(project, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("library's");
+  expect(listBackups().some((b) => b.name === "alpha")).toBe(true);
+});
+
+test("a repo's own copy that differs from your library: only updating the library, the team's copy stays", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(tmp, "src", "alpha"), "library's");
+  importSkill(join(tmp, "src", "alpha"));
+  skill(join(project, ".agents", "skills", "alpha"), "the team's");
+  const issue = findIssues([project], machineSkills(), new Set(["alpha"])).find((i) => i.id === `differs:${project}:alpha`)!;
+  expect(issue.choices!.map((c) => c.label)).toEqual(["Update your library from it"]);
+  expect(runFix(issue.choices![0]!)).toEqual({ ok: true, message: "alpha: your library has web's copy; web's copy stays as it is" });
+  expect(readManifest(project).skills.alpha).toBeUndefined();
+});
+
+test("a skill npx skills put in a repo can be imported into your library", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".agents", "skills", "lint"));
+  writeFileSync(join(project, "skills-lock.json"), JSON.stringify({ skills: { lint: { source: "acme/skills" } } }));
+  const issue = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `npx:${project}:lint`)!;
+  expect(issue.title).toBe("lint in web came from npx skills, not your library");
+  expect(issue.detail).toContain("(acme/skills)");
+  expect(issue.fix).toBeUndefined();
+  expect(runFix(issue.choices![0]!)).toEqual({ ok: true, message: "lint imported and tracked in web" });
+  expect(readManifest(project).skills.lint).toBeDefined();
+});
+
+test("copying into your library fails, and says so, when the library has a different skill by that name", () => {
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".claude", "skills", "notes"), "mine");
+  const local = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `local:${project}:notes`)!;
+  skill(join(tmp, "src", "notes"), "someone else's");
+  importSkill(join(tmp, "src", "notes"));
+  expect(runFix(local.choices![0]!)).toEqual({ ok: false, message: "notes: your library has a different notes; update or delete it first" });
+});

@@ -119,6 +119,8 @@ export type Ops = {
   /** Library skills into several repos; links git-tracked folders held back are one question for all of them. */
   addTo(repos: string[], names: string[]): Result;
   remove(repo: string, name: string): Result;
+  /** One tracked skill to the newest library version (doctor's fix updates every one in the repo). */
+  update(repo: string, name: string): Result;
   /** This repo's copy into your library (new skill, or a new version); the repo's copy stays. */
   copyToLibrary(repo: string, name: string): Result;
   deleteGlobal(m: MachineSkill): Result;
@@ -176,7 +178,10 @@ export type World = {
   usage: Record<string, Record<string, number>>;
   /** The same per day (index 29 = today); absent until the transcripts are read. */
   days?: Record<string, Record<string, number[]>>;
-  /** Uses per skill in every session, in a listed repo or not (a plugin's copy counts for the skill), as doctor counts them. */
+  /**
+   * Uses in every session, in a listed repo or not, as doctor counts them: per skill (a plugin's copy counts
+   * for the skill), and per name as recorded when that differs (a plugin's as plugin:skill).
+   */
   totals?: Record<string, number>;
   descriptions: Record<string, string>;
   backups: Backup[];
@@ -267,6 +272,10 @@ function shortOf(found: Found): string {
     uncommitted: "Commit it first",
     local: "Not in your library",
     adopt: "Not tracked",
+    differs: "Differs from your library",
+    npx: "From npx skills",
+    "plugin-update": "Update available",
+    "plugin-unused": "Unused 30 days",
     edited: "Edited here",
     "not-in-lib": "No longer in your library",
     twice: "Repo and global copies",
@@ -275,8 +284,17 @@ function shortOf(found: Found): string {
   return short[kind] ?? found.title;
 }
 
+/** Each issue's view, made once: the screens look issues up on every render. */
+const views = new WeakMap<Found, Issue>();
+
 /** A doctor issue as the app shows it: its `fix` is the ★ one; `choices` make it your call. */
 export function issueOf(found: Found): Issue {
+  let view = views.get(found);
+  if (!view) views.set(found, (view = viewOf(found)));
+  return view;
+}
+
+function viewOf(found: Found): Issue {
   return {
     id: found.id,
     severity: found.severity,
@@ -345,10 +363,10 @@ export function libraryIssues(w: World, name: string): Issue[] {
   return w.issues.filter((i) => i.id === "unused:library" && i.at?.some((a) => a.skill === name)).map(issueOf);
 }
 
-/** Doctor's issues about a plugin; Cursor's are named without their marketplace. */
+/** Doctor's issues about a plugin, or about this install of it; Cursor's are named without their marketplace. */
 export function pluginIssues(w: World, p: Plugin): Issue[] {
   const id = p.agent === "cursor" ? pluginName(p) : p.id;
-  return w.issues.filter((i) => i.plugin === id).map(issueOf);
+  return w.issues.filter((i) => i.plugin === id && (i.pluginAt === undefined || i.pluginAt === (p.projectPath ?? null))).map(issueOf);
 }
 
 /** What you can do with one of your global skills. */

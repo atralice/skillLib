@@ -49,7 +49,7 @@
 <text x="1004.3" y="111.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="130.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">✓ Health          </text>
-<text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">24  </text>
+<text x="203.5" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">27  </text>
 <text x="245.6" y="130.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="130.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
@@ -178,46 +178,42 @@
 <text x="18.0" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="453.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  status-page          </text>
 <text x="245.6" y="453.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="270.9" y="453.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
+<text x="287.8" y="453.0" fill="#e5e7eb" xml:space="preserve" textLength="556.4" lengthAdjust="spacingAndGlyphs">vercel@claude-plugins-official: update available (0.50.0 → 0.51.0)</text>
+<text x="844.1" y="453.0" fill="#5a6275" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">  · your call</text>
 <text x="1004.3" y="453.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="60.1" y="472.0" fill="#4b5578" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">─────────────────────</text>
 <text x="245.6" y="472.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="472.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
-<text x="346.8" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
-<text x="439.5" y="472.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="464.8" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">Update to 0.51.0</text>
-<text x="599.7" y="472.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="625.0" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="295.1" lengthAdjust="spacingAndGlyphs">Replace vercel with library skills…</text>
+<text x="321.5" y="472.0" fill="#8a93a6" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">Update to 0.51.0</text>
 <text x="1004.3" y="472.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="491.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">⚙ Settings            </text>
 <text x="245.6" y="491.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="346.8" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Uninstall</text>
-<text x="422.6" y="491.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="447.9" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Open its folder</text>
-<text x="574.4" y="491.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
-<text x="599.7" y="491.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
 <text x="1004.3" y="491.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="510.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">? Help                </text>
 <text x="245.6" y="510.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
+<text x="270.9" y="510.0" fill="#8b9dff" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Actions  </text>
+<text x="346.8" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">Turn it off</text>
+<text x="439.5" y="510.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="464.8" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="295.1" lengthAdjust="spacingAndGlyphs">Replace vercel with library skills…</text>
+<text x="759.8" y="510.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="785.1" y="510.0" fill="#8a93a6" xml:space="preserve" textLength="75.9" lengthAdjust="spacingAndGlyphs">Uninstall</text>
 <text x="1004.3" y="510.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="529.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="529.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Skills      </text>
-<text x="372.1" y="529.0" fill="#e5e7eb" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">vercel-deploy (unused) · vercel-env (unused) · nextjs (5 uses)</text>
+<text x="346.8" y="529.0" fill="#8a93a6" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">Open its folder</text>
+<text x="473.2" y="529.0" fill="#5a6275" xml:space="preserve" textLength="25.3" lengthAdjust="spacingAndGlyphs"> · </text>
+<text x="498.5" y="529.0" fill="#8a93a6" xml:space="preserve" textLength="109.6" lengthAdjust="spacingAndGlyphs">Review prompt</text>
 <text x="1004.3" y="529.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="548.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="548.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Also brings </text>
-<text x="372.1" y="548.0" fill="#e5e7eb" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs">commands, agents, hooks, MCP servers</text>
 <text x="1004.3" y="548.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="245.6" y="567.0" fill="#4b5578" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="567.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Installed   </text>
-<text x="372.1" y="567.0" fill="#e5e7eb" xml:space="preserve" textLength="210.8" lengthAdjust="spacingAndGlyphs">user scope, in every repo</text>
-<text x="582.8" y="567.0" fill="#8a93a6" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">   v0.50.0</text>
-<text x="667.1" y="567.0" fill="#5a6275" xml:space="preserve" textLength="261.3" lengthAdjust="spacingAndGlyphs">   from claude-plugins-official</text>
+<text x="270.9" y="567.0" fill="#8a93a6" xml:space="preserve" textLength="101.2" lengthAdjust="spacingAndGlyphs">Skills      </text>
+<text x="372.1" y="567.0" fill="#e5e7eb" xml:space="preserve" textLength="522.7" lengthAdjust="spacingAndGlyphs">vercel-deploy (unused) · vercel-env (unused) · nextjs (5 uses)</text>
 <text x="1004.3" y="567.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="586.0" fill="#4b5578" xml:space="preserve" textLength="994.7" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
 <text x="447.9" y="605.0" fill="#5a6275" xml:space="preserve" textLength="564.8" lengthAdjust="spacingAndGlyphs">type to filter · space ★ fix · enter actions · tab tabs · esc back </text>

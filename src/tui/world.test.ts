@@ -156,12 +156,17 @@ test("each of doctor's issues shows on the rows it names: a repo's, Global's, a 
   expect(ids(repoIssues(w, "web-app")).filter((id) => id === "usable:~/Projects/web-app")).toHaveLength(1);
   // Plugins: Claude Code's by id, Cursor's by name.
   const plugin = (id: string) => ids(pluginIssues(w, w.plugins.find((p) => p.id === id)!));
-  expect(plugin("vercel@claude-plugins-official")).toEqual(["plugin:vercel@claude-plugins-official"]);
+  expect(plugin("vercel@claude-plugins-official")).toEqual(["plugin:vercel@claude-plugins-official", "plugin-update:vercel@claude-plugins-official"]);
   expect(plugin("react-kit@cursor-public")).toEqual(["cursor-plugin:react-kit"]);
   expect(plugin("railway@claude-plugins-official")).toEqual([]);
   // Your skills only shows the library's own: in no repo, unused (from usage, which the app adds once it's read).
   w.issues = [...w.issues, ...w.ops.usageIssues(w)];
   expect(ids(libraryIssues(w, "sql-migrations"))).toEqual(["unused:library"]);
+  // An install's own issue is only on that install's row.
+  expect(plugin("stripe-tools@acme")).toEqual(["plugin:~/Projects/api-server:stripe-tools@acme", "plugin-unused:~/Projects/api-server:stripe-tools@acme"]);
+  expect(ids(pluginIssues(w, { ...w.plugins.find((p) => p.id === "stripe-tools@acme")!, projectPath: undefined }))).toEqual(["plugin:~/Projects/api-server:stripe-tools@acme"]);
+  // Each issue's view is made once.
+  expect(issuesAt(w, "web-app", "seo-meta")[0]).toBe(issuesAt(w, "web-app", "seo-meta")[0]);
   expect(libraryIssues(w, "stripe-payments")).toEqual([]);
 });
 

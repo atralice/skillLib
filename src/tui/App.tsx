@@ -319,6 +319,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       // A tracked skill your library doesn't have: nothing to edit there, no versions to pick.
       ...(inLibrary
         ? [
+            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
             { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
             versionsOption(w, p, u.name, s.version, ui),
           ]
@@ -504,7 +505,8 @@ function healthItems(w: W.World): Item[] {
       ],
       detail: (width) => {
         const b = builder(issue.short);
-        for (const l of wrap(found.detail, width - 4, 4)) b.line([l, color.muted]);
+        // All of it: the git sentence that ends tidy's and links' details matters.
+        for (const l of wrap(found.detail, width - 4, Infinity)) b.line([l, color.muted]);
         b.line();
         b.issues([issue]);
         return b.d;
@@ -524,6 +526,7 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
   return w.plugins.map((p): Item => {
     const issues = issuesOf.get(p.key) ?? [];
     const top = W.worst(issues);
+    const repeats = new Set(issues.flatMap((i) => i.skills)).size;
     const cursor = p.agent === "cursor";
     const uses = cursor ? 0 : W.pluginUses(w, p);
     const [state, stateColor] = STATE[p.on === null ? "unknown" : p.on ? "on" : "off"]!;
@@ -551,8 +554,8 @@ function pluginItems(w: W.World, skillW: number, ui: Ui, issuesOf: Map<string, W
         { text: clip(`${n} skill${n === 1 ? "" : "s"}${p.parts.length ? ` +${p.parts.length}` : ""}`, 13), width: 13, color: color.muted },
         { text: state.padEnd(4), width: 4, color: stateColor },
         { text: cursor ? "    – " : usesText(uses), width: 6, color: color.muted },
-        // Its issues are about your skills it repeats: say how many.
-        { text: " " + (top ? `Repeats ${top.skills.length} of yours` : ""), grow: true, color: top ? SEV[top.severity].color : color.faint },
+        // Your skills it repeats, across its issues; else its worst issue.
+        { text: " " + (repeats ? `Repeats ${repeats} of yours` : (top?.short ?? "")), grow: true, color: top ? SEV[top.severity].color : color.faint },
       ],
       detail: (width) => {
         const b = builder(p.id);

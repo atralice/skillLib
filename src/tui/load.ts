@@ -27,6 +27,7 @@ import {
   projectsUsing,
   removeUntracked,
   restoreBackup,
+  updateProject,
   visibilityOf,
   type Backup,
   type Change,
@@ -248,6 +249,7 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" 
     // As doctor counts them: every session, and a plugin's copy (/plugin:name) counts for the skill.
     const skill = use.skill.split(":").pop()!;
     totals[skill] = (totals[skill] ?? 0) + 1;
+    if (skill !== use.skill) totals[use.skill] = (totals[use.skill] ?? 0) + 1;
     const root = projectOf(use.cwd);
     const repo = root ? repoOf.get(root) : undefined;
     const day = 29 - Math.round((today - midnight(Date.parse(use.at))) / 86_400_000);
@@ -372,6 +374,10 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       if (s.state.startsWith("repo skill") || committed) return failed(`${name} is the repo's own (committed by your team): skilllib doesn't delete it`);
       if (!s.managed) return (removeUntracked(rootOf(repo), name, s.path), `Removed ${name} from ${repo} (in Settings › Backups)`);
       return orForce(removeSkill(rootOf(repo), name), repo, "Remove it anyway", () => removeSkill(rootOf(repo), name, { force: true }));
+    },
+    update: (repo, name) => {
+      const c = updateProject(rootOf(repo), [name])[0];
+      return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!) : `${name} is up to date`;
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
@@ -525,7 +531,12 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     usageIssues: ({ usage, totals = {} }) => {
       const repoOf = new Map([...roots].map(([name, root]) => [root, name]));
-      return usageIssues([...roots.values()], machine, libraryNames, { inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0, total: (skill) => totals[skill] ?? 0, days: 30 });
+      return usageIssues([...roots.values()], machine, libraryNames, {
+        inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0,
+        total: (skill) => totals[skill] ?? 0,
+        asUsed: (key) => totals[key] ?? 0,
+        days: 30,
+      });
     },
   };
 }
