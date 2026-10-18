@@ -120,7 +120,7 @@ export function sampleWorld(): World {
       repo("api-server", "changed", [
         { name: "stripe-payments", source: "lib", dir: ".claude/skills", linked: true, version: 2, git: "ignored" },
         { name: "api-conventions", source: "lib", dir: ".claude/skills", linked: true, version: 1, git: "ignored" },
-        { name: "db-seed", source: "untracked", dir: ".claude/skills", linked: true, git: "ignored" },
+        { name: "db-seed", source: "untracked", dir: ".claude/skills", linked: true, others: [".agents/skills"], git: "ignored" },
       ]),
       repo("docs-site", "none", [
         { name: "writing-style", source: "repo", dir: ".agents/skills", linked: true, git: "committed" },
@@ -388,6 +388,15 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
       { label: "Keep the .agents/skills copy", hint: "the others become links to it" },
     ],
     at: at("api-server", "db-seed"),
+  });
+  // A link to a folder that's gone, with no copy of the skill in the repo: it has no row but its issue's.
+  add(issues, {
+    id: `broken:${root("api-server")}:.claude/skills/old-lint`,
+    severity: "problem",
+    title: "old-lint: broken link in api-server/.claude/skills",
+    detail: "It points at a folder that no longer exists, so it loads nothing.",
+    fix: { label: "Remove the link", said: "Removed the broken link .claude/skills/old-lint in api-server" },
+    at: at("api-server", "old-lint"),
   });
   add(issues, {
     id: `usable:${root("web-app")}`,

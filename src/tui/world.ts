@@ -28,6 +28,8 @@ export type LocalSkill = {
   git: GitState | null;
   /** Where it was installed from, e.g. "npx skills: owner/repo" (the repo's skills-lock.json). */
   origin?: string;
+  /** Other project folders holding a real copy of it (one that differs, or an extra one), e.g. ".agents/skills". */
+  others?: string[];
 };
 
 export type MachineSkill = {
@@ -359,6 +361,13 @@ export function repoIssues(w: World, repo: string): Issue[] {
   return w.issues.filter((i) => i.at?.some((a) => a.root === root)).map(issueOf);
 }
 
+/** Skills doctor names in a repo that have no copy there (a link to nothing): their issues get a row of their own. */
+export function unlisted(w: World, repo: string): string[] {
+  const root = project(w, repo).path;
+  const listed = new Set(usable(w, repo).map((u) => u.name));
+  return [...new Set(w.issues.flatMap((i) => (i.at ?? []).filter((a) => a.root === root && !listed.has(a.skill)).map((a) => a.skill)))];
+}
+
 /** Doctor's issue on a library skill's row: in no repo, unused (the rest are where the skill is). */
 export function libraryIssues(w: World, name: string): Issue[] {
   return w.issues.filter((i) => i.id === "unused:library" && i.at?.some((a) => a.skill === name)).map(issueOf);
@@ -380,8 +389,8 @@ function globalFixes(m: MachineSkill): Fix[] {
       pickRepos: (w, repos) => w.ops.moveGlobal([m], repos),
     },
     m.kept
-      ? { label: "Stop marking it as global on purpose", preview: `skilllib warns about ${m.name} again, like any global skill.`, run: (w) => w.ops.keepGlobal(m.name, false) }
-      : { label: "Keep it global on purpose", preview: `Mark ${m.name} as global on purpose. skilllib stops warning about it.`, run: (w) => w.ops.keepGlobal(m.name, true) },
+      ? { label: "Stop marking it as global on purpose", preview: `${m.name} shows as Not reviewed again, like any global skill.`, run: (w) => w.ops.keepGlobal(m.name, false) }
+      : { label: "Keep it global on purpose", preview: `Mark ${m.name} as global on purpose: it no longer shows as Not reviewed. Its other issues stay.`, run: (w) => w.ops.keepGlobal(m.name, true) },
     { label: "Delete it", preview: `Remove ${m.path}. A backup is kept in Settings › Backups.`, run: (w) => w.ops.deleteGlobal(m) },
   ];
 }
@@ -456,7 +465,7 @@ export function deleteLibraryFix(w: World, names: string[]): Fix {
     label: `Delete ${names.length === 1 ? "" : `all ${names.length} `}from your library${repos.length ? ` and ${repos.length} repo${repos.length === 1 ? "" : "s"}…` : ""}`,
     preview: [
       `Delete ${what} and ${names.length === 1 ? "its" : "their"} versions from your library.`,
-      repos.length ? `Removes ${names.length === 1 ? "it" : "them"} from ${repos.length === 1 ? "this repo" : `these ${repos.length} repos`}: ${repos.join(", ")}.` : "No repo uses it.",
+      repos.length ? `Removes ${names.length === 1 ? "it" : "them"} from ${repos.length === 1 ? repos[0] : `these ${repos.length} repos: ${repos.join(", ")}`}.` : "No repo uses it.",
       edited.length ? `${edited.join(", ")} ${edited.length === 1 ? "has" : "have"} local edits: backed up too.` : "",
       "Every copy goes to Settings › Backups.",
       others.length ? `Untracked or the team's own copies in ${others.join(", ")} stay.` : "",
@@ -529,7 +538,9 @@ export function pluginSwitchFix(p: Plugin, on: boolean): Fix {
     // doctor's wording, so the details list it once when an issue offers it too.
     label: `Turn the plugin ${p.id} ${on ? "on" : "off"}`,
     preview: `Turns ${p.id} ${on ? "on" : "off"}${where}${p.parts.length ? `, with its ${p.parts.join(", ")}` : ""}. ${
-      p.scope === "claude.ai" ? `Sets "${p.id}": ${on} in ~/.claude/settings.json.` : `Runs claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""}.`
+      p.scope === "claude.ai" || p.settingsOnly
+        ? `Sets "${p.id}": ${on} in Claude Code's settings.`
+        : `Runs claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}${p.repo ? ` in ${p.repo}` : ""} (without the claude command, sets it in Claude Code's settings).`
     } Claude Code picks it up in its next session.`,
     run: (w) => w.ops.setPlugin(p, on),
   };

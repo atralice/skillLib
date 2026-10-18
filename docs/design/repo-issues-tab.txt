@@ -2,7 +2,7 @@
 │   ▤ Your skills     10   ││  All 22   Issues 8   Local 9   Global 7   Plugins 3   Vendor 3                         │
 │   ◈ Global          15   ││     Skill              Source         Uses  Issue                                      │
 │   ⧉ Plugins         7    ││   + Add a skill…                                                                       │
-│   ✓ Health          27   ││   ✦ Fix 3 issues automatically…                                                        │
+│   ✓ Health          28   ││   ✦ Fix 3 issues automatically…                                                        │
 │   Projects ───────────── ││   ⋯ web-app…                                                                           │
 │ ▌ ◆ web-app          ✕   ││ ▌ ✕ vercel-deploy      untracked         3  Also in ⧉ vercel                           │
 │     api-server       ✕   ││   ✕ seo-meta           lib v1            –  Folder missing                             │

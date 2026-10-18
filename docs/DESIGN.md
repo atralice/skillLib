@@ -55,7 +55,7 @@ Two layouts, picked by terminal width (`SIDEBAR_AT = 80` columns in `App.tsx`).
 
 ### Under 80 columns: a top bar
 
-Places become a one-line bar at the top; `←` `→` switch places. A repo's overview sits in a small panel above its list, since there's no Places pane to show it.
+Places become a one-line bar at the top; `←` `→` switch places, wherever the list's cursor is (on a group too: `space` opens and closes it, `enter` opens it). A repo's overview sits in a small panel above its list, since there's no Places pane to show it.
 
 | | |
 |---|---|
@@ -71,7 +71,7 @@ Places become a one-line bar at the top; `←` `→` switch places. A repo's ove
 | *type* | Filter the pane you're in. Word initials match too: `cfw` finds `cloudflare-workers` (`W.matches`). In Places it filters repos. |
 | `↑` `↓` | Move. In details, from line to line (a fix per line, or a row of actions). |
 | `enter` `→` | One pane deeper. On a list row: focus its details. In details: apply the selected option. On a closed group: open it. |
-| `esc` `←` | One pane back. `esc` clears a filter first. `←` in details moves left along a row of actions, and goes back from its first one. On an open group or one of its skills, `←` closes the group. |
+| `esc` `←` | One pane back. `esc` clears a filter first. `←` in details moves left along a row of actions, and goes back from its first one. On an open group or one of its skills, `←` closes the group (with the Places pane; under 80 columns `←` `→` switch places). |
 | `space` | Apply the `★` fix of the row's worst issue; for *your call*, jump to its choices in the details. On a group: open or close it. |
 | `tab` `⇧tab` | Next / previous tab |
 | `?` | Keys and symbols |
@@ -93,9 +93,9 @@ The dashboard for one repo: everything agents can use in it, one row per skill.
 - **Action rows:** `+ Add a skill…`, `✦ Fix N issues automatically…` (only when there are some), `⋯ <repo>…` (open its folder, hide it, a review prompt for its skills).
 - **Columns:** severity · Skill · Source · Uses (Claude Code, 30 days, this repo) · the worst issue in a few words.
 - **Source tags:** `lib v2` (from your library, `accent`) · `repo` (committed by the team) and `untracked` (only on this machine), both `blue` · `global` / `global ✓` (kept on purpose), `yellow` · `⧉ vercel` (a plugin, `magenta`) · `◆ skilllib` (skilllib's own skill, `accent`) · `claude.ai`, `cursor` (`muted`).
-- **One row per skill**, even when it loads from several places. The row shows the repo's copy first, then yours, then vendors' (`COPY_RANK`); the details list every copy under *Loaded from*.
+- **One row per skill**, even when it loads from several places. The row shows the repo's copy first, then yours, then vendors' (`COPY_RANK`); the details list every copy under *Loaded from*. A link to nothing with no copy in the repo (doctor's `broken:<root>:…`) gets a row too, with just its issue and fix.
 - **Tabs:** All · Issues · Local · Global · Plugins · Vendor, each with its count. The Issues count is yellow when it isn't zero.
-- **Order:** worst issue first, then most used, then name. The order is fixed when a view opens and doesn't change after a fix, so rows stay under the cursor. It's re-sorted once when usage arrives (usage loads after the first paint because reading transcripts is slow).
+- **Order:** worst issue first, then most used, then name. The order is fixed when a view opens and doesn't change after a fix, so rows stay under the cursor; the cursor stays on its row when one above it goes (the `✦ Fix` row after the last fix). It's re-sorted once when usage arrives (usage loads after the first paint because reading transcripts is slow).
 
 | | |
 |---|---|
@@ -110,7 +110,7 @@ A skill's details, top to bottom:
 2. Issues, worst first, each followed by its fixes (`★` on the recommended one; *· your call* after the title of a decision). Or `✓ No issues`.
 3. `Actions` — everything else, side by side and wrapping. Anything an issue above already offers isn't repeated.
 4. `Usage here` — last used, a 30-day bar chart. In Global and Your skills it's `Usage`, with a bar per repo.
-5. `Loaded from` — each copy's path and git state (`✓ committed`, `± uncommitted changes`, `+ not committed`, `∅ gitignored`).
+5. `Loaded from` — each copy's path and git state, and any other real copy in the repo (*another copy*: *Remove from repo* removes the first and says the other stays) (`✓ committed`, `± uncommitted changes`, `+ not committed`, `∅ gitignored`).
 
 ### Your skills
 
@@ -146,7 +146,7 @@ Every plugin installed, on or off, one row per install (a plugin can be installe
 
 ![Plugins](design/plugins.svg)
 
-- **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, its skills as `plugin:skill`) · the worst issue.
+- **Columns:** severity · Plugin (its name; the details title is `name@marketplace`) · agent (`✻` Claude Code, `⬡` Cursor) · Scope (`user`, `project <repo>`, `local <repo>` in `blue`, `claude.ai`) · Brings (`N skills +k`, k = other kinds: commands, agents, hooks, MCP servers) · On (`on` `green`, `off` `faint`, `?` for Cursor) · Uses (Claude Code, 30 days, its skills as `plugin:skill`) · the worst issue. Under 76 columns, Brings and Uses go (the details have both).
 - **Tabs:** All · Issues.
 - **Issues:** doctor's, all *your call* (removing, turning off or updating a plugin changes code that runs in your sessions, so "fix all" never does): *Repeats N of yours* (`✕` when an agent loads both, else `⚠`: remove it, turn it off, or turn it off in one repo only; a Cursor plugin's is reported only), *Update available* (update it), *Unused 30 days* (on, ships skills, none used: turn it off or uninstall it). An install's update or unused issue is only on that install's row.
 - **Actions:** Turn it on / off · Update to vN · Replace *plugin* with library skills… · Uninstall · Open its folder · Review prompt. A synced plugin can't be uninstalled; a Cursor plugin only says to turn it off in Cursor.
@@ -169,7 +169,7 @@ Agents (`[x]` toggles which ones skilllib makes skills visible to) and the skill
 
 ### Help
 
-`?` anywhere. Any key closes it.
+`?` anywhere. Any key closes it. Lines wrap to the pane; what doesn't fit is cut.
 
 ![Help](design/help.svg)
 
@@ -198,7 +198,7 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 | doctor id | Rows | Short | Severity | Your call | Fix or choices |
 |---|---|---|---|---|---|
 | `broken:<path>` | Global | Broken link | ✕ | | Remove the link |
-| `broken:<root>:<dir>/<skill>` | Repo | Broken link (no copy of it in the repo; next to a copy it's `tidy:`) | ✕ | when git tracks the link | Remove the link |
+| `broken:<root>:<dir>/<skill>` | Repo (its own row) | Broken link (no copy of it in the repo; next to a copy it's `tidy:`) | ✕ | when git tracks the link | Remove the link |
 | `pin:<root>:<skill>` | Repo | Pinned version not in your library (folder missing) | ✕ | yes | Install your newest |
 | `dup:<skill>` | Global | Loaded twice (yours and a claude.ai or system copy, in one agent) | ✕ | yes | none: turn that copy off at its source |
 | `plugin:<id>` | Global (yours and the plugin's), each repo where both load, Plugins | Also in ⧉ *plugin* (Plugins: Repeats N of yours) | ✕ when an agent loads both, else ⚠ | yes | Remove the plugin · Turn the plugin off · Turn it off in *repo* only · Remove your *skills* from *repo* (only copies skilllib installed) |

@@ -20,7 +20,7 @@ class In extends EventEmitter {
   send(s: string) { this.q.push(s); this.emit("readable"); }
 }
 const out = new Out(), inp = new In();
-// REAL=1 reads this machine instead (only navigate: fixes would change your disk).
+// REAL=1 reads this machine instead: confirming a fix changes the disk, so point HOME, SKILLLIB_HOME and CLAUDE_CONFIG_DIR at a sandbox.
 const sample = sampleWorld();
 render(process.env.REAL ? <App initial={loadWorld()} reload={loadWorld} loadUsage={loadUsage} /> : <App initial={sample} reload={() => ({ ...sample })} />, { stdout: out as any, stdin: inp as any, debug: true, exitOnCtrlC: false, patchConsole: false });
 const keys: Record<string, string> = { down: "\u001B[B", up: "\u001B[A", enter: "\r", esc: "\u001B", tab: "\t", stab: "\u001B[Z", space: " ", bs: "\u007F", ctrlz: "\u001A", left: "\u001B[D", right: "\u001B[C" };
