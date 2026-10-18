@@ -151,7 +151,8 @@ test("tidy issues: a plain fix when git won't notice, a choice when it would, an
   execFileSync("git", ["add", "."], { cwd: project });
   const inRepo = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `tidy:${project}`);
   expect(inRepo?.fix).toBeUndefined();
-  expect(inRepo?.choices?.map((c) => c.label)).toEqual(["Tidy, but keep git as it is", "Tidy everything"]);
+  // Every step is one git would see, so "keep git as it is" would do nothing: only the choice that does something.
+  expect(inRepo?.choices?.map((c) => c.label)).toEqual(["Tidy everything"]);
 });
 
 test("a skill some of your agents can't reach gets a link fix, with a choice when git tracks the folder", () => {
@@ -663,4 +664,23 @@ test("an agent that loads a global copy isn't offered a link to the repo's copy 
   skill(join(project, ".claude", "skills", "react-best")); // Claude Code only
   skill(join(tmp, ".agents", "skills", "react-best")); // Codex loads this one everywhere
   expect(findIssues([project], machineSkills(), new Set()).some((i) => i.id === `usable:${project}`)).toBe(false);
+});
+
+test("a skill Grok runs from its own folder while your other agents run a different copy is reported", () => {
+  setHarnesses(["claude-code", "grok"]);
+  skill(join(tmp, ".claude", "skills", "gx"), "claude's");
+  skill(join(tmp, ".grok", "skills", "gx"), "grok's");
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  skill(join(project, ".claude", "skills", "team"), "ours");
+  skill(join(project, ".grok", "skills", "team"), "the team's for grok");
+  const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids).toContain("grok-differs:global:gx");
+  expect(ids).toContain(`grok-differs:${project}:team`);
+});
+
+test("review:global counts only global skills one of your agents loads", () => {
+  setHarnesses(["zed"]);
+  skill(join(tmp, ".claude", "skills", "only-claude")); // Zed doesn't read ~/.claude/skills
+  expect(findIssues([], machineSkills(), new Set()).some((i) => i.id === "review:global")).toBe(false);
 });

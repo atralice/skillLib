@@ -227,7 +227,7 @@ describe("exit codes: a command that did nothing fails", () => {
     const folder = run("tidy", "differs", "--keep", ".nope/skills");
     expect(folder.status).toBe(1);
     expect(folder.stderr).toContain("pick one of: .claude/skills, .agents/skills");
-    expect(folder.stdout).not.toContain("every skill has one copy");
+    expect(folder.stdout).not.toContain("nothing to tidy");
     const name = run("tidy", "diffffers", "--keep", ".agents/skills");
     expect(name.status).toBe(1);
     expect(name.stderr).toContain("diffffers: no skill by that name");

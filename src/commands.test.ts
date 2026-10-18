@@ -577,7 +577,7 @@ test("one global folder reached by two paths is one folder: listed once, never t
     const listed = cli(tmp, "global").out.split("\n").filter((l) => l.includes(" mine "));
     expect(listed.length).toBe(1);
     const tidy = cli(tmp, "tidy", "--global");
-    expect(tidy.out).toContain("every skill has one copy");
+    expect(tidy.out).toContain("nothing to tidy");
     expect(lstatSync(join(tmp, ".claude", "skills", "mine")).isSymbolicLink()).toBe(false);
   } finally {
     rmSync(link, { force: true, recursive: false });
