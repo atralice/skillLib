@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/atralice/skillLib/compare/v1.11.1...v1.11.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* bugs from the repo review, and --json errors agents can read ([#64](https://github.com/atralice/skillLib/issues/64)) ([c0ee2ab](https://github.com/atralice/skillLib/commit/c0ee2ab11dc8c5a5c66e658c5c6705125eb39e22))
+
 ## [1.11.1](https://github.com/atralice/skillLib/compare/v1.11.0...v1.11.1) (2026-10-18)
 
 
