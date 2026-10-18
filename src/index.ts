@@ -83,17 +83,14 @@ async function main() {
     case "add":
       return commands.add(args);
     case "remove":
-    case "rm":
       return commands.remove(args);
     case "sync":
       return commands.sync(args);
     case "update":
-    case "upgrade":
       return commands.update(args);
     case "outdated":
       return commands.outdated(args);
     case "list":
-    case "ls":
       return commands.list(args);
     case "show":
       return commands.show(args);
@@ -106,18 +103,14 @@ async function main() {
     case "link":
       return commands.link(args);
     case "tidy":
-    case "dedup":
       return commands.tidy(args);
     case "harnesses":
-    case "agents":
       return commands.harnessesCommand(args);
     case "folders":
-    case "roots":
       return commands.folders(args);
     case "unhide":
       return commands.unhide(args);
     case "new":
-    case "create":
       return commands.newSkill(args);
     case "global":
       return commands.globalCommand(args);
