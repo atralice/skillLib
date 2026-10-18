@@ -3,7 +3,7 @@
  * everywhere, held in memory. Its ops change it in place; `reload()` hands back a fresh copy.
  */
 import { harness, type HarnessId } from "../harnesses.js";
-import type { LocalSkill, MachineSkill, Ops, Plugin, Project, RepoInfo, World } from "./world.js";
+import type { LocalSkill, MachineSkill, Ops, Plugin, Project, World } from "./world.js";
 
 const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor", "grok"];
 const READS_AGENTS: HarnessId[] = ["cursor", "codex", "zed", "grok"];
@@ -100,12 +100,6 @@ export function sampleWorld(): World {
     "api-server": { "stripe-payments": 3, "api-conventions": 7, "commit-style": 5, "railway:use-railway": 2 },
     "docs-site": { "writing-style": 6, "mdx-tips": 1, "brand-voice": 2 },
     "mobile-app": { "react-patterns": 2, "commit-style": 1 },
-  };
-  const info: Record<string, RepoInfo> = {
-    "web-app": { remote: "github.com/atralice/web-app", branch: "main", dirty: 0 },
-    "api-server": { remote: "github.com/atralice/api-server", branch: "feat/webhooks", dirty: 3 },
-    "docs-site": { remote: "github.com/atralice/docs-site", branch: "main", dirty: 0 },
-    "mobile-app": { remote: "github.com/atralice/mobile-app", branch: "main", dirty: 1 },
   };
   const w: World = {
     agents: ["claude-code", "cursor", "codex"],
@@ -232,7 +226,7 @@ export function sampleWorld(): World {
     agentSkill: "installed",
     ops: undefined as unknown as Ops,
   };
-  w.ops = sampleOps(w, info);
+  w.ops = sampleOps(w);
   seeAgents(w);
   return w;
 }
@@ -243,7 +237,7 @@ function seeAgents(w: World) {
   for (const m of w.machine) m.agents = machineAgents(m, w.agents);
 }
 
-function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
+function sampleOps(w: World): Ops {
   const removed: MachineSkill[] = [];
   const skill = (repo: string, name: string) => w.projects.find((p) => p.name === repo)!.skills.find((s) => s.name === name) as SampleSkill;
   const lib = (name: string) => w.library.find((l) => l.name === name);
@@ -354,7 +348,6 @@ function sampleOps(w: World, info: Record<string, RepoInfo>): Ops {
       return done(`Restored ${b!.name} to ${b!.from}`);
     },
     setAgents: (ids) => ((w.agents = ids), done(`Agents: ${ids.join(", ")}`)),
-    repoInfo: (repo) => info[repo] ?? { branch: "main", dirty: 0, remote: repo === "dotfiles" ? undefined : `github.com/atralice/${repo}` },
     installVersion: (repo, name, version) => ((skill(repo, name).version = version), `${name} v${version} in ${repo}`),
     versions: (name) => Array.from({ length: lib(name)?.latest ?? 0 }, (_, i) => ({ version: i + 1, date: `2026-09-${String(10 + i).padStart(2, "0")}` })),
     libraryFile: (name) => `~/.skilllib/library/${name}/SKILL.md`,
