@@ -2,7 +2,7 @@
  * The TUI: Places (your skills, Global, Health, every repo) → a list → details, with each
  * skill's issues and fixes. It renders a World (world.ts); `reload` reads it again after a change.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -498,41 +498,29 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
   });
 }
 
-/** Health: every skill with something to fix, in every repo and in Global, with the same details and fixes. */
-function healthItems(w: W.World, nameW: number, ui: Ui): Item[] {
-  const flagged = (where: string, items: Item[]) =>
-    items
-      .filter((i) => i.issues.length)
-      .map((i): Item => ({ ...i, key: `${where}:${i.key}`, cells: [i.cells[0]!, i.cells[1]!, { text: clip(where, 16), width: 16, color: color.muted }, i.cells[4]!] }));
-  return [...w.projects.flatMap((p) => flagged(p.name, projectSkillItems(w, p.name, nameW, ui))), ...flagged("Global", globalItems(w, nameW, ui)), ...agentSkillItems(w, nameW)];
-}
-
-/** The skilllib skill, when your agents don't have it (or have an old one): a row in Health like a skill's, unless Global already has its row. */
-function agentSkillItems(w: W.World, nameW: number): Item[] {
-  const issue = W.agentSkillIssue(w);
-  if (!issue || w.machine.some((m) => m.source === "skilllib")) return [];
-  const sev = SEV[issue.severity];
-  return [
-    {
-      key: "agent-skill",
-      name: "skilllib",
+/** Health: what `skilllib doctor` reports, one row per issue, worst first. */
+function healthItems(w: W.World): Item[] {
+  return w.issues.map((found): Item => {
+    const issue = W.issueOf(found);
+    const sev = SEV[issue.severity];
+    return {
+      key: issue.id,
+      name: issue.title,
       issues: [issue],
       uses: 0,
       cells: [
         { text: sev.icon, width: 2, color: sev.color },
-        { text: clip("skilllib", nameW), width: nameW },
-        { text: clip("Your agents", 16), width: 16, color: color.muted },
-        { text: " " + issue.short, grow: true, color: sev.color },
+        { text: issue.title, grow: true },
       ],
       detail: (width) => {
-        const b = builder("skilllib");
-        for (const l of wrap("The skilllib skill lets you ask your agents which skills they can use here, where each comes from, and which of your skills a repo should add.", width - 4, 3)) b.line([l, color.muted]);
+        const b = builder(issue.title);
+        for (const l of wrap(found.detail, width - 4, 4)) b.line([l, color.muted]);
         b.line();
         b.issues([issue]);
         return b.d;
       },
-    },
-  ];
+    };
+  });
 }
 
 /** Plugin names are short; the room goes to Scope and Issue. */
@@ -629,7 +617,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const [base, setBase] = useState(initial);
   // Usage arrives after the first paint: reading transcripts is slow.
   const [used, setUsed] = useState<Pick<W.World, "usage" | "days">>();
-  const world: W.World = used ? { ...base, ...used } : base;
+  const withUsage = used ? { ...base, ...used } : base;
+  // What usage says, read again with everything else after a change.
+  const usageIssues = useMemo(() => (withUsage.days ? base.ops.usageIssues(withUsage.usage) : []), [base, used]);
+  const world: W.World = { ...withUsage, issues: [...base.issues, ...usageIssues] };
   useEffect(() => {
     let live = true;
     void loadUsage?.(base).then((u) => live && setUsed(u));
@@ -676,15 +667,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const pluginIssues = new Map(world.plugins.map((p) => [p.key, W.pluginIssues(world, p)]));
   const repoIssues = new Map(world.projects.map((p) => [p.name, W.projectIssues(world, p.name)]));
   const machineIssues = world.machine.map((m) => [m, W.machineIssues(world, m)] as const);
-  // Health's count (skills with something to fix, per repo and in Global), without building its rows.
-  const flagged = [
-    ...[...repoIssues].flatMap(([name, found]) => found.map((x) => ({ key: `${name}:${x.skill.name}`, issue: x.issue }))),
-    ...machineIssues.flatMap(([m, issues]) => issues.map((issue) => ({ key: `Global:${m.name}`, issue }))),
-    // The skilllib skill's issue is on its Global row when it has one (see agentSkillItems).
-    ...[W.agentSkillIssue(world)].flatMap((issue) => (issue ? [{ key: "Global:skilllib", issue }] : [])),
-  ];
-  const healthCount = new Set(flagged.map((f) => f.key)).size;
-  const healthWorst = W.worst(flagged.map((f) => f.issue));
+  // Health's count: doctor's issues.
+  const healthCount = world.issues.length;
+  const healthWorst = W.worst(world.issues.map(W.issueOf));
   const all: Item[] =
     place === "projects"
       ? open
@@ -697,7 +682,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           : place === "plugins"
             ? pluginItems(world, nameW, ui, pluginIssues)
           : place === "health"
-            ? healthItems(world, nameW, ui)
+            ? healthItems(world)
             : settingsItems();
   const inChip = (i: Item, c: Chip) => c === "all" || (c === "issues" ? i.issues.length > 0 : i.group === c);
   let items = all.filter((i) => i.header || ((!query || W.matches(i.name, query)) && inChip(i, chip)));
@@ -1332,7 +1317,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           : place === "plugins"
             ? titles([["", 2], ["Plugin", pluginW(nameW)], ["", 3], ["Scope", 19], ["Brings", 13], ["On", 4], [" Uses", 6], [" Issue", 0]])
           : place === "health"
-            ? titles([["", 2], ["Skill", nameW], ["Where", 16], [" Issue", 0]])
+            ? titles([["", 2], ["Issue", 0]])
             : null;
   const showChips = chips.length > 0;
   const listHeader = (

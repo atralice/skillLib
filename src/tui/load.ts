@@ -10,7 +10,7 @@ import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
 import { gitInfo, relativeTo, type GitInfo } from "../git.js";
-import { addedAt } from "../health.js";
+import { addedAt, findIssues, usageIssues } from "../health.js";
 import {
   addSkill,
   createSkill,
@@ -210,6 +210,7 @@ export function loadWorld(): World {
     descriptions[s.name] = s.description;
     return { name: s.name, latest: latestVersion(s.name)?.version ?? 1, origin: origins[s.name] };
   });
+  const libraryNames = new Set(library.map((l) => l.name));
   const kept = keptGlobal();
   // Cursor plugins: reported only (Cursor's plugin state can't be read).
   const cursorList = agents.includes("cursor") ? cursorPlugins() : [];
@@ -231,8 +232,9 @@ export function loadWorld(): World {
     for (const s of loaded) descriptions[s.name] ??= s.description;
     return { machine: loaded.map((s) => machine[sourced.indexOf(s)] ?? machineSkill(s, kept)) };
   };
+  const statuses = new Map(roots.map((root) => [root, projectStatus(root)]));
   const projects = roots.map((root): Project => {
-    const status = projectStatus(root);
+    const status = statuses.get(root)!;
     const hasManifest = existsSync(join(root, "skilllib.json"));
     const git = status.length || hasManifest ? gitInfo(root) : null;
     for (const s of status) if (!descriptions[s.name] && !s.state.includes("missing")) descriptions[s.name] = readSkillInfo(s.path).description;
@@ -265,7 +267,8 @@ export function loadWorld(): World {
     ...(({ roots, hidden }) => ({ roots, hidden }))(readConfig()),
     agentsChosen: harnessesChosen(),
     agentSkill: agentSkillState(agents),
-    ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups),
+    issues: findIssues(roots, sourced, libraryNames, (root) => statuses.get(root)!),
+    ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups, sourced, libraryNames),
   };
 }
 
@@ -301,7 +304,7 @@ function said(c: Change, repo: string): string {
   return c.backedUp ? `${done} (your edits are in Settings › Backups)` : done;
 }
 
-function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
+function realOps(roots: Map<string, string>, backups: Backup[], machine: SourcedSkill[], libraryNames: Set<string>): Ops {
   const rootOf = (repo: string) => roots.get(repo)!;
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
 
@@ -623,6 +626,12 @@ function realOps(roots: Map<string, string>, backups: Backup[]): Ops {
     removeAgentSkill: () => {
       const removed = removeAgentSkill();
       return removed.length ? `Removed the skilllib skill (${removed.map(tildify).join(", ")})` : failed("The skilllib skill isn't installed");
+    },
+    usageIssues: (usage) => {
+      const repoOf = new Map([...roots].map(([name, root]) => [root, name]));
+      // As doctor counts them: a plugin's copy (/plugin:name) counts for the skill.
+      const total = (skill: string) => Object.values(usage).reduce((n, u) => n + Object.entries(u).reduce((m, [k, v]) => m + (k.split(":").pop() === skill ? v : 0), 0), 0);
+      return usageIssues([...roots.values()], machine, libraryNames, { inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0, total, days: 30 });
     },
   };
 }

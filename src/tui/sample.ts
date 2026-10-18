@@ -3,6 +3,7 @@
  * everywhere, held in memory. Its ops change it in place; `reload()` hands back a fresh copy.
  */
 import { harness, type HarnessId } from "../harnesses.js";
+import type { Choice, Issue as Found } from "../health.js";
 import type { LocalSkill, MachineSkill, Ops, Plugin, Project, World } from "./world.js";
 
 const READS_CLAUDE: HarnessId[] = ["claude-code", "cursor", "grok"];
@@ -224,11 +225,265 @@ export function sampleWorld(): World {
     hidden: [],
     agentsChosen: true,
     agentSkill: "installed",
+    issues: [],
     ops: undefined as unknown as Ops,
   };
-  w.ops = sampleOps(w);
+  const found = sampleIssues(w);
+  w.issues = found.issues;
+  w.ops = { ...sampleOps(w), usageIssues: () => found.unused };
   seeAgents(w);
   return w;
+}
+
+/**
+ * What doctor would say about the sample, written out (health.ts reads the disk, and this is in memory).
+ * A fix or choice makes the change, roughly, and its issue goes away.
+ */
+function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
+  const issues: Found[] = [];
+  const unused: Found[] = [];
+  const root = (repo: string) => `~/Projects/${repo}`;
+  const skill = (repo: string, name: string) => w.projects.find((p) => p.name === repo)!.skills.find((s) => s.name === name)! as SampleSkill;
+  const global = (name: string) => w.machine.find((m) => m.name === name && m.source === "global")!;
+  const drop = (m: MachineSkill) => {
+    w.machine = w.machine.filter((x) => x !== m);
+    w.backups.unshift({ name: m.name, from: m.path, at: "10:00" });
+  };
+  type Act = { label: string; hint?: string; change?: () => void; said?: string };
+  const add = (list: Found[], i: Omit<Found, "fix" | "choices"> & { fix?: Act; choices?: Act[] }) => {
+    const choice = ({ label, hint, change, said }: Act): Choice => ({
+      label,
+      ...(hint ? { hint } : {}),
+      run: () => {
+        change?.();
+        for (const l of [w.issues, unused]) if (l.some((x) => x.id === i.id)) l.splice(l.findIndex((x) => x.id === i.id), 1);
+        seeAgents(w);
+        return said ?? `${label}: done`;
+      },
+    });
+    list.push({ ...i, fix: i.fix && choice(i.fix), choices: i.choices?.map(choice) });
+  };
+  const at = (repo: string | null, ...skills: string[]) => skills.map((s) => ({ root: repo && root(repo), skill: s }));
+  const plugin = (id: string) => w.plugins.find((p) => p.id === id)!;
+  const off = (id: string) => () => {
+    plugin(id).on = false;
+    w.machine = w.machine.filter((m) => !(m.source === "plugin" && m.where === id));
+  };
+
+  add(issues, {
+    id: "broken:old-helper",
+    severity: "problem",
+    title: "old-helper: broken link in ~/.claude/skills",
+    detail: "It points at a folder that no longer exists, so it loads nothing.",
+    fix: { label: "Remove the link", change: () => drop(w.machine.find((m) => m.name === "old-helper")!), said: "Removed broken link old-helper" },
+    at: at(null, "old-helper"),
+  });
+  add(issues, {
+    id: "plugin:vercel@claude-plugins-official",
+    severity: "problem",
+    title: "vercel-deploy: also in the Claude Code plugin vercel@claude-plugins-official",
+    detail:
+      "Claude Code loads both (the plugin's as /vercel:vercel-deploy). Your skill wins. The plugin's other 2 skills are copied into Your skills first, so nothing is lost. It also brings commands, agents, hooks, MCP servers: removing it drops those, turning it off pauses them. Or keep it and turn it off only in web-app.",
+    choices: [
+      { label: "Turn the plugin vercel@claude-plugins-official off", hint: "stays installed", change: off("vercel@claude-plugins-official") },
+      { label: "Remove the plugin vercel@claude-plugins-official", hint: "also removes its commands, agents, hooks, MCP servers", change: off("vercel@claude-plugins-official") },
+      { label: "Turn the plugin vercel@claude-plugins-official off in web-app only", hint: "other repos keep it; in .claude/settings.local.json, a local-only file" },
+    ],
+    at: [...at("web-app", "vercel-deploy"), ...at(null, "vercel-deploy")],
+    plugin: "vercel@claude-plugins-official",
+  });
+  add(issues, {
+    id: "plugin:frontend-design@claude-plugins-official",
+    severity: "problem",
+    title: "frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-official",
+    detail: "Claude Code loads both (the plugin's as /frontend-design:frontend-design). Your skill wins.",
+    choices: [
+      { label: "Remove the plugin frontend-design@claude-plugins-official", hint: "restorable from Health", change: off("frontend-design@claude-plugins-official") },
+      { label: "Turn the plugin frontend-design@claude-plugins-official off", hint: "stays installed", change: off("frontend-design@claude-plugins-official") },
+    ],
+    at: at(null, "frontend-design"),
+    plugin: "frontend-design@claude-plugins-official",
+  });
+  add(issues, {
+    id: `plugin:${root("api-server")}:stripe-tools@acme`,
+    severity: "problem",
+    title: "stripe-payments: also in the Claude Code plugin stripe-tools@acme, on in api-server",
+    detail: "api-server's Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /stripe-tools:stripe-payments). Your skill wins.",
+    choices: [
+      { label: "Turn the plugin stripe-tools@acme off in api-server only", hint: "other repos keep it; in .claude/settings.local.json, a local-only file", change: off("stripe-tools@acme") },
+      { label: "Remove your stripe-payments from api-server", hint: "the plugin's copy stays; Your skills keeps yours", change: () => w.ops.remove("api-server", "stripe-payments") },
+    ],
+    at: at("api-server", "stripe-payments"),
+    plugin: "stripe-tools@acme",
+  });
+  add(issues, {
+    id: "cursor-plugin:react-kit",
+    severity: "suggestion",
+    title: "react-patterns: also in the Cursor plugin react-kit",
+    detail: "Cursor lists both copies when that plugin is on. Your skill wins: turn the plugin off in Cursor (Settings → Plugins).",
+    at: [...at("web-app", "react-patterns"), ...at("mobile-app", "react-patterns")],
+    plugin: "react-kit",
+  });
+  add(issues, {
+    id: "tidy:global",
+    severity: "suggestion",
+    title: "1 global skill with duplicate copies",
+    detail: "tailwind-tips: each keeps one copy (in ~/.agents/skills when there's one) and the others become links. Restorable from Health.",
+    fix: { label: "Keep one copy of each", said: "1 global skill now has one copy" },
+    at: at(null, "tailwind-tips"),
+  });
+  add(issues, {
+    id: "conflict:global:commit-style",
+    severity: "problem",
+    title: "commit-style in your global folders: the copies differ",
+    detail: "Your agents run different versions: ~/.claude/skills (Claude Code, Cursor) vs ~/.agents/skills (Codex). Keep one; the others become links to it and are restorable from Health.",
+    choices: [
+      { label: "Keep the ~/.claude/skills copy", hint: "the others become links to it" },
+      { label: "Keep the ~/.agents/skills copy", hint: "the others become links to it" },
+    ],
+    at: at(null, "commit-style"),
+  });
+  add(issues, {
+    id: "review:global",
+    severity: "suggestion",
+    title: "5 global skills of yours load in every repo",
+    detail:
+      "commit-style, stripe-payments, tailwind-tips, frontend-design, security-audit. Move each to the repos that need it (skilllib global move <name> --to <repo>...), or mark the ones you want everywhere as global on purpose (skilllib global keep <name>).",
+    at: at(null, "commit-style", "stripe-payments", "tailwind-tips", "frontend-design", "security-audit"),
+  });
+  add(issues, {
+    id: "usable:global",
+    severity: "suggestion",
+    title: "1 global skill not usable by Claude Code",
+    detail: "security-audit (only Codex, Cursor). Link it for every agent, or move it to the repos that need it (skilllib global move), which works for every agent too.",
+    choices: [{ label: "Link it for Claude Code", hint: "links only; nothing is copied or moved", change: () => void (global("security-audit").links = ["~/.claude/skills/security-audit"]) }],
+    at: at(null, "security-audit"),
+  });
+  add(issues, {
+    id: "twice:stripe-payments",
+    severity: "suggestion",
+    title: "stripe-payments: in web-app, api-server and also loaded globally",
+    detail: "The project copies are enough; the global one loads it in every other project too. Stop loading it globally, or keep it global on purpose (Global → Enter).",
+    choices: [{ label: "Stop loading it globally", hint: "restorable from Health", change: () => drop(global("stripe-payments")), said: "stripe-payments no longer loads globally" }],
+    at: [...at("web-app", "stripe-payments"), ...at("api-server", "stripe-payments"), ...at(null, "stripe-payments")],
+  });
+  add(issues, {
+    id: "twice:pr-review",
+    severity: "suggestion",
+    title: "pr-review: in mobile-app, and you keep it global",
+    detail: "The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway. mobile-app has its own copy: remove it in the repo, or stop keeping pr-review global.",
+    at: [...at("mobile-app", "pr-review"), ...at(null, "pr-review")],
+  });
+  add(issues, {
+    id: `sync:${root("web-app")}`,
+    severity: "problem",
+    title: "web-app: 1 skill in skilllib.json not installed",
+    detail: "seo-meta: the folder is missing",
+    fix: { label: "Sync the project", change: () => void (skill("web-app", "seo-meta").missing = false), said: "web-app: restored 1 skill" },
+    at: at("web-app", "seo-meta"),
+  });
+  add(issues, {
+    id: `update:${root("web-app")}`,
+    severity: "suggestion",
+    title: "web-app: 1 skill out of date",
+    detail: "react-patterns (v1 → v2)",
+    fix: { label: "Update to the newest versions", change: () => void (skill("web-app", "react-patterns").version = 2), said: "web-app: updated 1 skill" },
+    at: at("web-app", "react-patterns"),
+  });
+  const tidy = { change: () => delete skill("web-app", "testing-guide").dupes, said: "web-app: tidied 1 skill" };
+  add(issues, {
+    id: `tidy:${root("web-app")}`,
+    severity: "suggestion",
+    title: "web-app: 1 skill with extra copies or links",
+    detail: "testing-guide: .agents/skills/testing-guide: duplicate copy → link. Git would see 1 of these change: .agents/skills/testing-guide: duplicate copy → link.",
+    choices: [
+      { label: "Tidy, but keep git as it is", hint: "skips the 1 change git would see", ...tidy },
+      { label: "Tidy everything", hint: "1 change will show in git status", ...tidy },
+    ],
+    at: at("web-app", "testing-guide"),
+  });
+  add(issues, {
+    id: `conflict:${root("api-server")}:db-seed`,
+    severity: "problem",
+    title: "db-seed in api-server: the copies differ",
+    detail: "Your agents run different versions: .claude/skills (Claude Code, Cursor) vs .agents/skills (Codex). Keep one; the others become links to it and are restorable from Health.",
+    choices: [
+      { label: "Keep the .claude/skills copy", hint: "the others become links to it" },
+      { label: "Keep the .agents/skills copy", hint: "the others become links to it" },
+    ],
+    at: at("api-server", "db-seed"),
+  });
+  add(issues, {
+    id: `usable:${root("web-app")}`,
+    severity: "suggestion",
+    title: "web-app: 2 skills not usable by Codex, Claude Code",
+    detail: "stripe-payments (not Codex), deploy-preview (not Claude Code). Adding links makes the one real copy reach every agent you use; nothing is copied or moved.",
+    fix: {
+      label: "Add the links",
+      change: () => ["stripe-payments", "deploy-preview"].forEach((n) => (skill("web-app", n).linked = true)),
+      said: "web-app: linked 2 skills for Codex, Claude Code",
+    },
+    at: at("web-app", "stripe-payments", "deploy-preview"),
+  });
+  add(issues, {
+    id: `edited:${root("web-app")}:api-conventions`,
+    severity: "suggestion",
+    title: "api-conventions in web-app has local edits",
+    detail: "It no longer matches v1 from Your skills. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.",
+    choices: [
+      { label: "Save as a new version in Your skills", hint: "becomes v2; web-app uses it", change: () => Object.assign(skill("web-app", "api-conventions"), { edited: false, version: ++w.library.find((l) => l.name === "api-conventions")!.latest }) },
+      { label: "Discard the edits", hint: "back to v1; the edited copy is restorable from Health", change: () => void (skill("web-app", "api-conventions").edited = false) },
+    ],
+    at: at("web-app", "api-conventions"),
+  });
+  const track = (repo: string, name: string) => () => {
+    if (!w.library.some((l) => l.name === name)) w.library.push({ name, latest: 1 });
+    Object.assign(skill(repo, name), { source: "lib", version: 1, library: "same" });
+  };
+  for (const [repo, name] of [["web-app", "my-scratchpad"], ["web-app", "vercel-deploy"], ["mobile-app", "pr-review"]] as const)
+    add(issues, {
+      id: `local:${root(repo)}:${name}`,
+      severity: "suggestion",
+      title: `${name} in ${repo} isn't in your library`,
+      detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in skilllib.json.",
+      choices: [{ label: "Import into the library", hint: `${repo} then tracks it`, change: track(repo, name), said: `${name} imported and tracked in ${repo}` }],
+      at: at(repo, name),
+    });
+  add(issues, {
+    id: `adopt:${root("docs-site")}:mdx-tips`,
+    severity: "suggestion",
+    title: "mdx-tips in docs-site isn't tracked",
+    detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
+    choices: [{ label: "Track it", hint: "adds it to docs-site's skilllib.json", change: track("docs-site", "mdx-tips"), said: "mdx-tips tracked in docs-site" }],
+    at: at("docs-site", "mdx-tips"),
+  });
+
+  // Usage's: skills unused in 30 days.
+  const team = " The repo's own skills are the team's: remove those in the repo if nobody needs them.";
+  add(unused, {
+    id: `unused:${root("web-app")}`,
+    severity: "suggestion",
+    title: "web-app: 2 skills unused in 30 days",
+    detail: `testing-guide, my-scratchpad: no Claude Code session in web-app used them. Each one's name and description still takes context in every session there.${team}`,
+    choices: [{ label: "Remove the 1 skill skilllib installed from web-app", hint: "Your skills keeps them; edited ones stay", change: () => w.ops.remove("web-app", "testing-guide"), said: "web-app: removed testing-guide" }],
+    at: at("web-app", "testing-guide", "my-scratchpad"),
+  });
+  add(unused, {
+    id: `unused:${root("mobile-app")}`,
+    severity: "suggestion",
+    title: "mobile-app: 2 skills unused in 30 days",
+    detail: `expo-release, pr-review: no Claude Code session in mobile-app used them. Each one's name and description still takes context in every session there.${team}`,
+    at: at("mobile-app", "expo-release", "pr-review"),
+  });
+  add(unused, {
+    id: "unused:library",
+    severity: "suggestion",
+    title: "4 skills in Your skills: in no repo, unused in 30 days",
+    detail: "lean, lean-audit, lean-review, sql-migrations. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.",
+    choices: [{ label: "Delete all 4 from Your skills", hint: "restorable from Health", change: () => void (w.library = w.library.filter((l) => !["lean", "lean-audit", "lean-review", "sql-migrations"].includes(l.name))), said: "Deleted 4 skills from Your skills" }],
+    at: at(null, "lean", "lean-audit", "lean-review", "sql-migrations"),
+  });
+  return { issues, unused };
 }
 
 /** Which agents load each skill, from the folders it's in. */
@@ -237,7 +492,7 @@ function seeAgents(w: World) {
   for (const m of w.machine) m.agents = machineAgents(m, w.agents);
 }
 
-function sampleOps(w: World): Ops {
+function sampleOps(w: World): Omit<Ops, "usageIssues"> {
   const removed: MachineSkill[] = [];
   const skill = (repo: string, name: string) => w.projects.find((p) => p.name === repo)!.skills.find((s) => s.name === name) as SampleSkill;
   const lib = (name: string) => w.library.find((l) => l.name === name);

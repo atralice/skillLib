@@ -42,6 +42,13 @@ export type Issue = {
   fix?: Choice;
   /** Fixes that need a decision; the person picks one. Never set together with `fix`. */
   choices?: Choice[];
+  /**
+   * Where the app shows it: the rows of the skills it names, in a repo (`root`) or in Global (`root`
+   * null). doctor and `status --json` leave it out.
+   */
+  at?: { root: string | null; skill: string }[];
+  /** The plugin it's about (name@marketplace; a Cursor plugin's name), for the app's Plugins rows. */
+  plugin?: string;
 };
 
 /** What a sync or update fix did: the skills it changed and the ones it skipped. It fails when it changed none. */

@@ -5,6 +5,7 @@
  */
 import type { GitState } from "../git.js";
 import { harness, type HarnessId } from "../harnesses.js";
+import { runFix, type Choice, type Issue as Found } from "../health.js";
 import { matchScore } from "../search.js";
 
 export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "grok" | "system" | "skilllib";
@@ -205,6 +206,8 @@ export type Ops = {
   installAgentSkill(): Result;
   /** Removes the skilllib skill from the global folders it was installed in. */
   removeAgentSkill(): Result;
+  /** What usage says on top of `World.issues` (doctor's unused skills), from the uses per repo. */
+  usageIssues(usage: World["usage"]): Found[];
 };
 
 export type World = {
@@ -229,6 +232,8 @@ export type World = {
   agentsChosen: boolean;
   /** The skilllib skill, which lets your agents answer "which skills can I use here?" with skilllib. */
   agentSkill: "installed" | "outdated" | "missing";
+  /** What `skilllib doctor` reports (health.ts), with usage's once it's read. */
+  issues: Found[];
   ops: Ops;
 };
 
@@ -265,12 +270,39 @@ export type Issue = {
   title: string;
   /** The same, in a few words, for the list; the details show `title`. */
   short: string;
+  /** What doctor says about it. */
+  detail?: string;
   /** Decisions never run from "fix all"; the first fix of an automatic issue is the recommended one. */
   decision: boolean;
   fixes: Fix[];
 };
 
 export const SEVERITY_RANK: Record<Severity, number> = { problem: 0, warning: 1, hint: 2 };
+
+/** One of doctor's fixes or choices as the app runs it: its hint, then what the issue says, before you confirm. */
+function fixOf(c: Choice, found: Found): Fix {
+  return {
+    label: c.label,
+    preview: c.hint ? `${c.hint[0]!.toUpperCase()}${c.hint.slice(1)}. ${found.detail}` : found.detail,
+    run: () => {
+      const r = runFix(c);
+      return r.ok ? r.message : failed(r.message);
+    },
+  };
+}
+
+/** A doctor issue as the app shows it: its `fix` is the ★ one; `choices` make it your call. */
+export function issueOf(found: Found): Issue {
+  return {
+    id: found.id,
+    severity: found.severity === "problem" ? "problem" : "warning",
+    title: found.title,
+    short: found.title,
+    detail: found.detail,
+    decision: !found.fix,
+    fixes: (found.fix ? [found.fix] : (found.choices ?? [])).map((c) => fixOf(c, found)),
+  };
+}
 
 export function filterOf(source: Source): Exclude<Filter, "all"> {
   return source === "lib" || source === "repo" || source === "untracked" ? "local" : source === "global" || source === "skilllib" ? "global" : source === "plugin" ? "plugins" : "vendor";
