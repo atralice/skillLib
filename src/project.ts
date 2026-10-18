@@ -48,7 +48,12 @@ export function projectHere(from: string = process.cwd()): string | null {
 export function readManifest(root: string): Manifest {
   const path = join(root, MANIFEST_FILE);
   if (!existsSync(path)) return { skills: {} };
-  const data = JSON.parse(readFileSync(path, "utf-8")) as { skills?: Record<string, unknown> };
+  let data: { skills?: Record<string, unknown> };
+  try {
+    data = JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    throw new Error(`${path} isn't valid JSON (a merge conflict?): fix it, then run skilllib again`);
+  }
   const skills = Object.fromEntries(
     Object.entries(data.skills ?? {}).flatMap(([name, value]): [string, Dependency][] => {
       // Registry-era refs ("@owner/name": "^1.0.0") don't map to the library.
@@ -132,4 +137,19 @@ export function rememberProjects(roots: string[]) {
   const incoming = roots.map((r) => resolve(r)).filter((r) => isProjectCandidate(r) && !isAgentWorktree(r));
   const all = onePerFolder([...knownProjects(), ...incoming]).sort();
   writeState(projectsFile(), all);
+}
+
+/** Repos whose skilllib.json can be read, and the ones that can't (a merge conflict): those are reported, not fatal. */
+export function readableRoots(roots: string[]): { readable: string[]; unreadable: { root: string; reason: string }[] } {
+  const unreadable: { root: string; reason: string }[] = [];
+  const readable = roots.filter((root) => {
+    try {
+      readManifest(root);
+      return true;
+    } catch (err) {
+      unreadable.push({ root, reason: (err as Error).message });
+      return false;
+    }
+  });
+  return { readable, unreadable };
 }

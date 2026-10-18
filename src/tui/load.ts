@@ -37,7 +37,7 @@ import {
 import { harness, type HarnessId } from "../harnesses.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR } from "../paths.js";
-import { projectHere, readManifest } from "../project.js";
+import { projectHere, readableRoots, readManifest } from "../project.js";
 import { readSkillInfo } from "../skills.js";
 import {
   claudeBinary,
@@ -176,7 +176,9 @@ export function loadWorld(): World {
   };
   const visible = visibleProjects();
   const cwd = here ? (visible.find((p) => real(p) === real(here)) ?? here) : null;
-  const roots = [...new Set([...(cwd ? [cwd] : []), ...visible])];
+  const listed = [...new Set([...(cwd ? [cwd] : []), ...visible])];
+  // A repo whose skilllib.json can't be read is left out here; its issue (from findIssues) says why.
+  const roots = readableRoots(listed).readable;
   const names = uniqueNames(roots);
   const descriptions: Record<string, string> = {};
   const origins = libraryOrigins();
@@ -219,7 +221,7 @@ export function loadWorld(): World {
   const plugins = [...installedPlugins(), ...cursorList].map((p) => pluginOf(p, repoOf));
   return {
     agents,
-    cwd: cwd ? names.get(cwd)! : null,
+    cwd: cwd && names.has(cwd) ? names.get(cwd)! : null,
     projects,
     machine,
     plugins,
@@ -230,7 +232,7 @@ export function loadWorld(): World {
     ...(({ roots, hidden }) => ({ roots, hidden }))(readConfig()),
     agentsChosen: harnessesChosen(),
     agentSkill: agentSkillState(agents),
-    issues: findIssues(roots, sourced, libraryNames, (root) => statuses.get(root)!),
+    issues: findIssues(listed, sourced, libraryNames, (root) => statuses.get(root)!),
     ops: realOps(new Map(projects.map((p) => [p.name, p.path])), backups, sourced, libraryNames),
   };
 }

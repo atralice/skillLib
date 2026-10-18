@@ -42,7 +42,9 @@ export function moveGlobalSkills(
     if (group) recordOrigin(name, `group: ${group}`);
     const changes = roots.map((root) => [root, addSkill(root, name, { allowTracked })] as [string, Change]);
     const skipped = changes.filter(([, c]) => c.action === "skipped");
-    if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${c.reason})`).join(", ")}, so it still loads globally`, changes };
+    // add's own hints (--force) aren't move's: say what to do instead.
+    const why = (reason = "") => reason.replace(/ \(use --force to replace it\)$/, ": move or remove it there first");
+    if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally`, changes };
     // Git kept a link out, so an agent you use couldn't see it there: keep the global copy until that's sorted.
     const held = changes.filter(([, c]) => c.blocked?.length || c.uncommitted?.length);
     const blind = held.flatMap(([root]) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])));

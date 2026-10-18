@@ -715,3 +715,15 @@ describe("round 3", () => {
     expect(statSync(real).mode & 0o777).toBe(0o600);
   });
 });
+
+test("update backs up a pinned copy your library has no version of before replacing it", () => {
+  addSkill(project, "alpha");
+  writeSkill(local("alpha"), "another library's version");
+  const hash = treeHash(local("alpha"))!;
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 7, hash } } }));
+  writeSkill(join(tmp, "src", "alpha"), "v2");
+  importSkill(join(tmp, "src", "alpha"), { force: true });
+  const [c] = updateProject(project, ["alpha"]);
+  expect(c?.backedUp).toBeString();
+  expect(readFileSync(join(c!.backedUp!, "SKILL.md"), "utf-8")).toContain("another library's version");
+});

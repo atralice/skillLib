@@ -21,7 +21,7 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realpathOrNull, userHome } from "./paths.js";
-import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readManifest, rememberProjects } from "./project.js";
+import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { gitInfo, relativeTo } from "./git.js";
@@ -169,7 +169,16 @@ async function usageBySkill(days: number, onlyProject?: string): Promise<Map<str
  * they're the global ones: installing there would load a skill in every repo.
  */
 /** The projects a command works on: this one, or every project with --all. */
-const projectsFor = (args: Args) => (args.all ? visibleProjects() : [requireProject()]);
+const projectsFor = (args: Args) => {
+  if (!args.all) return [requireProject()];
+  // A repo whose skilllib.json can't be read (a merge conflict) is skipped, never the end of an --all run.
+  const { readable, unreadable } = readableRoots(visibleProjects());
+  for (const u of unreadable) {
+    error(`${basename(u.root)}: ${u.reason}`);
+    process.exitCode = 1;
+  }
+  return readable;
+};
 
 /** Your own global skills (not vendors'), the ones skilllib can move. */
 const yourGlobals = () => machineSkills().filter((m) => m.movable && !m.broken);
@@ -328,7 +337,11 @@ function teamStateIn(root: string, extraDirs: string[] = []): (s: { state: Skill
 }
 
 export function projects(args: Args) {
-  const roots = visibleProjects();
+  const { readable: roots, unreadable } = readableRoots(visibleProjects());
+  for (const u of unreadable) {
+    error(`${basename(u.root)}: ${u.reason}`);
+    process.exitCode = 1;
+  }
   if (args.json) {
     return json(
       "projects",
@@ -574,10 +587,11 @@ export function restore(args: Args) {
     return;
   }
   const newest = backups.find((b) => b.name === name);
-  if (!newest) throw new Error(`No backup named ${name}`);
-  // Copies moved out in one go (a global skill and its link in another agent's folder) come back together.
-  const second = (b: Backup) => b.path.slice(-24, -5);
-  const together = newest.kind === "plugin" ? [newest] : backups.filter((b) => b.name === name && b.kind === newest.kind && second(b) === second(newest));
+  if (!newest) throw new Error(`No backup named ${name} (skilllib restore lists them; a skill removed from a repo that your library has comes back with skilllib add ${name})`);
+  // Copies moved out in one go (a global skill and its link in another agent's folder) come back together:
+  // the same name and kind, moved within two seconds of each other (entries end in their ISO time).
+  const at = (b: Backup) => Date.parse(b.path.slice(-24).replace(/^(.{13})-(\d\d)-(\d\d)-(\d{3})Z$/, "$1:$2:$3.$4Z"));
+  const together = newest.kind === "plugin" ? [newest] : backups.filter((b) => b.name === name && b.kind === newest.kind && Math.abs(at(b) - at(newest)) <= 2000);
   for (const backup of together) {
     const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
     if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
@@ -605,7 +619,8 @@ async function allIssues(args: Args, withUsage = true): Promise<Issue[]> {
     const asUsed = new Map<string, number>();
     for (const u of uses) asUsed.set(u.skill, (asUsed.get(u.skill) ?? 0) + 1);
     issues.push(
-      ...usageIssues(projects, machine, libraryNames, {
+      // findIssues reported any repo whose skilllib.json can't be read; usage skips them.
+      ...usageIssues(readableRoots(projects).readable, machine, libraryNames, {
         inProject: (root, skill) => inProject.get(root)?.get(skill) ?? 0,
         total: (skill) => total.get(skill) ?? 0,
         asUsed: (key) => asUsed.get(key) ?? 0,
@@ -833,6 +848,8 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   // A skill in two global folders is one skill: every copy moves (links to it are in each copy's `links`).
   const skills = yours.filter((m) => names.includes(m.name));
   const moves = moveGlobalSkills(skills, roots, { allowTracked: args.allowTracked });
+  // Repos named by path join your projects, so doctor checks them from now on.
+  rememberProjects(roots);
   if (moves.some((m) => !m.moved)) process.exitCode = 1;
   if (args.json) {
     return json(
