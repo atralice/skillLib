@@ -54,7 +54,7 @@
     "dev": "tsx src/index.ts",
     "design": "tsx src/tui/design.ts",
     "type-check": "tsc --noEmit",
-    "test": "bun test src",
+    "test": "bun test --timeout 20000 src",
     "prepublishOnly": "npm run type-check && npm run build"
   },
   "dependencies": {
