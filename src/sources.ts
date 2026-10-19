@@ -328,7 +328,8 @@ export function originFor(dir: string): string {
   // A temporary folder (a clone made just to import from) is gone soon: it isn't where the skill came from.
   const under = (path: string, folder: string) => path.startsWith((realpathOrNull(folder) ?? folder) + sep);
   const real = realpathOrNull(dir) ?? dir;
-  if (under(real, tmpdir()) && !under(real, userHome())) return "";
+  // The system's temp folders: os.tmpdir() (on macOS, /var/folders/…/T) and the classic /tmp and /var/tmp.
+  if ([tmpdir(), "/tmp", "/var/tmp"].some((t) => under(real, t)) && !under(real, userHome())) return "";
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
   const project = dir.split(/[\\/]\.(?:claude|agents|grok|cursor|codex)[\\/]skills[\\/]/)[0];

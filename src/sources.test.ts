@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { machineSkills } from "./sources.js";
+import { machineSkills, originFor } from "./sources.js";
 import { setHarnesses } from "./config.js";
 
 const tmp = mkdtempSync(join(tmpdir(), "skilllib-sources-"));
@@ -214,4 +214,14 @@ test("Cursor loads claude.ai skills and user-scope Claude Code plugins, not sync
 
   process.env.HOME = realHome;
   delete process.env.CLAUDE_CONFIG_DIR;
+});
+
+test.skipIf(process.platform === "win32")("a skill imported from a temporary folder records no origin (it's gone soon)", () => {
+  const dir = join("/tmp", `skilllib-origin-${process.pid}`, "s");
+  mkdirSync(dir, { recursive: true });
+  try {
+    expect(originFor(dir)).toBe("");
+  } finally {
+    rmSync(join("/tmp", `skilllib-origin-${process.pid}`), { recursive: true, force: true });
+  }
 });
