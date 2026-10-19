@@ -312,7 +312,7 @@ export async function list(args: Args) {
       skills.map((s) => ({
         Skill: s.name,
         Description: truncate(s.description, 50),
-        From: dim(truncate(origins[s.name] ?? "", 30)),
+        From: dim(truncate(tildify(origins[s.name] ?? ""), 30)),
         Projects: (installs.get(s.name) ?? []).join(", ") || dim("none"),
         [`Uses (${args.days}d)`]: String(usage.get(s.name)?.uses ?? 0),
       })),
@@ -942,8 +942,8 @@ export function tidy(args: Args) {
       held += result.held.length;
       changed += result.applied.length;
     }
-    // You picked a copy and it couldn't win (only skilllib's copy can, for a skill it manages).
-    if (args.keep && conflicts.length) process.exitCode = 1;
+    // You picked a copy that couldn't win, or named a skill whose copies differ and picked none: not done.
+    if (conflicts.length && (args.keep || names.length)) process.exitCode = 1;
     for (const c of conflicts) {
       warn(`${label} · ${c.name}: the copies differ`);
       for (const copy of c.copies) {

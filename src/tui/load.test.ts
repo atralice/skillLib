@@ -115,7 +115,7 @@ test("moving to a repo that commits Claude Code's folder keeps it global until y
   let w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
   if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks .claude/skills: the app asks to add those links), so it still loads globally");
+  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks .claude/skills: allow links there, then move it again), so it still loads globally");
   expect(r.then.label).toBe("Also link them in .claude/skills, then stop loading them globally");
   for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
 
@@ -744,6 +744,7 @@ test("a global move another repo blocks names that repo; Delete from your librar
   writeFileSync(join(other, "skilllib.json"), '<<<<<<< HEAD\n{"skills": {"foo": {"version": 1, "hash": "x"}}}\n');
   w = loadWorld();
   expect(w.ops.deleteLibrary("foo")).toMatchObject({ failed: true });
+  expect(said(w.ops.deleteLibrary("foo"))).toContain("skilllib.json can't be read"); // not "hidden"
   writeFileSync(join(other, "skilllib.json"), "{}\n");
   w = loadWorld();
   expect(said(w.ops.deleteLibrary("foo"))).toStartWith("Deleted foo from your library and from app");
@@ -758,4 +759,21 @@ test("a repo whose skills folder is a file is marked in Places, not only in Heal
   const w = loadWorld();
   expect(repoIssues(w, "app").map((i) => i.title)).toContain("app: .claude/skills isn't a folder");
   expect(unlisted(w, "app")).toEqual([]);
+});
+
+test("Delete it on a global skill waits for repos whose agents only reach it globally", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, ".claude", "skills", "g1"));
+  const other = join(tmp, "other");
+  writeSkill(join(other, ".agents", "skills", "g1")); // Claude Code there runs the global copy
+  mkdirSync(join(other, ".git"));
+  rememberProjects([other]);
+  let w = loadWorld();
+  const r = w.ops.deleteGlobal(w.machine.find((m) => m.name === "g1")!);
+  expect(said(r)).toStartWith("g1 kept: Claude Code in other only sees the global copy");
+  expect(existsSync(join(tmp, ".claude", "skills", "g1", "SKILL.md"))).toBe(true);
+  // Once other has its own copy for Claude Code, it goes.
+  writeSkill(join(other, ".claude", "skills", "g1"));
+  w = loadWorld();
+  expect(said(w.ops.deleteGlobal(w.machine.find((m) => m.name === "g1")!))).toBe("Deleted g1 (in Settings › Backups)");
 });

@@ -1177,3 +1177,12 @@ test("who'd lose a global skill when its global entry is a link, or a package ho
   symlinkSync(join(tmp, "dev", "foo"), join(mono, "packages", "api", ".claude", "skills", "foo"));
   expect(blind(real, mono, [entry])).toEqual([["repos/mono/packages/web", "claude-code"]]);
 });
+
+test("remove says when something else sits where its link was", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha");
+  rmSync(local("alpha"));
+  writeFileSync(local("alpha"), "mine");
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is something else (another copy, or a file): left as it is" });
+  expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
+});

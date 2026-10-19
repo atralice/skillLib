@@ -724,10 +724,13 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const dir = join(root, home, name);
   // Its own links (or ones to nothing) in folders really the repo's: a link there now to another copy (the team's)
   // isn't this skill's, and a folder that links out of the repo isn't skilllib's to change.
+  // Something else where a recorded link goes (a file, another copy) stays: it isn't this skill's, and it's said.
+  const takenLinks: string[] = [];
   const unlinkOwn = () => {
     for (const linkDir of (recorded.links ?? []).filter((d) => writableDir(root, d))) {
       const link = join(root, linkDir, name);
       if (isLink(link) && slotAt(link, dir) !== "taken") unlinkSync(link);
+      else if (entryExists(link) && slotAt(link, dir) === "taken") takenLinks.push(`${linkDir}/${name} is something else (another copy, or a file): left as it is`);
     }
   };
   // Links left alone where their folder isn't the repo's: said, so nobody thinks they're gone.
@@ -763,7 +766,8 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   if (!backedUp) rmSync(dir, { recursive: true, force: true });
   delete manifest.skills[name];
   writeManifest(root, manifest);
-  return { name, action: "removed", ...(leftLinks.length ? { reason: leftLinks.join("; ") } : {}), ...(backedUp ? { backedUp } : {}) };
+  const left = [...leftLinks, ...takenLinks];
+  return { name, action: "removed", ...(left.length ? { reason: left.join("; ") } : {}), ...(backedUp ? { backedUp } : {}) };
 }
 
 /**
