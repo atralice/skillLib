@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -200,17 +200,15 @@ export function survives(path: string, gone: string[]): boolean {
 function lostAt(path: string, gone: string[]): string | null {
   // Its parent's real path plus its own name: folder links resolved, the entry itself not followed. On Windows a link
   // can read back as \\?\C:\... and paths don't care about case: both are evened out before comparing.
-  const win = process.platform === "win32";
-  const canon = (p: string) => {
-    const c = join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
-    return win ? c.toLowerCase() : c;
-  };
-  const moved = gone.map(canon);
+  // Compared in lower case on Windows; said as it is.
+  const key = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
+  const canon = (p: string) => join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+  const moved = gone.map((g) => key(canon(g)));
   let at = path;
   let last: string | null = null;
   for (let hop = 0; hop < 40; hop++) {
     const here = canon(at);
-    if (moved.some((m) => here === m || here.startsWith(m + sep))) return last ?? here;
+    if (moved.some((m) => key(here) === m || key(here).startsWith(m + sep))) return last ?? here;
     if (!isLink(here)) return existsSync(join(here, "SKILL.md")) ? null : here;
     last = here;
     at = resolve(dirname(here), readlinkSync(here).replace(/^\\\\\?\\(UNC\\)?/, (_m, unc: string | undefined) => (unc ? "\\\\" : "")));
@@ -248,7 +246,11 @@ export function blindWithoutGlobal(
   // Agents with a copy at the repo's top that survives.
   const keepsTop = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && survives(join(root, d, name), gone));
   // The link to change, as a person finds it: in the repo by its place there, elsewhere (a shared folder) by its path.
-  const shown = (root: string, p: string) => (p.startsWith((realpathOrNull(root) ?? root) + sep) ? relative(realpathOrNull(root) ?? root, p).split(sep).join("/") : tildify(p));
+  // Both sides as real paths: the repo or home folder may be reached another way (a link, a Windows short name).
+  const shown = (root: string, p: string) => {
+    const under = (dir: string) => ((d) => (p.startsWith(d + sep) ? relative(d, p).split(sep).join("/") : null))(realpathOrNull(dir) ?? dir);
+    return under(root) ?? ((h) => (h === null ? p : `~/${h}`))(under(userHome()));
+  };
   const blindIn = (root: string) =>
     enabled.flatMap((id): Blind[] => {
       const reach = harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")));
