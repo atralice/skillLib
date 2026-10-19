@@ -987,7 +987,9 @@ test("a package's link left pointing at nothing is reported, like one at the rep
   symlinkSync(join(tmp, "gone"), join(mono, "packages", "web", ".claude", "skills", "foo"));
   const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/foo`)!;
   expect(broken.title).toBe("foo: broken link in mono/packages/web/.claude/skills");
-  expect(runFix(broken.fix!).ok).toBe(true);
+  // A package's link is asked first, never removed by doctor --fix on its own.
+  expect(broken.fix).toBeUndefined();
+  expect(runFix(broken.choices![0]!).ok).toBe(true);
   expect(isLinkAt(join(mono, "packages", "web", ".claude", "skills", "foo"))).toBe(false);
 });
 const isLinkAt = (p: string) => {
@@ -1040,4 +1042,16 @@ test("a package with its own skilllib.json you haven't opened: its broken link i
   const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/zz`)!;
   expect(broken.fix).toBeUndefined();
   expect(broken.detail).toContain("packages/web has its own skilllib.json");
+});
+
+test("a link reached through a package folder linked into an opened sub-project is that project's to report, once", () => {
+  const mono = join(tmp, "mono");
+  const api = join(mono, "packages", "api");
+  mkdirSync(join(api, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(api, "skilllib.json"), "{}\n");
+  symlinkSync(join(tmp, "gone"), join(api, ".claude", "skills", "zz"));
+  mkdirSync(join(mono, "packages", "web"), { recursive: true });
+  symlinkSync(join(api, ".claude"), join(mono, "packages", "web", ".claude"));
+  const ids = findIssues([mono, api], machineSkills(), new Set()).map((i) => i.id).filter((id) => id.startsWith("broken:"));
+  expect(ids).toEqual([`broken:${api}:.claude/skills/zz`]);
 });

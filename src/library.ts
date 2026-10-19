@@ -329,13 +329,17 @@ export function blindWithoutGlobal(
   // Up to the git repo's top (a package opened on its own is still in its repo), else within the repos asked about:
   // never above a repo.
   const within = (d: string) => unique.some((r) => d === r || d.startsWith(r + sep));
+  // Never your home folder itself (or above): its folders are your own (~/.claude is the global one, under any name),
+  // even when home is a git repo (dotfiles).
+  const home = realNative(userHome()) ?? userHome();
+  const belowHome = (d: string) => (realNative(d) ?? d) !== home && !home.startsWith((realNative(d) ?? d) + sep);
   const gitTop = (from: string) => {
-    for (let d = from; d !== dirname(d); d = dirname(d)) if (existsSync(join(d, ".git"))) return d;
+    for (let d = from; d !== dirname(d) && belowHome(d); d = dirname(d)) if (existsSync(join(d, ".git"))) return d;
     return null;
   };
   const servedAbove = (b: Blind) => {
     const top = gitTop(b.root);
-    const inside = (d: string) => (top ? d === top || d.startsWith(top + sep) : within(d));
+    const inside = (d: string) => belowHome(d) && (top ? d === top || d.startsWith(top + sep) : within(d));
     for (let d = dirname(b.root); inside(d) && d !== dirname(d); d = dirname(d)) if (keepsTop(d, b.id)) return true;
     return false;
   };

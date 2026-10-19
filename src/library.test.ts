@@ -1319,3 +1319,17 @@ test("an opened package is served by its repo's top copy even when only the pack
   writeFileSync(join(web6, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
   expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [web6])).toEqual([]);
 });
+
+test("a leftover copy in your home folder never counts as a repo's own, even when home is a git repo", () => {
+  setHarnesses(["claude-code"]);
+  process.env.CLAUDE_CONFIG_DIR = join(tmp, ".config", "claude");
+  const entry = join(tmp, ".config", "claude", "skills", "g1");
+  writeSkill(entry, "global");
+  writeSkill(join(tmp, ".claude", "skills", "g1"), "leftover");
+  mkdirSync(join(tmp, ".git"));
+  const proj = join(tmp, "work", "proj");
+  mkdirSync(proj, { recursive: true });
+  writeFileSync(join(proj, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [proj]).map((b) => b.id)).toEqual(["claude-code"]);
+  process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+});
