@@ -157,6 +157,15 @@ describe("paths are checked", () => {
     expect(r.out).toContain("~/Projects/old is visible again");
     expect(readConfig().hidden).toEqual([]);
   });
+
+  test("a failure is {\"error\"} on stdout with --json, and a stray word is an error, not ignored", () => {
+    const never = cli(tmp, "unhide", join(tmp, "nowhere"), "--json");
+    expect(never.code).toBe(1);
+    expect(JSON.parse(never.out).error).toContain("wasn't hidden");
+    const stray = cli(tmp, "status", "app2", "--json");
+    expect(stray.code).toBe(1);
+    expect(JSON.parse(stray.out).error).toBe("skilllib status doesn't take app2");
+  });
 });
 
 describe("doctor", () => {

@@ -127,7 +127,7 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   const global = s.kind === "global" || s.kind === "skills.sh";
   return {
     name: s.name,
-    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : s.kind === "skilllib" ? "skilllib" : s.kind === "built-in" && s.harnesses[0] === "grok" ? "grok" : "cursor",
+    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" || (s.kind === "built-in" && s.harnesses[0] === "codex") ? "system" : s.kind === "skilllib" ? "skilllib" : s.kind === "built-in" && s.harnesses[0] === "grok" ? "grok" : "cursor",
     where: global || s.kind === "skilllib" ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
     ...(s.kind === "skills.sh" ? { origin: `npx skills: ${s.origin}` } : {}),
     path: s.path,
@@ -268,6 +268,8 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" 
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
   if (c.action === "removed") return `Removed ${c.name} from ${repo}`;
+  if (c.action === "unchanged") return `${c.name}${c.to ? ` v${c.to}` : ""} is already in ${repo}`;
+  if (c.action === "relinked") return `Linked ${c.name}${c.to ? ` v${c.to}` : ""} for your other agents in ${repo}`;
   // An older version picked from Other versions… isn't an update.
   const back = c.action === "updated" && c.from !== undefined && c.to !== undefined && c.to < c.from;
   const done = back
@@ -290,6 +292,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
    */
   const withLinks = (c: Change, repo: string, name: string): Result => {
     const it = (dirs: string[]) => (dirs.length === 1 ? "it" : "them");
+    if (c.inTheWay?.length) return `${said(c, repo)}; not linked: ${c.inTheWay.join(", ")} ${c.inTheWay.length === 1 ? "is" : "are"} in the way (move ${it(c.inTheWay)}, then link again)`;
     if (c.uncommitted?.length)
       return `${said(c, repo)}; not linked in ${c.uncommitted.join(", ")}: git tracks ${it(c.uncommitted)} and ${copyDir(repo, name)}/${name} isn't committed, so teammates would get broken links`;
     if (!c.blocked?.length) return result(c, repo);
@@ -339,7 +342,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         const summary = linked.length
           ? `Linked ${names.length === 1 ? names[0] : `${names.length} skills`} in ${[...new Set(linked.flatMap((x) => x.r.created))].join(", ")} in ${[...new Set(linked.map((x) => x.repo))].join(", ")}`
           : "";
-        const others = results.filter((x) => !x.r.created.length || x.r.uncommitted.length).map((x) => `${x.repo}: ${linkSaid(x.name, x.r)}`);
+        const others = results.filter((x) => !x.r.created.length || x.r.uncommitted.length || x.r.inTheWay.length).map((x) => `${x.repo}: ${linkSaid(x.name, x.r)}`);
         return [summary, ...others].join("; ");
       },
     };
@@ -353,7 +356,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     const notLinked = r.uncommitted.length
       ? `not linked in ${r.uncommitted.join(", ")}: git tracks ${r.uncommitted.length === 1 ? "it" : "them"} and ${name} isn't committed, so teammates would get broken links`
       : "";
-    return `${name}: ${[linked, notLinked].filter(Boolean).join("; ") || "nothing to link"}`;
+    const inTheWay = r.inTheWay.length ? `${r.inTheWay.join(", ")} in the way` : "";
+    return `${name}: ${[linked, notLinked, inTheWay].filter(Boolean).join("; ") || "nothing to link"}`;
   };
   /** Local edits in the way: offer to go ahead anyway (`lost`: the edits aren't backed up). */
   const orForce = (c: Change, repo: string, label: string, force: () => Change): Result =>

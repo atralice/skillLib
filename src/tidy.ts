@@ -3,7 +3,7 @@ import { basename, dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
-import { entryExists, isLink, linkDir, stash } from "./library.js";
+import { entryExists, isLink, linkDir, notWritable, stash } from "./library.js";
 import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
@@ -72,6 +72,8 @@ function namesIn(dirs: string[]): string[] {
 
 /** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. */
 export const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+/** The repo's own skill folders tidy works in: not one that links out of the repo (.agents/skills -> ~/.agents/skills holds your global skills). */
+export const repoTidyDirs = (root: string) => PROJECT_TIDY_DIRS.filter((d) => notWritable(root, d) === null);
 
 /** Global folders tidy may rewrite. `~/.grok/skills` is Grok's own folder. */
 function globalTidyDirs(): string[] {
@@ -117,8 +119,9 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   let git: GitInfo | null | undefined; // looked up once, only if needed
   const skillsLock = projectSkillsLock(root);
 
-  for (const name of namesIn(PROJECT_TIDY_DIRS.map(abs))) {
-    const entries = entriesOf(PROJECT_TIDY_DIRS.map(abs), name);
+  const dirs = repoTidyDirs(root).map(abs);
+  for (const name of namesIn(dirs)) {
+    const entries = entriesOf(dirs, name);
     const external = entries.find((e) => e.link && e.real && !(e.real + sep).startsWith(realpathOrNull(root)! + sep));
     if (external) {
       const differs = entries.some((e) => e !== external && e.real && existsSync(join(e.real, "SKILL.md")) && treeHash(e.real) !== treeHash(external.real!));
@@ -309,7 +312,7 @@ export function folderLabel(root: string | null, dir: string): string {
  * every folder holding it, and those holding a real copy (the ones `keep` can pick).
  */
 export function foldersOf(root: string | null, name: string): { all: string[]; real: string[] } {
-  const entries = entriesOf(root ? PROJECT_TIDY_DIRS.map((d) => join(root, d)) : globalTidyDirs(), name);
+  const entries = entriesOf(root ? repoTidyDirs(root).map((d) => join(root, d)) : globalTidyDirs(), name);
   return { all: entries.map((e) => e.dir), real: entries.filter((e) => !e.link).map((e) => e.dir) };
 }
 

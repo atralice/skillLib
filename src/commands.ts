@@ -109,14 +109,15 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   });
 }
 
-/** A change that didn't do all it was asked: skipped, or a link held back where git tracks the folder. */
-const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length;
+/** A change that didn't do all it was asked: skipped, or a link held back (git tracks the folder, or something is in the way). */
+const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length || !!c.inTheWay?.length;
 
 /** The links a change held back where git tracks the folder, and how to add them. */
 function warnHeldLinks(c: Change, where = "here") {
   if (c.blocked?.length) warn(`${c.name}: git tracks ${c.blocked.join(", ")} ${where}, so no link was added there. Re-run with --allow-tracked to add it.`);
   if (c.uncommitted?.length)
     warn(`${c.name}: git tracks ${c.uncommitted.join(", ")} ${where} but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`);
+  if (c.inTheWay?.length) warn(`${c.name}: ${c.inTheWay.join(", ")} ${where} is in the way, so no link was added there. Move it, then run skilllib link.`);
 }
 
 /**
@@ -130,7 +131,7 @@ function printChanges(root: string, changes: Change[], args: Args) {
     warnHeldLinks(c);
     if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
-      const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
+      const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : c.action === "unchanged" ? dim("=") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
       const versions = c.action === "removed" ? "" : c.from && c.from !== c.to ? ` v${c.from} → v${c.to}` : c.to ? ` v${c.to}` : "";
       info(`  ${icon} ${c.name}${versions} ${dim(c.action)}`);
     }
@@ -366,7 +367,6 @@ export function projects(args: Args) {
   table(
     roots.map((root) => {
       const skills = projectStatus(root);
-      const managed = skills.filter((s) => s.managed);
       // The team's committed skills are fine as they are: only what needs a decision counts.
       const teamState = teamStateIn(root);
       const usual = new Set(["ok", "local only", "repo skill", "repo skill, in library", "from npx skills"]);
@@ -374,7 +374,7 @@ export function projects(args: Args) {
       return {
         Project: basename(root),
         Path: dim(tildify(root)),
-        Skills: managed.map((s) => s.name).join(", ") || dim("none"),
+        Skills: skills.map((s) => s.name).join(", ") || dim("none"),
         "Local only": String(skills.filter((s) => teamState(s) === "local only").length),
         Status: attention === 0 ? green("ok") : yellow(`${attention} need attention`),
       };
@@ -527,47 +527,43 @@ export function scan(args: Args) {
 export function folders(args: Args) {
   const [action, ...paths] = args.positional;
   if (action && !["add", "remove", "rm"].includes(action)) throw new Error("Usage: skilllib folders [add|remove <folder>...]");
-  let failed = false;
+  const failures: string[] = [];
   if (action === "add") {
     for (const p of paths) {
       try {
         success(`Added ${tildify(addRoot(p))}`);
       } catch (e) {
-        error((e as Error).message);
-        failed = true;
+        failures.push((e as Error).message);
       }
     }
     discoverProjects();
   } else if (action === "remove" || action === "rm") {
     for (const p of paths) {
       if (removeRoot(p)) success(`Removed ${tildify(expandHome(p))}`);
-      else {
-        warn(`${tildify(expandHome(p))} wasn't a project folder`);
-        failed = true;
-      }
+      else failures.push(`${tildify(expandHome(p))} wasn't a project folder`);
     }
   }
   const { roots, hidden } = readConfig();
   info(roots.length ? `Project folders:\n${roots.map((r) => `  ${tildify(r)}`).join("\n")}` : "No project folders. Add one: skilllib folders add ~/Projects");
   if (hidden.length) info(dim(`Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}  (skilllib unhide <path>)`));
-  if (failed) process.exitCode = 1;
+  if (failures.length) throw new Error(failures.join("; "));
 }
 
 export function unhide(args: Args) {
   if (args.positional.length === 0) {
     throw new Error("Usage: skilllib unhide <path>...");
   }
-  let failed = false;
+  const failures: string[] = [];
   for (const p of args.positional) {
     const path = expandHome(p);
     if (setHidden(path, false)) success(`${tildify(path)} is visible again`);
     else {
       const { hidden } = readConfig();
-      error(`${tildify(path)} wasn't hidden. ${hidden.length ? `Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}` : "No projects are hidden."}`);
-      failed = true;
+      failures.push(`${tildify(path)} wasn't hidden. ${hidden.length ? `Hidden projects: ${hidden.map((h) => tildify(h)).join(", ")}` : "No projects are hidden."}`);
     }
   }
-  if (failed) process.exitCode = 1;
+  // Thrown, so --json prints {"error": …} like every other failure (what did change, changed).
+  if (failures.length) throw new Error(failures.join("; "));
 }
 
 export function newSkill(args: Args) {
@@ -790,7 +786,11 @@ export function link(args: Args) {
     const res = linkAll(root, { allowTracked: args.allowTracked });
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
-    else if (!args.all && !res.blocked.length && !res.uncommitted.length) success("Every skill here is already usable by all your agents");
+    else if (!args.all && !res.blocked.length && !res.uncommitted.length && !res.inTheWay.length) success("Every skill here is already usable by all your agents");
+    if (res.inTheWay.length) {
+      process.exitCode = 1;
+      error(`${label}${res.inTheWay.join(", ")} ${res.inTheWay.length === 1 ? "is" : "are"} in the way (a file, or another copy), so some skills weren't linked there; move ${res.inTheWay.length === 1 ? "it" : "them"}, then link again`);
+    }
     if (res.blocked.length) {
       // Some agents still can't see some skills: that's a failure for scripts and agents.
       process.exitCode = 1;

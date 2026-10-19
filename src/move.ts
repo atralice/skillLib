@@ -45,13 +45,20 @@ export function moveGlobalSkills(
     // add's own hints (--force) aren't move's: say what to do instead.
     const why = (reason = "") => reason.replace(/ \(use --force to replace it\)$/, ": move or remove it there first");
     if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally`, changes };
-    // Git kept a link out, so an agent you use couldn't see it there: keep the global copy until that's sorted.
-    const held = changes.filter(([, c]) => c.blocked?.length || c.uncommitted?.length);
-    const blind = held.flatMap(([root]) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])));
-    if (blind.length && !allowBlind) {
+    // A link kept out (git tracks the folder, or something is in the way), so an agent you use couldn't see it
+    // there: keep the global copy until that's sorted. Checked in every repo, whatever add said.
+    const blindIn = changes.filter(([root]) => visibilityOf(root, name).some((v) => v.paths === 0));
+    const blind = blindIn.flatMap(([root]) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])));
+    if (blind.length && (!allowBlind || blindIn.some(([, c]) => c.inTheWay?.length))) {
+      const inTheWay = blindIn.flatMap(([root, c]) => (c.inTheWay ?? []).map((p) => `${p} in ${label(root)}`));
       // --allow-tracked helps where git tracks the folder; where git doesn't share the copy, only committing it does.
-      const next = held.some(([, c]) => c.uncommitted?.length) ? "commit the skill's copy in the repo, then run skilllib link --allow-tracked there" : "re-run with --allow-tracked";
-      return { name, moved: false, reason: `added, but ${blind.join(", ")} couldn't see it (git tracks the folder its link goes in), so it still loads globally; ${next}`, changes };
+      const next = inTheWay.length
+        ? `move ${inTheWay.join(", ")} out of the way, then run skilllib link there`
+        : blindIn.some(([, c]) => c.uncommitted?.length)
+          ? "commit the skill's copy in the repo, then run skilllib link --allow-tracked there"
+          : "re-run with --allow-tracked";
+      const cause = inTheWay.length ? "something is in the way of its link" : "git tracks the folder its link goes in";
+      return { name, moved: false, reason: `added, but ${blind.join(", ")} couldn't see it (${cause}), so it still loads globally; ${next}`, changes };
     }
     const failed = copies.map((m) => unloadGlobal(m.path, m.links)).find((r) => !r.ok);
     return failed && !failed.ok ? { name, moved: false, reason: failed.reason, changes } : { name, moved: true, changes };

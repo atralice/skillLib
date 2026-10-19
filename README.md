@@ -45,7 +45,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 
 ## How skilllib fixes it
 
-- **🤖 Your agents run it.** One small skill teaches Claude Code, Cursor, Codex, Zed and Grok to use the skilllib CLI. Ask them what's loaded here, what to add, what's out of date, or to move a global skill into the repos that use it. Every command has `--json` output shaped for agents, and they ask before changing anything.
+- **🤖 Your agents run it.** One small skill teaches Claude Code, Cursor, Codex, Zed and Grok to use the skilllib CLI. Ask them what's loaded here, what to add, what's out of date, or to move a global skill into the repos that use it. The commands agents use have `--json` output shaped for them, and they ask before changing anything.
 - **📚 Your skills: one versioned library.** Every skill has a single master copy in `~/.skilllib/library`, and each change becomes a new version.
 - **📦 Per-repo installs, pinned like dependencies.** Each repo lists its skills and versions in `skilllib.json`. `sync` reproduces them exactly, and `update` moves to the newest.
 - **🤝 One copy, every agent.** skilllib puts one real copy in the repo and links it into whichever folders your other agents read.

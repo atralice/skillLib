@@ -985,9 +985,19 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     });
   }
   /** Asks where your projects live, and starts scanning there. */
-  function askForFolder(title: string) {
+  function askForFolder(title: string, problem?: string) {
     // Empty, with ~/Projects as the placeholder: a prefilled value would have typing append to it.
-    setModal({ kind: "input", title, value: "", placeholder: "~/Projects", submit: (v) => apply((w) => w.ops.addRoot(v)) });
+    // A folder that can't be added (it doesn't exist, say) asks again, saying why, rather than leaving none set.
+    const submit = (v: string) =>
+      apply((w) => {
+        try {
+          return w.ops.addRoot(v);
+        } catch (e) {
+          askForFolder(title, (e as Error).message);
+          throw e;
+        }
+      });
+    setModal({ kind: "input", title: problem ? `${problem}. ${title}` : title, value: "", placeholder: "~/Projects", submit });
   }
   // First run: pick your agents, then say where your projects live.
   useEffect(() => {

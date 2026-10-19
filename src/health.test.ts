@@ -444,9 +444,10 @@ test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link
   setHarnesses(["claude-code", "codex"]);
   skill(join(tmp, ".agents", "skills", "shared"));
   skill(join(tmp, ".codex", "skills", "legacy"));
-  skill(join(tmp, ".codex", "skills", ".system", "imagegen")); // Codex's bundled skills: not yours
+  skill(join(tmp, ".codex", "skills", ".system", "imagegen")); // Codex's bundled skills: not yours, never linked
   const loads = () => Object.fromEntries(machineSkills().map((m) => [m.name, m.harnesses]));
-  expect(loads()).toEqual({ legacy: ["codex"], shared: ["codex"] });
+  expect(loads()).toEqual({ imagegen: ["codex"], legacy: ["codex"], shared: ["codex"] });
+  expect(machineSkills().find((m) => m.name === "imagegen")).toMatchObject({ kind: "built-in", origin: "Codex", movable: false });
 
   // Not kept global: linking makes them load in more places, so it's a choice doctor --fix never makes.
   const issue = findIssues([], machineSkills(), new Set()).find((i) => i.id === "usable:global")!;
@@ -454,7 +455,7 @@ test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link
   expect(issue.fix).toBeUndefined();
   runFix(issue.choices![0]!);
   expect(lstatSync(join(tmp, ".claude", "skills", "legacy")).isSymbolicLink()).toBe(true);
-  expect(loads()).toEqual({ legacy: ["claude-code", "codex"], shared: ["claude-code", "codex"] });
+  expect(loads()).toEqual({ imagegen: ["codex"], legacy: ["claude-code", "codex"], shared: ["claude-code", "codex"] });
   expect(findIssues([], machineSkills(), new Set()).map((i) => i.id)).not.toContain("usable:global");
 });
 
@@ -741,17 +742,19 @@ test("a kept-global skill's repo copy isn't offered for removal when an agent re
   expect(twice?.detail).toContain("Claude Code");
 });
 
-test("a file where a skills folder goes, and other content behind a link, are reported", () => {
+test("a file where a skills folder goes, and other content behind a link, are reported on the skill", () => {
   setHarnesses(["claude-code", "codex"]);
   const project = join(tmp, "web");
   mkdirSync(join(project, ".claude"), { recursive: true });
   writeFileSync(join(project, ".claude", "skills"), "x");
   skill(join(project, ".agents", "skills", "notes"));
   let issues = findIssues([project], machineSkills(), new Set());
-  const notdir = issues.find((i) => i.id === `notdir:${project}:.claude/skills`);
-  expect(notdir?.title).toBe("web: .claude/skills isn't a folder");
+  // Once for the repo, not again on each skill.
+  const stuck = issues.find((i) => i.id === `notdir:${project}:.claude/skills`);
+  expect(stuck?.title).toBe("web: .claude/skills isn't a folder");
+  expect(issues.some((i) => i.id.startsWith("intheway:"))).toBe(false);
   // Reported, not fixed: doctor --fix has nothing to retry here.
-  expect(notdir?.fix ?? notdir?.choices).toBeUndefined();
+  expect(stuck?.fix ?? stuck?.choices).toBeUndefined();
   expect(issues.some((i) => i.id === `usable:${project}`)).toBe(false);
 
   rmSync(join(project, ".claude", "skills"));
@@ -760,4 +763,26 @@ test("a file where a skills folder goes, and other content behind a link, are re
   symlinkSync(join(tmp, "elsewhere", "notes"), join(project, ".claude", "skills", "notes"));
   issues = findIssues([project], machineSkills(), new Set());
   expect(issues.find((i) => i.id === `linkdiffers:${project}:notes`)?.title).toBe("notes in web: the copies differ");
+});
+
+test("a repo whose .claude/skills links to your global skills never offers to unload, track or link them", () => {
+  const project = join(tmp, "homelink");
+  mkdirSync(join(project, ".claude"), { recursive: true });
+  skill(join(tmp, ".claude", "skills", "gstripe"));
+  symlinkSync(join(tmp, ".claude", "skills"), join(project, ".claude", "skills"));
+  const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
+  expect(ids.filter((id) => id.includes("gstripe") || id.includes(project))).toEqual([]);
+});
+
+test("stopping a global copy only waits for agents that load it: Codex never read ~/.claude/skills", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app1");
+  skill(join(project, ".claude", "skills", "team-skill"));
+  execFileSync("git", ["init", "-q"], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
+  skill(join(tmp, ".claude", "skills", "team-skill"));
+  const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:team-skill")!;
+  expect(runFix(twice.choices![0]!)).toEqual({ ok: true, message: "team-skill no longer loads globally" });
+  expect(existsSync(join(tmp, ".claude", "skills", "team-skill"))).toBe(false);
 });
