@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageDirs, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, realNative, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageDirs, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -147,7 +147,7 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
  * nothing. (Next to a real copy, a broken link is tidy's: it points it at the copy.) Removing one is a fix,
  * unless git tracks it: then it's the team's link, and removing it is a choice git will see.
  */
-function brokenLinksIn(root: string): Issue[] {
+function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
   const where = basename(root);
   // tidy works in every repo skill folder except .grok/skills (the team's, for Grok): there a broken link is always ours to report.
   const tidyDirs = repoTidyDirs(root);
@@ -157,16 +157,24 @@ function brokenLinksIn(root: string): Issue[] {
   const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
   let git: ReturnType<typeof gitInfo> | undefined;
   // The repo's top folders, and its packages' own (a monorepo): a global copy moved away can leave a link to nothing there.
-  // A package with its own skilllib.json (or inside one) is a project of its own: its links are its scan's, with its pins.
-  const ownProject = (sub: string) => {
-    for (let d = sub; d.startsWith(root + sep); d = dirname(d)) if (existsSync(join(d, MANIFEST_FILE))) return true;
-    return false;
+  // A package with its own skilllib.json (or inside one) is a project of its own: one you've opened reports its links in
+  // its own scan, with its pins. One you haven't is reported here, never removed by itself: its skilllib.json may record
+  // the link (a sync there mends it).
+  const projectOf = (sub: string) => {
+    for (let d = sub; d.startsWith(root + sep); d = dirname(d)) if (existsSync(join(d, MANIFEST_FILE))) return d;
+    return null;
   };
-  const packages = packageSkillFolders(root)
-    .filter((f) => !ownProject(f.sub))
-    .map((f) => f.location);
-  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packages.map((dir) => ({ dir, top: false }))];
-  return folders.flatMap(({ dir, top }) => {
+  const packages = packageSkillFolders(root).flatMap((f) => {
+    const own = projectOf(f.sub);
+    return own && opened.has(realNative(own) ?? own) ? [] : [{ dir: f.location, top: false, own }];
+  });
+  // One per real folder, the top's first: a package folder that links to the top one (or another) is that same folder.
+  const seen = new Set<string>();
+  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true, own: null as string | null })), ...packages].filter(({ dir }) => {
+    const real = realNative(join(root, dir)) ?? join(root, dir);
+    return seen.has(real) ? false : (seen.add(real), true);
+  });
+  return folders.flatMap(({ dir, top, own }) => {
     const folder = join(root, dir);
     // A folder that links out of the repo isn't the repo's: its broken links are reported where it really is.
     if (!isDir(folder) || notWritable(root, dir)) return [];
@@ -184,16 +192,19 @@ function brokenLinksIn(root: string): Issue[] {
         },
       };
       // Package folders too: a link committed there is the team's to remove, asked first.
-      git ??= gitInfo(root, packages);
-      const tracked = ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+      git ??= gitInfo(root, packages.map((p) => p.dir));
+      // Asked where the link really is: a folder reached through another link isn't what git lists.
+      const realPlace = relative(realNative(root) ?? root, join(realNative(folder) ?? folder, name)).split(sep).join("/");
+      const tracked = ["committed", "changed"].includes(git?.of(realPlace) ?? "") || ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+      const pinnedThere = own ? ` ${relativeTo(root, own)} has its own skilllib.json: if it records this link, skilllib sync there puts it back instead.` : "";
       return [
         {
           id: `broken:${root}:${dir}/${name}`,
           severity: "problem",
           title: `${name}: broken link in ${where}/${dir}`,
-          detail: `It points at ${existsSync(path) ? "a file, not a skill folder" : "a folder that no longer exists"}, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}`,
+          detail: `It points at ${existsSync(path) ? "a file, not a skill folder" : "a folder that no longer exists"}, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}${pinnedThere}`,
           at: rows(root, [name]),
-          ...(tracked ? { choices: [remove] } : { fix: remove }),
+          ...(tracked || own ? { choices: [remove] } : { fix: remove }),
         },
       ];
     });
@@ -259,6 +270,7 @@ export function findIssues(
     at: [{ root, skill: "" }],
   }));
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
+  const openedProjects = new Set(projects.map((p) => realNative(p) ?? p));
   issues.push(...grokDiffers(projects, machine, (root) => statuses.get(root)!));
   const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
@@ -533,7 +545,7 @@ export function findIssues(
   for (const root of projects) {
     const where = basename(root);
     const status = statuses.get(root)!;
-    issues.push(...brokenLinksIn(root));
+    issues.push(...brokenLinksIn(root, openedProjects));
     // sync restores a missing folder from your library: the pinned content, found by its hash. A skill the
     // library doesn't have, or a pin from another library, can't come back that way.
     const pins = readManifest(root).skills;
@@ -614,10 +626,9 @@ export function findIssues(
         title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
         detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.${
           yours
-            ? ` ${drifted
-                .filter((s) => untrackable(s))
-                .map((s) => s.name)
-                .join(", ")}: ${untrackable(drifted.find((s) => untrackable(s))!)}, so skilllib can't pin the version that's there; it may be edits you copied into Your skills on purpose, and stays unless you choose this.`
+            ? ` ${[...new Set(drifted.flatMap((s) => (untrackable(s) ? [untrackable(s)!] : [])))]
+                .map((why) => `${drifted.filter((s) => untrackable(s) === why).map((s) => s.name).join(", ")}: ${why}`)
+                .join("; ")}, so skilllib can't pin the version that's there; ${drifted.filter((s) => untrackable(s)).length === 1 ? "it may be edits you copied into Your skills on purpose, and stays" : "they may be edits you copied into Your skills on purpose, and stay"} unless you choose this.`
             : ""
         }`,
         at: rows(root, drifted.map((s) => s.name)),

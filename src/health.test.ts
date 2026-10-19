@@ -850,7 +850,7 @@ test("stopping a global copy waits for every repo holding the skill, not only th
   const twice = findIssues([app1, app2], machineSkills(), new Set(["alpha"])).find((i) => i.id === "twice:alpha")!;
   expect(twice.title).toBe("alpha: in app2 and also loaded globally");
   expect(twice.choices).toBeUndefined();
-  expect(twice.detail).toContain("Claude Code in app1 only sees the global copy: give that repo a copy of its own");
+  expect(twice.detail).toContain("Claude Code in app1 only sees the global copy: give app1 a copy of its own");
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
 
@@ -1015,4 +1015,29 @@ test("a package with its own skilllib.json reports its broken links in its own s
   const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/zz`)!;
   expect(broken.fix).toBeUndefined();
   expect(broken.choices!.map((c) => c.label)).toEqual(["Remove the link"]);
+});
+
+test("a package folder that links to the repo's own folder is that folder: one issue, and a committed link stays a choice", () => {
+  const repo = join(tmp, "repo");
+  mkdirSync(join(repo, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(repo, ".claude", "skills", "foo"));
+  mkdirSync(join(repo, "packages", "web"), { recursive: true });
+  symlinkSync(join(repo, ".claude"), join(repo, "packages", "web", ".claude"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "links"], { cwd: repo });
+  const broken = findIssues([repo], machineSkills(), new Set()).filter((i) => i.id.startsWith("broken:"));
+  expect(broken.map((i) => i.id)).toEqual([`broken:${repo}:.claude/skills/foo`]);
+  expect(broken[0]!.fix).toBeUndefined();
+});
+
+test("a package with its own skilllib.json you haven't opened: its broken link is reported from the repo, as a choice", () => {
+  const mono = join(tmp, "mono");
+  const web = join(mono, "packages", "web");
+  mkdirSync(join(web, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(web, "skilllib.json"), "{}\n");
+  symlinkSync(join(tmp, "gone"), join(web, ".claude", "skills", "zz"));
+  const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/zz`)!;
+  expect(broken.fix).toBeUndefined();
+  expect(broken.detail).toContain("packages/web has its own skilllib.json");
 });

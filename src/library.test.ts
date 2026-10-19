@@ -1019,7 +1019,7 @@ test("global move never unloads a skill an agent in another repo only ever saw g
   rememberProjects([app1, project]);
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false, changes: [] });
-  expect(mv!.reason).toBe("nothing moved: Claude Code in app1 only sees the global copy: give that repo a copy of its own (skilllib add, sync or link there), or keep alpha global (skilllib global keep)");
+  expect(mv!.reason).toBe("nothing moved: Claude Code in app1 only sees the global copy: give app1 a copy of its own (skilllib add, sync or link there), or keep alpha global (skilllib global keep)");
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
   expect(readManifest(project).skills).toEqual({});
 });
@@ -1289,4 +1289,33 @@ test("a package that pins a skill holds it with no skills folder at all, unless 
   expect(blind([mono, web])).toEqual([["web", "claude-code"]]); // once, though web is also asked about as a root
   writeSkill(join(mono, ".claude", "skills", "g1"), "top"); // the repo's top copy serves its packages
   expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono])).toEqual([]);
+});
+
+test("a package served by a copy in an enclosing package or the repo's top isn't blind, however it's asked about", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  const a = join(mono, "packages", "a");
+  const sub = join(a, "sub");
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(a, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  writeSkill(join(a, ".claude", "skills", "g1"), "a's");
+  writeFileSync(join(sub, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const copies = [{ path: entry, harnesses: ["claude-code" as const] }];
+  expect(blindWithoutGlobal("g1", copies, [mono])).toEqual([]);
+  expect(blindWithoutGlobal("g1", copies, [mono, sub])).toEqual([]);
+});
+
+test("an opened package is served by its repo's top copy even when only the package is asked about", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  mkdirSync(join(mono, ".git"), { recursive: true });
+  writeSkill(join(mono, ".claude", "skills", "g1"), "top");
+  const web6 = join(mono, "packages", "web6");
+  mkdirSync(web6, { recursive: true });
+  writeFileSync(join(web6, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [web6])).toEqual([]);
 });
