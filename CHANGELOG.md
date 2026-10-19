@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.11.5](https://github.com/atralice/skillLib/compare/v1.11.4...v1.11.5) (2026-10-19)
+
+Fixes from a final full regression run and a code review after 1.11.4.
+
+### Fixes
+* Two committed copies of a skill that differ: doctor's "Keep the … copy" works again (in 1.11.4 it could change nothing with Claude Code, Codex or Cursor alone), and says git will see it; `tidy --keep` does the same. A keep that would change nothing is never offered.
+* The app's "unused" hint counts a plugin's copy (`/plugin:skill`) for the skill, as doctor does.
+* `global move` no longer tells you to pass `--force`, which `global` doesn't take: it says what to change in the repo instead.
+* "Replace with your copies" keeps your own global copy when it differs from the plugin's, as doctor's plugin removal does.
+* A transcript that's a looping link or a pipe is skipped: `usage`, `doctor` and `status` no longer fail or hang on one.
+* A skill removed outside the app since it loaded says so, instead of an error about `undefined`.
+* The tidy backup path printed follows `SKILLLIB_HOME`; the README says doctor copies a plugin's other skills, not all of them.
+
 ## [1.11.4](https://github.com/atralice/skillLib/compare/v1.11.3...v1.11.4) (2026-10-19)
 
 A reliability release from many rounds of review. Nothing new to learn; skilllib is now much harder to make lose a skill, leave a change half done, or write somewhere it shouldn't.
