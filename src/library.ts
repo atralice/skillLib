@@ -113,7 +113,8 @@ function syncDone(root: string, name: string, dep: Dependency): boolean {
 
 /** A link's place: "ok" (it reaches `to`), "free" (nothing there, or a link to nothing), or "taken" (anything else). */
 function slotAt(link: string, to: string): "ok" | "free" | "taken" {
-  if (isLink(link) && realpathOrNull(link) === null) return "free";
+  // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
+  if (isLink(link) && !isDir(link)) return "free";
   if (!entryExists(link)) return "free";
   return isLink(link) && realpathOrNull(link) === realpathOrNull(to) ? "ok" : "taken";
 }
@@ -124,10 +125,12 @@ function slotAt(link: string, to: string): "ok" | "free" | "taken" {
  * recorded link goes. doctor reports these instead of offering a sync that can't succeed.
  */
 export function syncBlocker(root: string, name: string, dep: Dependency | undefined = readManifest(root).skills[name]): string | null {
-  if (!dep || syncDone(root, name, dep)) return null;
+  if (!dep) return null;
   const dir = dep.dir ?? PROJECT_SKILLS_DIR;
+  // Before "already as pinned": through a folder that links out of the repo, what looks pinned isn't the repo's.
   const stuck = firstStuck(root, [dir, ...(dep.links ?? [])]);
   if (stuck) return blockerSaid(root, stuck);
+  if (syncDone(root, name, dep)) return null;
   const copy = join(root, dir, name);
   if (fileAt(copy)) return `${dir}/${name} is a file, not a skill folder`;
   // What's at each recorded link's place: a link to nothing (or a file) is put back; a link to a version your
@@ -167,6 +170,29 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
 }
 
 /**
+ * Where an agent would lose a skill if its global copy stopped loading: in each of `roots` that holds it, the agents
+ * that read the global copy (`readers`) but no copy in the repo (a link git held back, something in the way). Codex
+ * never reads ~/.claude/skills, so it loses nothing there. Nested copies load in their package: only the root counts.
+ * doctor's "Stop loading it globally" and global move both ask this, of every repo they know.
+ */
+export function blindWithoutGlobal(name: string, readers: Iterable<HarnessId>, roots: string[]): { root: string; id: HarnessId }[] {
+  const read = new Set(readers);
+  const holds = (root: string) => {
+    try {
+      // A pin whose folder is missing counts: its agents run the global copy until sync puts it back.
+      return projectStatus(root).some((s) => s.name === name);
+    } catch {
+      return false; // a skilllib.json that can't be read: its own issue
+    }
+  };
+  // Only the repo's own folders: one that links out of the repo (.claude -> ~/.claude) reaches the global copy itself.
+  const seesHere = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => writableDir(root, d) && existsSync(join(root, d, name, "SKILL.md")));
+  // One per real folder: a repo named two ways (a link, ~) is still one repo.
+  const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
+  return unique.filter(holds).flatMap((root) => enabledHarnesses().flatMap((id) => (read.has(id) && !seesHere(root, id) ? [{ root, id }] : [])));
+}
+
+/**
  * [real-copy folder, ...link folders] for a skill. An existing install keeps
  * its folder (switching harnesses never moves it), and so does an untracked
  * real copy being adopted, so tracking never leaves two copies. Links are
@@ -203,7 +229,9 @@ export function projectStatus(root: string): ProjectSkill[] {
   const managed = Object.entries(skills).map(([name, dep]): ProjectSkill => {
     const location = dep.dir ?? PROJECT_SKILLS_DIR;
     const path = join(root, location, name);
-    const local = treeHash(path);
+    // A pinned folder outside the repo (.claude -> ~/.claude) holds someone else's copy (your global one, say), not the
+    // repo's: the repo's is missing, and sync can't put it there (syncBlocker says why).
+    const local = notWritable(root, location) ? null : treeHash(path);
     const latest = latestVersion(name);
     // Edits are content your library has no version of; another known version is just out of sync.
     const known = local !== null && local !== dep.hash && versionForHash(name, local) !== null;
@@ -394,7 +422,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
       continue;
     }
     // This agent can't see the skill, so whatever is there isn't it: a link to nothing is replaced, anything else stays.
-    const broken = isLink(link) && realpathOrNull(link) === null;
+    const broken = isLink(link) && !isDir(link);
     if (entryExists(link) && !broken) {
       stuck(`${dir}/${name}`);
       continue;
@@ -598,7 +626,8 @@ export function addSkill(
   return {
     name,
     action:
-      !recorded && local === null
+      // Nothing of it was there (or only an identical untracked copy, now tracked): installed, not updated.
+      !recorded || local === null
         ? "installed"
         : backedUp && from === target.version
           ? "reset"
@@ -628,7 +657,16 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   // Content your library has a version of can be deleted; anything else is kept in a backup.
   const inLibrary = local !== null && versionForHash(name, local) !== null;
   const edited = local !== null && local !== recorded.hash && !inLibrary;
-  if (edited && !force) return { name, action: "skipped", reason: "has local edits (use --force to delete anyway)" };
+  if (edited && !force)
+    return {
+      name,
+      action: "skipped",
+      // A pin from another library isn't an edit of yours: say what it is. Either way --force backs the copy up first.
+      reason:
+        versionForHash(name, recorded.hash) === null
+          ? "doesn't match what skilllib.json pins, and your library has neither (use --force to remove it; it's backed up first)"
+          : "has local edits (use --force to delete anyway; they're backed up first)",
+    };
   // Only its own links (or ones to nothing): a link there now to another copy (the team's) isn't this skill's.
   for (const linkDir of recorded.links ?? []) {
     const link = join(root, linkDir, name);
@@ -665,10 +703,11 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   if (blocker) return [{ name, action: "skipped", reason: `${blocker}: move it, then sync` }];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
-  // Another version your library has isn't an edit: sync puts the pinned one back without --force.
-  if (local !== null && local !== dep.hash && versionForHash(name, local) === null && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
+  // What it would put back first: with no version to install, --force can't help, so it isn't suggested.
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
+  // Another version your library has isn't an edit: sync puts the pinned one back without --force.
+  if (local !== null && local !== dep.hash && versionForHash(name, local) === null && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
   // Like `npm ci`: put the pinned content back where skilllib.json says, with its recorded links, and never
   // rewrite skilllib.json (it's shared, often committed). Forced edits go to a backup first.
   const backedUp = local !== null && versionForHash(name, local) === null ? stash(copy, "edit-backup") : undefined;

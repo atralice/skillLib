@@ -107,7 +107,8 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
   return changes.map((c): ChangeJson => {
     const dep = c.action !== "removed" && c.action !== "skipped" ? skills[c.name] : undefined;
-    return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])] } : c;
+    // The folders it's in now: a recorded link something is in the way of isn't one of them.
+    return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? []).filter((d) => !c.inTheWay?.includes(`${d}/${c.name}`))] } : c;
   });
 }
 
@@ -789,7 +790,12 @@ export function link(args: Args) {
     const res = linkAll(root, { allowTracked: args.allowTracked });
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
-    else if (!args.all && !res.blocked.length && !res.uncommitted.length && !res.inTheWay.length) success("Every skill here is already usable by all your agents");
+    else if (!args.all && !res.blocked.length && !res.uncommitted.length && !res.inTheWay.length) {
+      // A pinned skill whose folder isn't there (or is a file) loads for no agent: that's sync's to fix, not link's.
+      const missing = projectStatus(root).filter((s) => s.state === "folder missing").map((s) => s.name);
+      if (missing.length) warn(`Nothing to link; ${missing.join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} installed here (skilllib sync, or skilllib doctor says what's in the way)`);
+      else success("Every skill here is already usable by all your agents");
+    }
     if (res.inTheWay.length) {
       process.exitCode = 1;
       error(`${label}some skills weren't linked everywhere: ${inTheWaySaid(root, res.inTheWay)}. Clear the way, then link again`);
