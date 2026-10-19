@@ -1055,3 +1055,18 @@ test("a link reached through a package folder linked into an opened sub-project 
   const ids = findIssues([mono, api], machineSkills(), new Set()).map((i) => i.id).filter((id) => id.startsWith("broken:"));
   expect(ids).toEqual([`broken:${api}:.claude/skills/zz`]);
 });
+
+test("a committed broken link at the top is asked first even when a package's skills folder links to a shared folder outside the repo", () => {
+  const repo = join(tmp, "repo");
+  mkdirSync(join(repo, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(repo, ".claude", "skills", "foo"));
+  mkdirSync(join(tmp, "devskills"));
+  mkdirSync(join(repo, "packages", "web", ".claude"), { recursive: true });
+  symlinkSync(join(tmp, "devskills"), join(repo, "packages", "web", ".claude", "skills"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "links"], { cwd: repo });
+  const broken = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `broken:${repo}:.claude/skills/foo`)!;
+  expect(broken.fix).toBeUndefined();
+  expect(broken.detail).toContain("Git tracks the link");
+});

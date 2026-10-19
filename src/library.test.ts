@@ -1199,7 +1199,7 @@ test("a package's link to the global copy doesn't block when the repo's top has 
   // Without the top copy, the package's link is what to fix, and the advice says so.
   rmSync(join(mono, ".claude", "skills", "foo"), { recursive: true });
   const blind = blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [mono]);
-  expect(blindSaid("foo", blind)).toBe("Claude Code in web only sees the global copy: give packages/web/.claude/skills/foo a copy of its own instead of a link to the global one, or keep foo global (skilllib global keep)");
+  expect(blindSaid("foo", blind)).toBe("Claude Code in web only sees the global copy: give .claude/skills/foo in web a copy of its own instead of a link to the global one, or keep foo global (skilllib global keep)");
 });
 
 test("the advice names the link to change: in a shared folder of yours, not the repo's link to that folder", () => {
@@ -1346,7 +1346,7 @@ test("an opened package's own link to the global copy is named, and said as left
   writeFileSync(join(web7, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
   const copies = [{ path: entry, harnesses: ["claude-code" as const], links: [] }];
   // No top copy: the package's own link is what to change.
-  expect(blindSaid("g1", blindWithoutGlobal("g1", copies, [web7]))).toContain("give .claude/skills/g1 a copy of its own instead of a link to the global one");
+  expect(blindSaid("g1", blindWithoutGlobal("g1", copies, [web7]))).toContain("give .claude/skills/g1 in web7 a copy of its own instead of a link to the global one");
   // A top copy serves it: the move goes ahead, and the link it leaves is said.
   writeSkill(join(mono, ".claude", "skills", "g1"), "top");
   expect(blindWithoutGlobal("g1", copies, [web7])).toEqual([]);
@@ -1362,4 +1362,18 @@ test("a package that pins a skill four folders deep is still found", () => {
   mkdirSync(deep, { recursive: true });
   writeFileSync(join(deep, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
   expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono]).map((b) => basename(b.root))).toEqual(["c"]);
+});
+
+test("a link a move leaves is said once, though a repo and its opened package are both asked about", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  mkdirSync(join(mono, ".git"), { recursive: true });
+  writeSkill(join(mono, ".claude", "skills", "g1"), "top");
+  const web7 = join(mono, "packages", "web7");
+  mkdirSync(join(web7, ".claude", "skills"), { recursive: true });
+  symlinkSync(entry, join(web7, ".claude", "skills", "g1"));
+  writeFileSync(join(web7, "skilllib.json"), "{}\n");
+  expect(strandedLinks("g1", [{ path: entry, links: [] }], [mono, web7])).toEqual(["packages/web7/.claude/skills/g1 in mono"]);
 });
