@@ -4,7 +4,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, lstatSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
@@ -20,6 +20,7 @@ import {
   librarySkills,
   inTheWaySaid,
   linkEverywhere,
+  notWritable,
   listBackups,
   movedTogether,
   projectStatus,
@@ -28,7 +29,6 @@ import {
   librarySkillDir,
   projectsUsing,
   removeUntracked,
-  syncBlocker,
   restoreBackup,
   updateProject,
   type Backup,
@@ -272,7 +272,7 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" 
 /** What a change did, in a few words. */
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
-  if (c.action === "removed") return `Removed ${c.name} from ${repo}`;
+  if (c.action === "removed") return `Removed ${c.name} from ${repo}${c.reason ? ` (${c.reason})` : ""}`;
   if (c.action === "unchanged") return `${c.name}${c.to ? ` v${c.to}` : ""} is already in ${repo}`;
   if (c.action === "relinked") return `Linked ${c.name}${c.to ? ` v${c.to}` : ""} for your other agents in ${repo}`;
   // An older version picked from Other versions… isn't an update.
@@ -371,8 +371,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     // Whatever --force would get past (edits, a pin from another library, another copy in the way): offer it here.
     c.action === "skipped" && !!c.reason?.includes("--force")
       ? {
-          message: `${c.name} in ${repo} has local edits`,
-          then: { label, preview: `Your edits to ${c.name} in ${repo} go to Settings › Backups.`, run: () => result(force(), repo) },
+          message: `${c.name} in ${repo}: ${c.reason!.replace(/ \(use --force[^)]*\)$/, "")}`,
+          then: { label, preview: `What's there now in ${repo} goes to Settings › Backups first.`, run: () => result(force(), repo) },
         }
       : result(c, repo);
   const toLibrary = (path: string) => {
@@ -409,7 +409,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const label = (root: string) => repos[repoRoots.indexOf(root)]!;
       const sourced = skills.map((m) => ({ ...m, harnesses: m.agents }));
       // A skill an agent in some repo would only have seen globally never moves (see moveGlobalSkills): it stays global, said.
-      const attempt = (names?: string[]) => moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label });
+      const attempt = (names?: string[]) =>
+        moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "the app asks to add those links" });
       const said = (results: ReturnType<typeof attempt>) => {
         const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
         const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
@@ -418,7 +419,10 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const results = attempt();
       const { moved, text } = said(results);
       // Added, but git held a link back where it tracks the folder: ask once to link there, then finish the move.
-      const held = results.filter((mv) => !mv.moved).flatMap((mv) => mv.changes.flatMap(([root, c]) => (c.blocked?.length ? [{ repo: label(root), name: mv.name, blocked: c.blocked }] : [])));
+      // Only for a skill that allowing those links would finish: added everywhere, nothing in the way, no copy git doesn't share.
+      const finishable = (mv: (typeof results)[number]) =>
+        !mv.moved && mv.changes.length > 0 && mv.changes.every(([, c]) => c.action !== "skipped" && !c.inTheWay?.length && !c.uncommitted?.length) && mv.changes.some(([, c]) => c.blocked?.length);
+      const held = results.filter(finishable).flatMap((mv) => mv.changes.flatMap(([root, c]) => (c.blocked?.length ? [{ repo: label(root), name: mv.name, blocked: c.blocked }] : [])));
       if (held.length) {
         const ask = allowTracked(held);
         const names = [...new Set(held.map((h) => h.name))];
@@ -497,7 +501,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const from: string[] = [];
       for (const root of using) {
         const s = projectStatus(root).find((x) => x.name === name && x.managed);
-        if (s && existsSync(s.path) && !syncBlocker(root, name)?.outside) removeUntracked(root, name, s.path);
+        // Its copy to the backups first, unless its own folder isn't the repo's (remove then drops just the pin).
+        if (s && existsSync(s.path) && !notWritable(root, relative(root, dirname(s.path)).split(sep).join("/"))) removeUntracked(root, name, s.path);
         const c = removeSkill(root, name, { force: true });
         if (c.action === "skipped") return failed(`${name}: ${c.reason}${from.length ? `; removed from ${from.join(", ")} so far` : ""}`);
         from.push([...roots].find(([, r]) => r === root)?.[0] ?? basename(root));

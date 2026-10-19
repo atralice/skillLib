@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindWithoutGlobal, blockerSaid, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, linksOut, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -696,7 +696,7 @@ export function findIssues(
       const who = agentNames(enabledIds.filter((id) => notWritable(root, harness(id).projectDirs[0]!) === blocker));
       // A folder that links out of the repo is a setup of yours: its skills load, they just aren't the repo's. Said
       // once, so a refused add here has its reason; a file or a link to nothing is a problem.
-      const out = isDir(join(root, blocker));
+      const out = linksOut(root, blocker);
       issues.push({
         id: `notdir:${root}:${blocker}`,
         severity: out ? "suggestion" : "problem",
@@ -958,6 +958,8 @@ export function findIssues(
     }
   }
 
+  // Every repo you have, not only this scan's (status --json scans just the one you're in): who'd lose a global skill.
+  const everyRepo = [...projects, ...knownProjects()];
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
   for (const [name, copies] of alsoGlobal) {
@@ -1007,9 +1009,8 @@ export function findIssues(
     const movable = machine.find((m) => m.name === name && m.movable);
     // Stopping it globally only when no agent in any repo you have would lose it (see blindWithoutGlobal), not only
     // the repos listed here: status --json scans just the one you're in. Otherwise no choice that can't succeed: why.
-    const readers = machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses);
-    const blind = movable ? blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`) : [];
-    const blindSaid = `${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy: give ${blind.length === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there), then stop loading it globally`;
+    const doomed = machine.filter((x) => x.name === name && x.movable);
+    const blind = movable ? blindWithoutGlobal(name, doomed, everyRepo) : [];
     issues.push({
       at,
       id: `twice:${name}`,
@@ -1021,7 +1022,7 @@ export function findIssues(
         !movable
           ? `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`
           : blind.length
-            ? `${blindSaid}, or keep it global on purpose (skilllib global keep).`
+            ? `${blindSaid(name, blind)}.`
             : "Stop loading it globally, or keep it global on purpose (skilllib global keep)."
       }`,
       choices:
@@ -1032,8 +1033,8 @@ export function findIssues(
                 hint: "restorable with skilllib restore",
                 run: () => {
                   // Checked again: a repo may have changed since.
-                  const now = blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
-                  if (now.length) throw new Error(`${name}: ${now.join(", ")} ${now.length === 1 ? "only sees" : "only see"} the global copy; give ${now.length === 1 ? "that repo" : "those repos"} a copy of its own first (skilllib add, sync or link there)`);
+                  const now = blindWithoutGlobal(name, doomed, everyRepo);
+                  if (now.length) throw new Error(`${name}: ${blindSaid(name, now)}`);
                   if (!libraryNames.has(name)) importSkill(movable.path);
                   for (const m of machine.filter((x) => x.name === name && x.movable)) {
                     const r = unloadGlobal(m.path, m.links);
@@ -1122,7 +1123,12 @@ export function usageIssues(
       detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
         unused.some((s) => !s.managed) ? " The repo's own skills are the team's: remove those in the repo if nobody needs them." : ""
       }${
-        unused.some((s) => s.managed && !removable.includes(s)) ? ` ${unused.filter((s) => s.managed && !removable.includes(s)).map((s) => s.name).join(", ")}: edited, not in your library, or blocked; its other issues say what to do first.` : ""
+        unused.some((s) => s.managed && !removable.includes(s))
+          ? ` Not offered: ${unused
+              .filter((s) => s.managed && !removable.includes(s))
+              .map((s) => `${s.name} (${s.state.startsWith("edited") ? "edited" : s.state === "not in library" ? "not in your library" : "something is in sync's way"})`)
+              .join(", ")}; their own issues say what to do first.`
+          : ""
       }`,
       at: rows(root, unused.map((s) => s.name)),
       choices: removable.length

@@ -162,7 +162,7 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo. If you keep it global on purpose, remove the repo copies skilllib installed instead |
+| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo, so it's offered only when no agent in any of your repos would then lack the skill (otherwise the issue says who, and what to do first). If you keep it global on purpose, remove the repo copies skilllib installed instead |
 | **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
 | **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
 | **Not the pinned version** (the copy is another version from your library, e.g. after a pull) | Install the pinned versions (`sync`; a choice when the copies are committed) |
@@ -184,7 +184,7 @@ These are the issues `skilllib doctor` reports, with the same fixes and choices.
   - Claude Code, with or without Cursor or Grok: `.claude/skills/<name>`.
   - Cursor, Codex, Zed or Grok without Claude Code: `.agents/skills/<name>`.
   - Claude Code plus Codex or Zed: the copy goes in `.agents/skills`, with a link in `.claude/skills`. Claude Code only reads `.claude/skills`, and Codex and Zed don't read it.
-- **Remove from repo** deletes that copy and its links; your library keeps it. Where skilllib doesn't write (a skills folder that links out of the repo, or a file where the copy goes), it drops just the pin and touches no file. In the app, an untracked copy goes to Settings › Backups instead (`skilllib remove` only removes skills skilllib manages). If you edited a tracked skill here, skilllib asks first, and the edits go to Settings › Backups.
+- **Remove from repo** deletes that copy and its links; your library keeps it. When the copy itself sits where skilllib doesn't write (a skills folder that links out of the repo, or a file where the copy goes), it drops just the pin and leaves that copy as it is; a link in such a folder is left too, and said. In the app, an untracked copy goes to Settings › Backups instead (`skilllib remove` only removes skills skilllib manages). If you edited a tracked skill here, skilllib asks first, and the edits go to Settings › Backups.
 - **The repo's own skills are never deleted by skilllib.** You can copy them into your library, or link them so every agent sees them.
 - **Git-tracked folders:** if the repo commits the folder a link would go into (common for `.agents/skills`), the app asks once and remembers your yes for that repo (in `~/.skilllib/config.json`, `agentsDirOk`); on the command line, `--allow-tracked` allows it for that one command (doctor's *Add links everywhere* choice remembers it, as the app does). If you say no, it tells you which agents can't see the skill there. A skill whose copy git doesn't share (not committed, and not in a folder the repo commits) never gets a link in a committed folder: teammates would get a broken link.
 
@@ -273,7 +273,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 | A Claude Code plugin with the same skill | Your skill wins. skilllib copies all the plugin's skills into Your skills, then removes the plugin or turns it off (`claude plugin uninstall` / `disable`). If the plugin also brings MCP servers, hooks, agents or commands, turning it off is the default. When the overlap is in one repo, you can instead turn the plugin off only there (in its `.claude/settings.local.json`: Claude Code makes git ignore it when it writes it; without the `claude` command, skilllib writes the file itself and makes git ignore it), or remove your copy from that repo. If the repo commits its copy, it's the team's: skilllib never offers to remove it. A plugin that a repo's own `.claude/settings.json` turns on counts only in that repo. Cursor ignores repo settings: after a repo turns the plugin off, Cursor still lists both there, and only turning the plugin off or removing it changes that. |
 | A Cursor plugin with the same skill | Reported only. Turn the plugin off in Cursor. |
 | A repo copy of a skill you keep global | The repo copy is the extra one: remove it, or stop loading the skill globally after all. Claude Code runs the global copy anyway. |
-| A repo's own skill that also loads globally | Stop loading it globally. The repo's copy is the team's, so skilllib never offers to remove it. |
+| A repo's own skill that also loads globally | Stop loading it globally (when no agent in any of your repos would then lack it). The repo's copy is the team's, so skilllib never offers to remove it. |
 
 - **It never moves a real copy.** `skilllib.json` is shared, so a move for your agents could break a teammate's.
 - **It never adds links.** That's `skilllib link`, or the *Not every agent can use it* issue's fix.

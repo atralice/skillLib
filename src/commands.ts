@@ -929,7 +929,8 @@ export function tidy(args: Args) {
     const plans = report.plans.filter((p) => !names.length || names.includes(p.name));
     const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
     // A skill you named that tidy has to leave alone isn't done: said below, and the command exits 1.
-    const skippedNamed = names.length ? report.skipped.filter((x) => names.includes(x.name)) : [];
+    // Only one left differing from the rest: a lone link out of the repo has nothing to tidy.
+    const skippedNamed = names.length ? report.skipped.filter((x) => names.includes(x.name) && x.differs) : [];
     if (skippedNamed.length) process.exitCode = 1;
     if (!plans.length && !conflicts.length && !skippedNamed.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
     for (const plan of plans) {

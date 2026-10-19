@@ -115,7 +115,7 @@ test("moving to a repo that commits Claude Code's folder keeps it global until y
   let w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
   if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks the folder its link goes in), so it still loads globally");
+  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks .claude/skills: the app asks to add those links), so it still loads globally");
   expect(r.then.label).toBe("Also link them in .claude/skills, then stop loading them globally");
   for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
 
@@ -146,7 +146,7 @@ test("moving to a repo where a link would break for teammates keeps it global, s
   const w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-a"), ["app"]);
   expect(r).toMatchObject({ failed: true });
-  expect(said(r)).toContain("commit the skill's copy in the repo");
+  expect(said(r)).toContain("git tracks .claude/skills but not the skill's copy: commit it");
   expect(existsSync(join(tmp, ".claude", "skills", "tool-a", "SKILL.md"))).toBe(true);
 });
 
