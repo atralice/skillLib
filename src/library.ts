@@ -502,12 +502,12 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * restores missing folders and reverts nothing that was edited (forced, it
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
-export function syncProject(root: string, { force = false } = {}): Change[] {
-  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force }));
+export function syncProject(root: string, { force = false, allowTracked = false } = {}): Change[] {
+  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force, allowTracked }));
 }
 
 /** `syncProject` for one skill: nothing when it's already as pinned. */
-function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
+function syncSkill(root: string, name: string, { force = false, allowTracked = false } = {}): Change[] {
   const dep = readManifest(root).skills[name];
   if (!dep) return [];
   const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
@@ -520,7 +520,7 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
-  const change = addSkill(root, name, { force: true, version });
+  const change = addSkill(root, name, { force: true, version, allowTracked });
   return [{ ...change, action: local === null ? "installed" : change.action }];
 }
 
@@ -561,7 +561,7 @@ export function discardEdits(root: string, name: string): Change {
 }
 
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
-export function updateProject(root: string, names?: string[], { force = false } = {}): Change[] {
+export function updateProject(root: string, names?: string[], { force = false, allowTracked = false } = {}): Change[] {
   const { skills } = readManifest(root);
   return Object.keys(skills)
     .filter((name) => !names || names.includes(name))
@@ -573,7 +573,7 @@ export function updateProject(root: string, names?: string[], { force = false } 
       if (dep.hash === latest.hash && local === latest.hash) return [];
       // Already on the newest version: local edits are `sync --force`'s business, not an update's.
       if (dep.hash === latest.hash && local !== null && !force) return [];
-      const change = addSkill(root, name, { force });
+      const change = addSkill(root, name, { force, allowTracked });
       return change.action === "skipped" || change.from !== change.to || local !== latest.hash ? [change] : [];
     });
 }
