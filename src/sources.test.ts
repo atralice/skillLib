@@ -225,3 +225,22 @@ test.skipIf(process.platform === "win32")("a skill imported from a temporary fol
     rmSync(join("/tmp", `skilllib-origin-${process.pid}`), { recursive: true, force: true });
   }
 });
+
+test("a stray file in ~/.claude/skills/synced is not a claude.ai bucket", () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-synced-"));
+  const realHome = process.env.HOME;
+  process.env.HOME = dir;
+  process.env.SKILLLIB_HOME = join(dir, "home");
+  process.env.CLAUDE_CONFIG_DIR = join(dir, ".claude");
+  try {
+    setHarnesses(["claude-code"]);
+    skill(join(dir, ".claude", "skills", "synced", "bucket", "pdf"));
+    writeFileSync(join(dir, ".claude", "skills", "synced", ".DS_Store"), "");
+    writeFileSync(join(dir, ".claude", "skills", "synced", "notes.txt"), "");
+    expect(machineSkills().map((s) => [s.kind, s.name])).toEqual([["claude.ai", "pdf"]]);
+  } finally {
+    process.env.HOME = realHome;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

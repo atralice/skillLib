@@ -424,6 +424,22 @@ test("usage hints: skills a repo hasn't used, and library skills in no repo; ski
   expect(usageIssues([project], machineSkills(), library, { ...none, days: 0 })).toEqual([]);
 });
 
+test("removing a managed skill says git will see it when only skilllib.json is committed", () => {
+  const project = join(tmp, "web");
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha");
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: project, stdio: "ignore" });
+  git("init", "-q");
+  writeFileSync(join(project, ".gitignore"), ".claude/\n");
+  git("add", ".");
+  git("commit", "-qm", "pins");
+  Bun.sleepSync(5);
+  const none = { inProject: () => 0, total: () => 0, days: 0 };
+  const [unused] = usageIssues([project], machineSkills(), new Set(["alpha"]), none);
+  expect(unused?.choices?.[0]?.hint).toEndWith("; git will see it");
+});
+
 test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link for Claude Code", () => {
   setHarnesses(["claude-code", "codex"]);
   skill(join(tmp, ".agents", "skills", "shared"));
@@ -723,4 +739,25 @@ test("a kept-global skill's repo copy isn't offered for removal when an agent re
   const twice = findIssues([project], machineSkills(), new Set(["review"])).find((i) => i.id === "twice:review");
   expect(twice?.choices).toBeUndefined();
   expect(twice?.detail).toContain("Claude Code");
+});
+
+test("a file where a skills folder goes, and other content behind a link, are reported", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "web");
+  mkdirSync(join(project, ".claude"), { recursive: true });
+  writeFileSync(join(project, ".claude", "skills"), "x");
+  skill(join(project, ".agents", "skills", "notes"));
+  let issues = findIssues([project], machineSkills(), new Set());
+  const notdir = issues.find((i) => i.id === `notdir:${project}:.claude/skills`);
+  expect(notdir?.title).toBe("web: .claude/skills isn't a folder");
+  // Reported, not fixed: doctor --fix has nothing to retry here.
+  expect(notdir?.fix ?? notdir?.choices).toBeUndefined();
+  expect(issues.some((i) => i.id === `usable:${project}`)).toBe(false);
+
+  rmSync(join(project, ".claude", "skills"));
+  skill(join(tmp, "elsewhere", "notes"), "other");
+  mkdirSync(join(project, ".claude", "skills"));
+  symlinkSync(join(tmp, "elsewhere", "notes"), join(project, ".claude", "skills", "notes"));
+  issues = findIssues([project], machineSkills(), new Set());
+  expect(issues.find((i) => i.id === `linkdiffers:${project}:notes`)?.title).toBe("notes in web: the copies differ");
 });

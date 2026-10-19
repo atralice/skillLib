@@ -857,3 +857,35 @@ test("sync restores what skilllib.json pins and never rewrites it", () => {
   expect(readFileSync(join(project, "skilllib.json"), "utf-8")).toBe(pinned);
   expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
 });
+
+test("add never writes through a .claude/skills link that leads out of the repo", () => {
+  const outside = join(tmp, "elsewhere");
+  mkdirSync(outside);
+  mkdirSync(join(project, ".claude"));
+  symlinkSync(outside, join(project, ".claude", "skills"));
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there first" });
+  expect(existsSync(join(outside, "alpha"))).toBe(false);
+  expect(readManifest(project).skills).toEqual({});
+});
+
+test("a file where one agent's skills folder goes stops add, link and sync there, with nothing half done", () => {
+  setHarnesses(["claude-code", "codex"]);
+  mkdirSync(join(project, ".claude"));
+  writeFileSync(join(project, ".claude", "skills"), "x");
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there first" });
+  expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+  expect(existsSync(join(project, "skilllib.json"))).toBe(false);
+
+  // A pin from before the file was there: sync says why, and never throws.
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: latestVersion("alpha")!.hash, dir: ".agents/skills", links: [".claude/skills"] } } }));
+  expect(syncProject(project)).toEqual([expect.objectContaining({ name: "alpha", action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there, then sync" })]);
+});
+
+test("update reports the version a pin's hash names, not skilllib.json's number", () => {
+  addSkill(project, "alpha");
+  writeSkill(lib("alpha"), "v2");
+  forgetLatest();
+  latestVersion("alpha");
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 9, hash: versionHistory("alpha")[0]!.hash } } }));
+  expect(updateProject(project)).toEqual([{ name: "alpha", action: "updated", from: 1, to: 2 }]);
+});

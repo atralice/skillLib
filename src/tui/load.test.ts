@@ -687,3 +687,12 @@ test("installing the skilllib skill over a folder that isn't skilllib's fails, a
   const r = loadWorld().ops.installAgentSkill();
   expect(r).toEqual(failed("skilllib skill: ~/.claude/skills/skilllib already exists and isn't skilllib's"));
 });
+
+test("opening the app in a repo remembers it, so it's still listed when opened from elsewhere", () => {
+  const other = join(tmp, "other");
+  mkdirSync(join(other, ".git"), { recursive: true });
+  process.chdir(other);
+  expect(loadWorld().projects.map((p) => p.name)).toContain("other");
+  process.chdir(tmp);
+  expect(loadWorld().projects.map((p) => p.name)).toContain("other");
+});

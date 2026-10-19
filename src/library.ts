@@ -6,7 +6,7 @@ import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnes
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
-import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
+import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { localStamp, tildify } from "./output.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
@@ -73,6 +73,19 @@ export function isLink(path: string): boolean {
  * the repo can be moved), a directory junction on Windows (no admin rights or
  * Developer Mode needed; junctions need an absolute target).
  */
+/**
+ * Whether skilllib may write into a repo skill folder (which may not exist yet): it's inside the repo, not a
+ * link out of it, and a folder, not a file (or a broken link) in the way of one.
+ */
+export function writableDir(root: string, dir: string): boolean {
+  const real = realpathOrNull(join(root, dir));
+  const top = realpathOrNull(root) ?? root;
+  if (real !== null && real !== top && !real.startsWith(top + sep)) return false;
+  // The nearest part of the path that exists must be a folder: .claude/skills, or .claude when skills isn't there.
+  for (let p = join(root, dir); p.startsWith(root + sep); p = dirname(p)) if (entryExists(p)) return isDir(p);
+  return true;
+}
+
 export function linkDir(target: string, link: string) {
   if (process.platform === "win32") symlinkSync(target, link, "junction");
   else symlinkSync(relative(dirname(link), target), link);
@@ -305,7 +318,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
     const dir = harness(id).projectDirs[0]!;
     const link = join(root, dir, name);
     // Agents can share a folder (Codex and Zed both read .agents/skills): one entry each.
-    if (entryExists(link) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
+    if (entryExists(link) || !writableDir(root, dir) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
     if (isGitTracked(root, dir)) {
       if (!(shared ??= sharedByGit(root, location, name))) {
         if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
@@ -411,7 +424,12 @@ export function addSkill(
 
   const manifest = readManifest(root);
   const recorded = manifest.skills[name];
-  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(root, name, recorded);
+  const [primary = PROJECT_SKILLS_DIR, ...wantedLinks] = dependencyDirs(root, name, recorded);
+  // A skills folder that's a link out of the repo (to ~/.claude/skills, say) isn't the repo's, and a file there isn't a folder:
+  // never write there, and never install for only some of your agents (global move would then unload a skill one still needs).
+  const stuck = [primary, ...wantedLinks].find((d) => !writableDir(root, d));
+  if (stuck) return { name, action: "skipped", reason: `${stuck} isn't a folder in the repo: move what's there first` };
+  const linkDirs = wantedLinks;
   const to = join(root, primary, name);
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
@@ -480,7 +498,8 @@ export function addSkill(
   return {
     name,
     action: !recorded && local === null ? "installed" : backedUp && recorded?.version === target.version ? "reset" : "updated",
-    ...(recorded ? { from: recorded.version } : {}),
+    // The version the pin's hash names, as everywhere else: never skilllib.json's raw number.
+    ...(recorded ? { from: versionForHash(name, recorded.hash)?.version ?? recorded.version } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),
     ...(uncommitted.length ? { uncommitted } : {}),
@@ -493,6 +512,7 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const recorded = manifest.skills[name];
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
+  if (!writableDir(root, recorded.dir ?? PROJECT_SKILLS_DIR)) return { name, action: "skipped", reason: `${recorded.dir ?? PROJECT_SKILLS_DIR} isn't a folder in the repo` };
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
@@ -531,6 +551,9 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   // Each recorded link reaches this skill's copy (not just any folder with a SKILL.md).
   const linksOk = (dep.links ?? []).every((d) => realpathOrNull(join(root, d, name)) === realpathOrNull(copy));
   if (local === dep.hash && linksOk) return [];
+  // Never half done: a copy put back whose links can't be.
+  const stuck = [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])].find((d) => !writableDir(root, d));
+  if (stuck) return [{ name, action: "skipped", reason: `${stuck} isn't a folder in the repo: move what's there, then sync` }];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
   // Another version your library has isn't an edit: sync puts the pinned one back without --force.
@@ -568,7 +591,7 @@ function relinkPinned(root: string, name: string, dep: Dependency): Change {
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
   }
-  return { name, action: "relinked", to: dep.version };
+  return { name, action: "relinked", to: versionForHash(name, dep.hash)?.version ?? dep.version };
 }
 
 /**

@@ -256,7 +256,7 @@ function pluginSkills(harnesses: HarnessId[], root?: string): SourcedSkill[] {
   const syncedDir = join(plugins, "synced");
   const fromSynced = claude && existsSync(syncedDir)
     ? readdirSync(syncedDir)
-        .filter((b) => !b.startsWith("."))
+        .filter((b) => !b.startsWith(".") && isDir(join(syncedDir, b)))
         .flatMap((bucket) =>
           readdirSync(join(syncedDir, bucket), { withFileTypes: true })
             .filter((d) => d.isDirectory())

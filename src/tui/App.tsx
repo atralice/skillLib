@@ -341,7 +341,10 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
         ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
         : s?.source === "lib"
           ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
-          : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) + (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : "") + gitSees(s),
+          : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) +
+      (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : "") +
+      // A managed skill's removal edits skilllib.json too.
+      (gitSees(s) || (s?.source === "lib" && W.project(w, p).manifest === "committed" ? " Git will see skilllib.json change." : "")),
     run: (w) => w.ops.remove(p, u.name),
   };
   if (s?.source === "lib")
