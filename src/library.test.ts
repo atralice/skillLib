@@ -1201,3 +1201,25 @@ test("a package's link to the global copy doesn't block when the repo's top has 
   const blind = blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [mono]);
   expect(blindSaid("foo", blind)).toBe("Claude Code in web only sees the global copy: give packages/web/.claude/skills/foo a copy of its own instead of a link to the global one, or keep foo global (skilllib global keep)");
 });
+
+test("the advice names the link to change: in a shared folder of yours, not the repo's link to that folder", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  mkdirSync(join(tmp, "devskills"));
+  symlinkSync(entry, join(tmp, "devskills", "g1"));
+  const r1 = join(tmp, "r1");
+  mkdirSync(join(r1, ".claude"), { recursive: true });
+  symlinkSync(join(tmp, "devskills"), join(r1, ".claude", "skills"));
+  const blind = blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [r1]);
+  expect(blindSaid("g1", blind)).toBe("Claude Code in r1 only sees the global copy: give ~/devskills/g1 a copy of its own instead of a link to the global one, or keep g1 global (skilllib global keep)");
+});
+
+test("remove's pin-only reason names the repo's own links it left", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha"); // copy in .agents/skills, link in .claude/skills
+  mkdirSync(join(tmp, "devA"));
+  execFileSync("mv", [join(project, ".agents", "skills"), join(tmp, "devA", "skills")]);
+  symlinkSync(join(tmp, "devA", "skills"), join(project, ".agents", "skills"));
+  expect(removeSkill(project, "alpha").reason).toBe(".agents/skills links out of the repo (to ~/devA/skills): only its pin was removed, and that copy was left as it is; its link .claude/skills/alpha was left too");
+});

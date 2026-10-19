@@ -16,6 +16,7 @@ import {
   blindSaid,
   blindWithoutGlobal,
   createSkill,
+  entryExists,
   survives,
   deleteGlobal,
   deleteLibrarySkill,
@@ -403,6 +404,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
+      // Deleting a group: an earlier copy took this link along already.
+      if (!entryExists(m.path)) return `${tildify(m.path)} was already removed, with the copy it went through`;
       // Other global entries by that name that go through this one (a link to it, or to its link) would break with it:
       // they go too, and their agents count. A plugin's skill is its own (/plugin:name); a broken link loads nothing.
       const others = machine.filter((o) => o.name === m.name && o.path !== m.path && o.kind !== "plugin" && !o.broken);
@@ -427,7 +430,10 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const repoRoots = repos.map(rootOf);
       // A repo you picked by its name in the app, any other (one that blocks the move) by its own.
       const label = (root: string) => repos[repoRoots.indexOf(root)] ?? [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
-      const sourced = skills.map((m) => ({ ...m, harnesses: m.agents }));
+      // Every global copy of a skill you picked moves, as global move does: a row is one copy, and another (or a link
+      // through it) left loading would make "now loads only in" false, or break.
+      const picked = new Set(skills.map((m) => m.name));
+      const sourced = machine.filter((o) => picked.has(o.name) && o.movable && !o.broken);
       // A skill an agent in some repo would only have seen globally never moves (see moveGlobalSkills): it stays global, said.
       const attempt = (names?: string[]) =>
         moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "allow links there, then move it again" });
@@ -455,7 +461,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
             run: (w) => {
               const linked = resultSaid(ask.run(w));
               const retry = said(attempt(names));
-              const text = [linked, retry.text].filter(Boolean).join("; ");
+              // The others that stayed global (for their own reasons) are still said.
+              const others = results.filter((mv) => !mv.moved && !names.includes(mv.name)).map((mv) => `${mv.name}: ${mv.reason}`);
+              const text = [linked, retry.text, ...others].filter(Boolean).join("; ");
               return retry.moved.length === names.length ? text : failed(text);
             },
           },

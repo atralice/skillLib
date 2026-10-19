@@ -584,7 +584,9 @@ export function findIssues(
     }
     // A copy that's another library version than the pin (after a pull, say): sync installs the pinned one. It
     // replaces a copy your library keeps, so nothing is lost; when the copy is committed, git sees it: a choice.
-    const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s));
+    // Where skilllib can't re-pin (add would refuse), a copy of another version may be edits you copied into your
+    // library on purpose: never put the pinned one back automatically there.
+    const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s) && !untrackable(s));
     if (drifted.length) {
       const seen = drifted.some((s) => ["committed", "changed"].includes(gitInfo(root)?.of(relativeTo(root, s.path)) ?? ""));
       const install: Choice = { label: "Install the pinned versions", hint: seen ? "git will see the copies change" : "your library keeps every version", run: () => summarize(where, "synced", syncProject(root)) };
@@ -882,7 +884,7 @@ export function findIssues(
                 ]),
           ],
         });
-      } else if (s.state === "from npx skills" && !(committed(s) && versionForHash(s.name, treeHash(s.path) ?? "") !== null)) {
+      } else if (s.state === "from npx skills" && !((committed(s) || untrackable(s)) && versionForHash(s.name, treeHash(s.path) ?? "") !== null)) {
         // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it
         // (and once your library has this copy, there's nothing left to do).
         const teams = committed(s) || !!untrackable(s);
@@ -943,7 +945,7 @@ export function findIssues(
             ? [
                 {
                   label: "Copy the edits into Your skills",
-                  hint: `a new version there; ${where}'s copy and pin stay as they are`,
+                  hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : "a new version there"}; ${where}'s copy and pin stay as they are`,
                   run: () => {
                     intoLibrary(s.path, true);
                     return `${s.name}: the edits are in Your skills as v${latestVersion(s.name)?.version}; ${where} stays as it is`;
@@ -1068,8 +1070,8 @@ export function findIssues(
                 label: "Stop loading it globally",
                 hint: "restorable with skilllib restore",
                 run: () => {
-                  // Checked again: a repo may have changed since.
-                  const now = blindWithoutGlobal(name, doomed, everyRepo, packagesOf);
+                  // Checked again, packages included (not the scan's memo): a repo may have changed since.
+                  const now = blindWithoutGlobal(name, doomed, everyRepo);
                   if (now.length) throw new Error(`${name}: ${blindSaid(name, now)}`);
                   if (!libraryNames.has(name)) importSkill(movable.path);
                   for (const m of machine.filter((x) => x.name === name && x.movable)) {

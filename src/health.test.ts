@@ -943,3 +943,20 @@ test("a broken global link by the same name isn't a copy that differs", () => {
   const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
   expect(twice.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
 });
+
+test("where add would refuse, edits copied into the library aren't put back to the pin by doctor --fix", () => {
+  setHarnesses(["claude-code"]);
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  writeFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "edited\n");
+  mkdirSync(join(tmp, "ext"));
+  symlinkSync(join(tmp, "ext"), join(project, ".agents"));
+  setHarnesses(["claude-code", "codex"]);
+  const edited = findIssues([project], machineSkills(), new Set(["foo"])).find((i) => i.id === `edited:${project}:foo`)!;
+  expect(runFix(edited.choices![0]!).ok).toBe(true);
+  const issues = findIssues([project], machineSkills(), new Set(["foo"]));
+  expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([]);
+  expect(readFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "utf-8")).toBe("edited\n");
+});

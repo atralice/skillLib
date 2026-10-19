@@ -113,8 +113,10 @@ export const followUp = (r: Result): Fix | undefined => (typeof r !== "string" &
 export const said = (r: Result): string => (typeof r === "string" ? r : r.message);
 /** Several results as one: their messages, failed if any failed. */
 export const joined = (results: Result[]): Result => {
-  const message = results.map(said).join(" · ");
-  return results.some(isFailure) ? failed(message) : message;
+  // A group's results: how many went first, so the ones that did aren't lost behind the ones that didn't.
+  const bad = results.filter(isFailure);
+  const message = [...(bad.length && bad.length < results.length ? [`${results.length - bad.length} of ${results.length} done`] : []), ...results.map(said)].join(" · ");
+  return bad.length ? failed(message) : message;
 };
 
 /** Everything that changes something, and a few lookups too slow to do for every repo up front. */

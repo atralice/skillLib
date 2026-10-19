@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -190,22 +190,30 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  * global entry links there too, and a link to the global entry itself doesn't.
  */
 export function survives(path: string, gone: string[]): boolean {
+  return lostAt(path, gone) === null;
+}
+
+/**
+ * Where `path` stops reaching a skill once the global entries `gone` are moved away: the last link of its chain before
+ * one of them (the one to change), or where the chain ends without a skill; null when it still reaches one.
+ */
+function lostAt(path: string, gone: string[]): string | null {
   // Its parent's real path plus its own name: folder links resolved, the entry itself not followed. On Windows a link
   // can read back as \\?\C:\... and paths don't care about case: both are evened out before comparing.
-  const win = process.platform === "win32";
-  const canon = (p: string) => {
-    const c = join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
-    return win ? c.toLowerCase() : c;
-  };
-  const moved = gone.map(canon);
+  // Compared in lower case on Windows; said as it is.
+  const key = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
+  const canon = (p: string) => join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+  const moved = gone.map((g) => key(canon(g)));
   let at = path;
+  let last: string | null = null;
   for (let hop = 0; hop < 40; hop++) {
     const here = canon(at);
-    if (moved.some((m) => here === m || here.startsWith(m + sep))) return false;
-    if (!isLink(here)) return existsSync(join(here, "SKILL.md"));
+    if (moved.some((m) => key(here) === m || key(here).startsWith(m + sep))) return last ?? here;
+    if (!isLink(here)) return existsSync(join(here, "SKILL.md")) ? null : here;
+    last = here;
     at = resolve(dirname(here), readlinkSync(here).replace(/^\\\\\?\\(UNC\\)?/, (_m, unc: string | undefined) => (unc ? "\\\\" : "")));
   }
-  return false; // a loop of links reaches nothing
+  return last; // a loop of links reaches nothing
 }
 
 /**
@@ -237,17 +245,32 @@ export function blindWithoutGlobal(
   const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => reposChoice(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
   // Agents with a copy at the repo's top that survives.
   const keepsTop = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && survives(join(root, d, name), gone));
+  // The link to change, as a person finds it: in the repo by its place there, elsewhere (a shared folder) by its path.
+  // Both sides as real paths: the repo or home folder may be reached another way (a link, a Windows short name).
+  const shown = (root: string, p: string) => {
+    const under = (dir: string) => ((d) => (p.startsWith(d + sep) ? relative(d, p).split(sep).join("/") : null))(realpathOrNull(dir) ?? dir);
+    return under(root) ?? ((h) => (h === null ? p : `~/${h}`))(under(userHome()));
+  };
   const blindIn = (root: string) =>
     enabled.flatMap((id): Blind[] => {
       const reach = harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")));
       if (keepsTop(root, id) || (!readers.has(id) && !reach)) return [];
-      return [{ root, id, folder: harness(id).projectDirs.map((d) => notWritable(root, d)).find((f) => f !== null) ?? null }];
+      // A skills folder that isn't the repo's choice (a file, a link to a global folder): point it back. One linked to a
+      // shared folder of yours is your setup: what to change is the link in it that goes to the global copy.
+      const folder = harness(id).projectDirs.map((d) => (reposChoice(root, d) ? null : notWritable(root, d))).find((f) => f !== null) ?? null;
+      const shared = harness(id).projectDirs.find((d) => !writableDir(root, d) && reposChoice(root, d) && existsSync(join(root, d, name, "SKILL.md")));
+      const at = shared ? lostAt(join(root, shared, name), gone) : null;
+      return [{ root, id, folder, ...(at ? { link: shown(root, at) } : {}) }];
     });
   // A package's copy loads in its package: one that wouldn't survive leaves the agents reading it there without it.
   const nestedBlind = (root: string) =>
     nestedOf(root)
       .filter((n) => n.name === name && !survives(n.path, gone))
-      .flatMap((n) => n.readers.filter((id) => !keepsTop(root, id)).map((id): Blind => ({ root: join(root, n.location, "..", ".."), id, folder: null, link: relative(root, n.path).split(sep).join("/") })));
+      .flatMap((n) =>
+        n.readers
+          .filter((id) => !keepsTop(root, id))
+          .map((id): Blind => ({ root: join(root, n.location, "..", ".."), id, folder: null, link: shown(root, lostAt(n.path, gone) ?? n.path) })),
+      );
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
   return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
@@ -792,7 +815,9 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
     delete manifest.skills[name];
     writeManifest(root, manifest);
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
-    return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...leftLinks].join("; ") };
+    // Its links in the repo's own folders stay too (they reach that copy): named, so nobody thinks they're gone.
+    const keptLinks = (recorded.links ?? []).filter((d) => writableDir(root, d) && isLink(join(root, d, name))).map((d) => `its link ${d}/${name} was left too`);
+    return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...keptLinks, ...leftLinks].join("; ") };
   }
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.

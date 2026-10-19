@@ -809,3 +809,45 @@ test("a repo whose skills folder links to a shared folder of yours holds what's 
   expect(said(w.ops.moveGlobal(w.machine.filter((m) => m.name === "g1"), ["app"]))).toContain("Claude Code in r1 only sees the global copy");
   expect(existsSync(join(tmp, ".claude", "skills", "g1", "SKILL.md"))).toBe(true);
 });
+
+test("moving one global row moves every global copy of that skill, and waits for agents any of them serves", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, "dev", "foo"));
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "dev", "foo"), join(tmp, ".agents", "skills", "foo"));
+  mkdirSync(join(tmp, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".agents", "skills", "foo"), join(tmp, ".claude", "skills", "foo")); // a link to the link
+  const other = join(tmp, "other");
+  writeSkill(join(other, ".agents", "skills", "foo")); // Codex has its own; Claude Code runs the global one
+  mkdirSync(join(other, ".git"));
+  rememberProjects([other]);
+  let w = loadWorld();
+  const agentsRow = w.machine.find((m) => m.name === "foo" && m.path.includes(".agents"))!;
+  expect(said(w.ops.moveGlobal([agentsRow], ["app"]))).toContain("Claude Code in other only sees the global copy");
+  expect(isLink(join(tmp, ".claude", "skills", "foo"))).toBe(true);
+  expect(existsSync(join(tmp, ".claude", "skills", "foo", "SKILL.md"))).toBe(true);
+
+  // Two identical real copies: moving one row moves both, so "now loads only in app" is true.
+  rmSync(other, { recursive: true });
+  rmSync(join(tmp, ".claude", "skills", "foo"));
+  rmSync(join(tmp, ".agents", "skills", "foo"));
+  writeSkill(join(tmp, ".claude", "skills", "foo"));
+  writeSkill(join(tmp, ".agents", "skills", "foo"));
+  w = loadWorld();
+  expect(said(w.ops.moveGlobal([w.machine.find((m) => m.name === "foo" && m.path.includes(".agents"))!], ["app"]))).toBe("foo now loads only in app");
+  expect(existsSync(join(tmp, ".claude", "skills", "foo"))).toBe(false);
+  expect(existsSync(join(tmp, ".agents", "skills", "foo"))).toBe(false);
+});
+
+test("deleting a group where one copy links through another: the second says it was already taken along", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, "dev", "foo"));
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "dev", "foo"), join(tmp, ".agents", "skills", "foo"));
+  mkdirSync(join(tmp, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".agents", "skills", "foo"), join(tmp, ".claude", "skills", "foo"));
+  const w = loadWorld();
+  const rows = w.machine.filter((m) => m.name === "foo").sort((a) => (a.path.includes(".agents") ? -1 : 1));
+  expect(said(w.ops.deleteGlobal(rows[0]!))).toStartWith("Deleted ~/.agents/skills/foo");
+  expect(said(w.ops.deleteGlobal(rows[1]!))).toBe("~/.claude/skills/foo was already removed, with the copy it went through");
+});
