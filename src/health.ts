@@ -943,7 +943,7 @@ export function findIssues(
             ? [
                 {
                   label: "Copy the edits into Your skills",
-                  hint: `a new version there; ${where}'s copy and pin stay as they are`,
+                  hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : "a new version there"}; ${where}'s copy and pin stay as they are`,
                   run: () => {
                     intoLibrary(s.path, true);
                     return `${s.name}: the edits are in Your skills as v${latestVersion(s.name)?.version}; ${where} stays as it is`;
@@ -1068,8 +1068,8 @@ export function findIssues(
                 label: "Stop loading it globally",
                 hint: "restorable with skilllib restore",
                 run: () => {
-                  // Checked again: a repo may have changed since.
-                  const now = blindWithoutGlobal(name, doomed, everyRepo, packagesOf);
+                  // Checked again, packages included (not the scan's memo): a repo may have changed since.
+                  const now = blindWithoutGlobal(name, doomed, everyRepo);
                   if (now.length) throw new Error(`${name}: ${blindSaid(name, now)}`);
                   if (!libraryNames.has(name)) importSkill(movable.path);
                   for (const m of machine.filter((x) => x.name === name && x.movable)) {
