@@ -211,7 +211,7 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 | `twice:<skill>` | Each repo with a copy, and Global | Repo and global copies | ⚠ | yes | Stop loading it globally (kept global: Remove the copies in *repos*, only ones skilllib installed) |
 | `sync:<root>` | Repo | Folder missing | ✕ | | Sync the project |
 | `unavailable:<root>:<skill>` | Repo | Pinned, not in your library (folder missing, no copy to restore: import it, or set SKILLLIB_HOME) | ✕ | yes | Remove it from skilllib.json |
-| `update:<root>` | Repo | Out of date | ⚠ | | Update to the newest versions (every out-of-date skill in the repo; a skill's own *Update to vN* action updates just that one) |
+| `update:<root>` | Repo | Out of date | ⚠ | yes | Update to the newest versions (every out-of-date skill in the repo; a skill's own *Update to vN* action updates just that one) |
 | `tidy:<root>` | Repo | Extra copies (identical copies, or links no agent needs) | ⚠ | yes when git would see a change | Tidy · or Tidy, but keep git as it is / Tidy everything |
 | `conflict:<root>:<skill>` | Repo | Copies differ | ✕ | yes | Keep the … copy (one per copy that can win) |
 | `usable:<root>` | Repo | Not every agent can use it | ⚠ | yes when git tracks a folder a link goes in | Add the links · or Add links, but not where git tracks the folder / Add links everywhere |

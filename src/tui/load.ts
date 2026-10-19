@@ -3,7 +3,7 @@
  * library.ts and config.ts. Usage comes separately (loadUsage): reading transcripts is slow.
  */
 import { spawn } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
 import { projectOfFactory } from "../commands.js";
@@ -36,7 +36,7 @@ import {
 } from "../library.js";
 import { harness, type HarnessId } from "../harnesses.js";
 import { moveGlobalSkills } from "../move.js";
-import { PROJECT_SKILLS_DIR } from "../paths.js";
+import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
 import { projectHere, readableRoots, readManifest } from "../project.js";
 import { readSkillInfo, treeHash } from "../skills.js";
 import { foldersOf } from "../tidy.js";
@@ -172,13 +172,7 @@ export function loadWorld(): World {
   const agents = enabledHarnesses();
   const here = projectHere();
   // The same repo can come as two paths (a symlinked folder, /var vs /private/var): match by real path.
-  const real = (p: string) => {
-    try {
-      return realpathSync(p);
-    } catch {
-      return p;
-    }
-  };
+  const real = realPath;
   const visible = visibleProjects();
   const cwd = here ? (visible.find((p) => real(p) === real(here)) ?? here) : null;
   const listed = [...new Set([...(cwd ? [cwd] : []), ...visible])];

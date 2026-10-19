@@ -783,3 +783,9 @@ describe("round 10", () => {
     expect(() => readManifest(project)).toThrow("isn't a skilllib.json");
   });
 });
+
+test("a skilllib.json key that isn't a skill name is ignored, never read as a path", () => {
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { ".": { version: 1, hash: "x" }, "../library": { version: 1, hash: "y" } } }));
+  expect(readManifest(project).skills).toEqual({});
+  expect(projectStatus(project)).toEqual([]);
+});

@@ -5,7 +5,7 @@ import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
-import { grokDir, GROK_SKILLS_DIR, libraryDir, realPath as realPathOf } from "./paths.js";
+import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { skillDirsIn, treeHash } from "./skills.js";
 import { readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
@@ -553,10 +553,14 @@ export function findIssues(
         title: `${where}: ${plural(behind.length, "skill")} out of date`,
         detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
         at: rows(root, behind.map((s) => s.name)),
-        fix: {
-          label: "Update to the newest versions",
-          run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
-        },
+        // It changes what the repo pins and the copies its agents load (often committed): a choice, never `doctor --fix`.
+        choices: [
+          {
+            label: "Update to the newest versions",
+            hint: gitInfo(root)?.of(MANIFEST_FILE) === "committed" ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+            run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
+          },
+        ],
       });
 
     // One real copy per skill, plus only the links your agents need.

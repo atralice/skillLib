@@ -14,7 +14,7 @@ export type ReviewSkill = {
   installedHow: string;
   path: string;
   links: string[];
-  /** Harness names that load it, and where ("every repo" / "in deferred"). */
+  /** Harness names that load it, and where ("— in every repo" / "— in <repo>"). */
   loadedBy: string;
   /** Vendor skills can't be deleted from their folder; say how to turn them off instead. */
   vendor: string | null;

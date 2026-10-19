@@ -363,7 +363,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
     severity: "suggestion",
     title: "web-app: 1 skill out of date",
     detail: "react-patterns (v1 → v2)",
-    fix: { label: "Update to the newest versions", change: () => void (skill("web-app", "react-patterns").version = 2), said: "web-app: updated 1 skill" },
+    choices: [{ label: "Update to the newest versions", hint: "replaces each copy with your library's newest", change: () => void (skill("web-app", "react-patterns").version = 2), said: "web-app: updated 1 skill" }],
     at: at("web-app", "react-patterns"),
   });
   const tidy = { said: "web-app: tidied 1 skill" };

@@ -1,7 +1,7 @@
 ╭── ◆ skilllib ────────────╮╭── To fix  2/29 ────────────────────────────────────────────────────────────────────────╮
 │   ▤ Your skills     10   ││  All 28                                                                                │
 │   ◈ Global          15   ││     Issue                                                                              │
-│   ⧉ Plugins         7    ││   ✦ Fix 6 issues automatically…                                                        │
+│   ⧉ Plugins         7    ││   ✦ Fix 5 issues automatically…                                                        │
 │ ▌ ✓ Health          28   ││ ▌ ✕ commit-style in your global folders: the copies differ                             │
 │   Projects ───────────── ││   ✕ db-seed in api-server: the copies differ                                           │
 │   ◆ web-app          ✕   ││   ✕ frontend-design: also in the Claude Code plugin frontend-design@claude-plugins-of… │
