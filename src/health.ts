@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageDirs, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -157,7 +157,15 @@ function brokenLinksIn(root: string): Issue[] {
   const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
   let git: ReturnType<typeof gitInfo> | undefined;
   // The repo's top folders, and its packages' own (a monorepo): a global copy moved away can leave a link to nothing there.
-  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageSkillFolders(root).map((f) => ({ dir: f.location, top: false }))];
+  // A package with its own skilllib.json (or inside one) is a project of its own: its links are its scan's, with its pins.
+  const ownProject = (sub: string) => {
+    for (let d = sub; d.startsWith(root + sep); d = dirname(d)) if (existsSync(join(d, MANIFEST_FILE))) return true;
+    return false;
+  };
+  const packages = packageSkillFolders(root)
+    .filter((f) => !ownProject(f.sub))
+    .map((f) => f.location);
+  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packages.map((dir) => ({ dir, top: false }))];
   return folders.flatMap(({ dir, top }) => {
     const folder = join(root, dir);
     // A folder that links out of the repo isn't the repo's: its broken links are reported where it really is.
@@ -170,11 +178,13 @@ function brokenLinksIn(root: string): Issue[] {
         label: "Remove the link",
         hint: "restorable with skilllib restore",
         run: () => {
+          if (!isLink(path)) return `${dir}/${name} in ${where} is already gone`;
           stash(path, "tidy-backup");
           return `Removed the broken link ${dir}/${name} in ${where} (restorable with skilllib restore)`;
         },
       };
-      git ??= gitInfo(root);
+      // Package folders too: a link committed there is the team's to remove, asked first.
+      git ??= gitInfo(root, packages);
       const tracked = ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
       return [
         {
@@ -604,7 +614,10 @@ export function findIssues(
         title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
         detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.${
           yours
-            ? ` ${untrackable(drifted.find((s) => untrackable(s))!)}, so skilllib can't re-pin here: a copy may be edits you copied into Your skills on purpose, and stays unless you choose this.`
+            ? ` ${drifted
+                .filter((s) => untrackable(s))
+                .map((s) => s.name)
+                .join(", ")}: ${untrackable(drifted.find((s) => untrackable(s))!)}, so skilllib can't pin the version that's there; it may be edits you copied into Your skills on purpose, and stays unless you choose this.`
             : ""
         }`,
         at: rows(root, drifted.map((s) => s.name)),
@@ -1003,9 +1016,9 @@ export function findIssues(
   const everyRepo = [...projects, ...knownProjects()];
   // Each repo's packages walked once, however many skills are asked about.
   const nestedMemo = new Map<string, NestedEntry[]>();
-  const entriesOf = (root: string) => nestedMemo.get(root) ?? (nestedMemo.set(root, nestedEntries(root)), nestedMemo.get(root)!);
-  const foldersMemo = new Map<string, { sub: string }[]>();
-  const foldersOf = (root: string) => foldersMemo.get(root) ?? (foldersMemo.set(root, packageSkillFolders(root)), foldersMemo.get(root)!);
+  const subsMemo = new Map<string, string[]>();
+  const subsOf = (root: string) => subsMemo.get(root) ?? (subsMemo.set(root, packageDirs(root)), subsMemo.get(root)!);
+  const entriesOf = (root: string) => nestedMemo.get(root) ?? (nestedMemo.set(root, nestedEntries(root, { subs: subsOf(root) })), nestedMemo.get(root)!);
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
   for (const [name, copies] of alsoGlobal) {
@@ -1060,7 +1073,7 @@ export function findIssues(
     // Global copies that differ need a winner first (conflict:global:), as global move says: unloading them all would
     // leave one only in the backups.
     const differ = copiesDiffer(doomed.map((m) => m.path));
-    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, entriesOf, foldersOf) : [];
+    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, entriesOf, subsOf) : [];
     issues.push({
       at,
       id: `twice:${name}`,

@@ -1275,3 +1275,18 @@ test("a monorepo package with its own skilllib.json pinning a skill holds it, ev
   expect(blind.map((b) => [basename(b.root), b.id])).toEqual([["web5", "claude-code"]]);
   expect(blindSaid("g1", blind)).toContain("put a copy of g1 in ~/devskills3");
 });
+
+test("a package that pins a skill holds it with no skills folder at all, unless the repo's top copy serves it; each agent said once", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  const web = join(mono, "packages", "web");
+  mkdirSync(web, { recursive: true });
+  writeFileSync(join(web, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const blind = (roots: string[]) => blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], roots).map((b) => [basename(b.root), b.id]);
+  expect(blind([mono])).toEqual([["web", "claude-code"]]); // found from the repo, though web was never opened
+  expect(blind([mono, web])).toEqual([["web", "claude-code"]]); // once, though web is also asked about as a root
+  writeSkill(join(mono, ".claude", "skills", "g1"), "top"); // the repo's top copy serves its packages
+  expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono])).toEqual([]);
+});
