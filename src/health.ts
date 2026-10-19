@@ -6,13 +6,13 @@ import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesse
 import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
-import { skillDirsIn, treeHash } from "./skills.js";
+import { isDir, skillDirsIn, treeHash } from "./skills.js";
 import { knownProjects, pinsIn, readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
-import { applyTidy, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
+import { applyTidy, PROJECT_TIDY_DIRS, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /**
  * An issue's detail as --json shows it: plus what a fix or choice says about git (its hint), so an agent that
@@ -150,12 +150,11 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
 function brokenLinksIn(root: string): Issue[] {
   const where = basename(root);
   // tidy works in every repo skill folder except .grok/skills (the team's, for Grok): there a broken link is always ours to report.
-  const tidied = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
-  const hasCopy = (name: string) => tidied.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
+  const hasCopy = (name: string) => PROJECT_TIDY_DIRS.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
   let git: ReturnType<typeof gitInfo> | undefined;
   return ALL_PROJECT_DIRS.flatMap((dir) => {
     const folder = join(root, dir);
-    if (!existsSync(folder)) return [];
+    if (!isDir(folder)) return [];
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
       if (!isLink(path) || existsSync(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
@@ -594,7 +593,7 @@ export function findIssues(
         choices: [
           {
             label: "Update to the newest versions",
-            hint: gitInfo(root)?.of(MANIFEST_FILE) === "committed" ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+            hint: ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "") ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
             run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
           },
         ],
@@ -616,7 +615,11 @@ export function findIssues(
         title: `${where}: ${plural(tidy.plans.length, "skill")} with extra copies or links`,
         detail:
           tidy.plans.map((p) => `${p.name}: ${p.steps.map((s) => describeStep(s, root)).join(", ")}`).join(" · ") +
-          (visible.length ? `. Git would see ${plural(visible.length, "of these change")}: ${visible.join(", ")}.` : ". Replaced copies are restorable with skilllib restore."),
+          (visible.length
+            ? `. Git would see ${plural(visible.length, "of these change")}: ${visible.join(", ")}.`
+            : tidy.plans.some((p) => p.steps.some((s) => s.kind === "replace" || s.kind === "remove"))
+              ? ". Replaced copies are restorable with skilllib restore."
+              : "."),
         at: rows(root, tidy.plans.map((p) => p.name)),
         ...(visible.length
           ? {
@@ -841,7 +844,7 @@ export function findIssues(
           choices: [
             {
               label: "Save as a new version in Your skills",
-              hint: newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`,
+              hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`}${gitNote(root, [join(root, MANIFEST_FILE)])}`,
               run: () => {
                 importSkill(s.path, { force: true });
                 const c = addSkill(root, s.name);

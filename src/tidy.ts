@@ -8,7 +8,7 @@ import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, MANIFEST_FILE, PROJECT_SKI
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
-import { treeHash } from "./skills.js";
+import { treeHash, isDir } from "./skills.js";
 
 /**
  * One change tidy makes, always to a single path:
@@ -63,14 +63,14 @@ function hashReals(reals: Entry[]) {
 function namesIn(dirs: string[]): string[] {
   const names = new Set<string>();
   for (const dir of dirs) {
-    if (!existsSync(dir)) continue;
+    if (!isDir(dir)) continue;
     for (const name of readdirSync(dir)) if (!name.startsWith(".") && name !== "synced") names.add(name);
   }
   return [...names].sort();
 }
 
 /** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. */
-const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+export const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
 
 /** Global folders tidy may rewrite. `~/.grok/skills` is Grok's own folder. */
 function globalTidyDirs(): string[] {
@@ -154,6 +154,13 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       continue;
     }
 
+    // A link to other content (another copy, another skill) isn't an extra link: repointing it would change
+    // what that agent runs, with nothing backed up. That's a decision, so tidy leaves this skill alone.
+    const elsewhere = entries.find((e) => e.link && e.real && e.real !== primary.real && existsSync(join(e.real, "SKILL.md")) && treeHash(e.real) !== treeHash(primary.path));
+    if (elsewhere) {
+      report.skipped.push({ name, reason: `${rel(elsewhere.path)} links to a different copy` });
+      continue;
+    }
     const wanted = new Set([...installDirs(enabled, rel(primary.dir)), ...(dep?.links ?? [])].map(abs));
     const steps: TidyStep[] = [];
     for (const e of entries) {

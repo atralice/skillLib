@@ -20,6 +20,7 @@ import {
   librarySkills,
   linkEverywhere,
   listBackups,
+  movedTogether,
   projectStatus,
   relinkDependency,
   removeSkill,
@@ -507,9 +508,11 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       return `Deleted ${name} from your library${from.length ? ` and from ${from.join(", ")}` : ""} (in Settings › Backups)`;
     },
     restoreBackup: (i) => {
-      const b = backups[i]!;
-      const r = b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b);
-      return r.ok ? `Restored ${b.name} to ${tildify(r.to)}` : failed(`${b.name}: ${r.reason}`);
+      // Copies moved out in one go (a global skill and its links) come back together, as `skilllib restore` does.
+      const done = movedTogether(backups, backups[i]!).map((b) => [b, b.kind === "plugin" ? restorePlugin(b) : restoreBackup(b)] as const);
+      const bad = done.filter(([, r]) => !r.ok);
+      if (bad.length) return failed(bad.map(([b, r]) => `${b.name}: ${!r.ok ? r.reason : ""}`).join("; "));
+      return done.map(([b, r]) => `Restored ${b.name} to ${r.ok ? tildify(r.to) : ""}`).join(" · ");
     },
     setAgents: (ids) => (setHarnesses(ids), "Saved your agents"),
     installVersion: (repo, name, version) => withLinks(addSkill(rootOf(repo), name, { version, force: true }), repo, name),

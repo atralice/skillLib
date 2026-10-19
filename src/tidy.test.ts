@@ -270,3 +270,16 @@ test("a skills folder that's a link to another isn't a second copy: tidy never l
   expect(report.plans.flatMap((p) => p.steps)).toEqual([]);
   expect(readFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "utf-8")).toContain("body");
 });
+
+test.skipIf(process.platform === "win32")("a link to different content isn't repointed: tidy leaves that skill alone", () => {
+  setHarnesses(["claude-code", "codex"]);
+  mkdirSync(join(project, "skills", "foo"), { recursive: true });
+  writeFileSync(join(project, "skills", "foo", "SKILL.md"), "---\ndescription: d\n---\nnew\n");
+  mkdirSync(join(project, ".agents", "skills", "foo"), { recursive: true });
+  writeFileSync(join(project, ".agents", "skills", "foo", "SKILL.md"), "---\ndescription: d\n---\nold\n");
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(project, "skills", "foo"), join(project, ".claude", "skills", "foo"));
+  const report = planProjectTidy(project);
+  expect(report.plans.find((p) => p.name === "foo")).toBeUndefined();
+  expect(report.skipped.find((s) => s.name === "foo")?.reason).toContain("links to a different copy");
+});

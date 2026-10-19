@@ -76,9 +76,12 @@ export function copySkill(from: string, to: string) {
   cpSync(source, to, { recursive: true, dereference: true, filter: (src) => !IGNORED.has(basename(src)) && existsSync(src) && !loops(src) });
 }
 
+/** A folder (not a file someone left where a skills folder goes). */
+export const isDir = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+
 /** Skill folders directly inside `dir` (folders containing SKILL.md). */
 export function skillDirsIn(dir: string): string[] {
-  if (!existsSync(dir)) return [];
+  if (!isDir(dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
     .filter((d) => (d.isDirectory() || d.isSymbolicLink()) && isSkillDir(join(dir, d.name)))
     .map((d) => join(dir, d.name))

@@ -516,14 +516,14 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * restores missing folders and reverts nothing that was edited (forced, it
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
-export function syncProject(root: string, { force = false, allowTracked = false, names }: { force?: boolean; allowTracked?: boolean; names?: string[] } = {}): Change[] {
+export function syncProject(root: string, { force = false, names }: { force?: boolean; names?: string[] } = {}): Change[] {
   return Object.keys(readManifest(root).skills)
     .filter((name) => !names || names.includes(name))
-    .flatMap((name) => syncSkill(root, name, { force, allowTracked }));
+    .flatMap((name) => syncSkill(root, name, { force }));
 }
 
 /** `syncProject` for one skill: nothing when it's already as pinned. */
-function syncSkill(root: string, name: string, { force = false, allowTracked = false } = {}): Change[] {
+function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
   const dep = readManifest(root).skills[name];
   if (!dep) return [];
   const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
@@ -537,8 +537,24 @@ function syncSkill(root: string, name: string, { force = false, allowTracked = f
   if (local !== null && local !== dep.hash && versionForHash(name, local) === null && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
-  const change = addSkill(root, name, { force: true, version, allowTracked });
-  return [{ ...change, action: local === null ? "installed" : change.action }];
+  // Like `npm ci`: put the pinned content back where skilllib.json says, with its recorded links, and never
+  // rewrite skilllib.json (it's shared, often committed). Forced edits go to a backup first.
+  const backedUp = local !== null && versionForHash(name, local) === null ? stash(copy, "edit-backup") : undefined;
+  mkdirSync(dirname(copy), { recursive: true });
+  copySkill(versionDir(name, version), copy);
+  const links = relinkPinned(root, name, dep);
+  // From the version the copy was (an out-of-sync one), else the pin's own: never skilllib.json's raw number.
+  const from = (local !== null ? versionForHash(name, local)?.version : undefined) ?? version;
+  return [
+    {
+      name,
+      action: local === null ? "installed" : backedUp ? "reset" : "updated",
+      from,
+      to: version,
+      ...(backedUp ? { backedUp } : {}),
+      ...(links.action === "skipped" ? { reason: links.reason } : {}),
+    },
+  ];
 }
 
 /** Puts back the links skilllib.json records for a skill whose real copy is as pinned. */
@@ -776,6 +792,16 @@ export function listBackups(): Backup[] {
     })
     // By the entry's full timestamp (movedAt shows minutes only): `restore <name>` takes the newest.
     .sort((a, b) => b.path.slice(-24).localeCompare(a.path.slice(-24)));
+}
+
+/**
+ * The backups moved out in one go with `backup` (a global skill and its copy in another agent's folder): the
+ * same name and kind, moved within two seconds of each other (entries end in their ISO time). Restored together.
+ */
+export function movedTogether(backups: Backup[], backup: Backup): Backup[] {
+  if (backup.kind === "plugin") return [backup];
+  const at = (b: Backup) => Date.parse(b.path.slice(-24).replace(/^(.{13})-(\d\d)-(\d\d)-(\d{3})Z$/, "$1:$2:$3.$4Z"));
+  return backups.filter((b) => b.name === backup.name && b.kind === backup.kind && Math.abs(at(b) - at(backup)) <= 2000);
 }
 
 /** Where a backup came from, as lists show it: "library (deleted)", or the folder it was in (e.g. "~/Projects/web/.cursor/skills"). */
