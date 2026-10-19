@@ -483,3 +483,23 @@ test.skipIf(process.platform === "win32")("turning off a plugin never copies its
   withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "tk@mk turned off; tk-extra copied into Your skills" }));
   expect(existsSync(join(tmp, "home", "library", "glob-one"))).toBe(false);
 });
+
+test("removing your copy for a plugin isn't offered when git commits it, or when an agent of yours doesn't load the plugin", () => {
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  const labels = (root: string) => findIssues([root], machineSkills(), new Set(["alpha"])).find((i) => i.id === "plugin:pt@mk")?.choices?.map((c) => c.label) ?? [];
+
+  const committed = join(tmp, "committed");
+  addSkill(committed, "alpha");
+  execFileSync("git", ["init", "-q"], { cwd: committed });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: committed });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"], { cwd: committed });
+  expect(labels(committed)).not.toContain("Remove your alpha from committed");
+
+  setHarnesses(["claude-code", "codex"]); // Codex reads the repo's copy and never loads a Claude Code plugin
+  const both = join(tmp, "both");
+  addSkill(both, "alpha");
+  expect(labels(both)).not.toContain("Remove your alpha from both");
+});

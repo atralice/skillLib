@@ -288,14 +288,19 @@ export function findIssues(
     const where = basename(root);
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
     const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
+    // Not a copy the repo commits (it's the team's, as README says), and only when every agent that reads
+    // your copy also loads the plugin's: Codex, Zed and Grok never load a Claude Code plugin.
+    const committed = gitNote(root, copies.map((s) => s.path)) !== "";
+    const pluginAgents = pluginAgentsIn(plugin, root);
+    const leftOut = copies.flatMap((s) => s.visibility.filter((v) => v.paths > 0 && !pluginAgents.has(v.id)).map((v) => v.id));
     return [
       { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it; in .claude/settings.local.json, a local-only file", run: () => orThrow(turnOffIn(plugin, root)) },
       // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
-      ...(names.length && allManaged
+      ...(names.length && allManaged && !committed && !leftOut.length
         ? [
             {
               label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
-              hint: `the plugin's copy stays; Your skills keeps yours${gitNote(root, copies.map((s) => s.path))}`,
+              hint: "the plugin's copy stays; Your skills keeps yours",
               run: () => {
                 for (const s of copies) {
                   const r = removeSkill(root, s.name);

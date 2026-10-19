@@ -1612,7 +1612,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         <Text color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
-        {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}
+        {/* A confirm (a follow-up after a result too) always shows its keys; the toast gives way. */}
+        {toast && modal?.kind !== "confirm" ? null : <Text color={color.faint}>{hints + " "}</Text>}
       </Box>
     </Box>
   );

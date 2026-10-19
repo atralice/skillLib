@@ -83,7 +83,7 @@ export function readManifest(root: string): Manifest {
           ],
         ];
       }
-      return [];
+      throw new Error(`${path} isn't a valid skilllib.json: ${name}'s pin has no hash`);
     }),
   );
   return { ...data, skills };
