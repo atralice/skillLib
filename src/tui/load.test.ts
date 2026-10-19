@@ -524,6 +524,27 @@ test("a skill the repo commits in .claude/skills is the team's: a plugin with it
   expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
 });
 
+test.skipIf(process.platform === "win32")("through a .claude/skills that links to .agents/skills, a committed skill is the team's and one copy, not two", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(repo, ".git"), { recursive: true });
+  writeSkill(join(repo, ".agents", "skills", "team-a"));
+  mkdirSync(join(repo, ".claude"));
+  symlinkSync("../.agents/skills", join(repo, ".claude", "skills"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "team");
+  writeSkill(join(repo, ".agents", "skills", "scratch"));
+  const w = loadWorld();
+  expect(local(w, "team-a").local).toMatchObject({ source: "repo", git: "committed" });
+  expect(local(w, "team-a").local!.others).toBeUndefined();
+  expect(issue(w, `local:${repo}:team-a`, "team-a")!.fixes.map((f) => f.label)).toEqual(["Copy into the library"]);
+  expect(usableHere(repo).skills.find((g) => g.skills.includes("team-a"))).toMatchObject({ source: "repo", git: "committed" });
+  expect(w.ops.remove("app", "team-a")).toEqual({ message: "team-a is the repo's own (committed by your team): skilllib doesn't delete it", failed: true });
+  expect(existsSync(join(repo, ".agents", "skills", "team-a", "SKILL.md"))).toBe(true);
+  expect(w.ops.remove("app", "scratch")).toBe("Removed scratch from app (in Settings › Backups)");
+});
+
 test("a skill `npx skills add` put in the repo isn't a library skill; committed, it's the team's", () => {
   setHarnesses(["claude-code", "codex"]);
   rmSync(join(repo, ".git"), { recursive: true });

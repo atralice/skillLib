@@ -420,6 +420,20 @@ describe("round 2: what agents rely on", () => {
     expect(existsSync(join(tmp, ".claude", "skills", "mine", "SKILL.md"))).toBe(true);
     expect(existsSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"))).toBe(true);
   });
+
+  test("restore where something is already back: a stopping error, as JSON on stdout, and what's there stays", () => {
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    const web = join(tmp, "code", "web");
+    mkdirSync(join(web, ".git"), { recursive: true });
+    expect(cli(web, "global", "move", "mine", "--to", web).code).toBe(0);
+    mkdirSync(join(tmp, ".agents", "skills", "mine"), { recursive: true });
+    writeFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "new\n");
+    const r = cli(web, "restore", "mine", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).error).toContain("Can't restore mine");
+    expect(readFileSync(join(tmp, ".agents", "skills", "mine", "SKILL.md"), "utf-8")).toBe("new\n");
+  });
 });
 
 describe("round 3: a flag a command doesn't use is an error", () => {

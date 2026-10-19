@@ -6,6 +6,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { addSkill, blindSaid, blindWithoutGlobal, createSkill, strandedLinks, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
+import { findIssues } from "./health.js";
 import { forgetLatest, latestVersion, versionDir, versionHistory } from "./versions.js";
 import { copySkill, readSkillInfo, treeHash } from "./skills.js";
 import { readManifest, rememberProjects } from "./project.js";
@@ -1396,3 +1397,30 @@ test("global move refuses before writing when a later repo already has a differe
   expect(mv!.reason).toStartWith("nothing moved: it can't be added to b (.claude/skills/gm already exists with different content");
   expect(readManifest(project).skills).toEqual({});
 });
+
+test.skipIf(process.platform === "win32")("add through skills folders that are one folder (a link either way, or both to skills/) finds nothing in the way", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const layouts: [string, [string, string][]][] = [
+    ["a", [[".claude/skills", "../.agents/skills"]]],
+    ["b", [[".agents/skills", "../.claude/skills"]]],
+    ["c", [[".claude/skills", "../skills"], [".agents/skills", "../skills"]]],
+  ];
+  for (const [name, links] of layouts) {
+    const root = join(tmp, name);
+    for (const [from, to] of links) {
+      mkdirSync(join(root, dirname(from), to), { recursive: true });
+      mkdirSync(join(root, dirname(from)), { recursive: true });
+      symlinkSync(to, join(root, from));
+    }
+    const change = addSkill(root, "alpha");
+    expect(change).toMatchObject({ action: "installed" });
+    expect(change.inTheWay).toBeUndefined();
+    expect(readManifest(root).skills.alpha?.links).toBeUndefined();
+    expect(projectStatus(root).find((s) => s.name === "alpha")?.state).toBe("ok");
+    expect(planProjectTidy(root)).toEqual({ plans: [], conflicts: [], skipped: [] });
+    expect(findIssues([root], [], new Set(["alpha"])).filter((i) => i.at?.some((a) => a.skill === "alpha"))).toEqual([]);
+    expect(removeSkill(root, "alpha")).toMatchObject({ action: "removed" });
+    expect(existsSync(join(root, ".claude", "skills", "alpha"))).toBe(false);
+  }
+});
+

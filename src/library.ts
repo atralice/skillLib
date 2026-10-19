@@ -131,7 +131,8 @@ function slotAt(link: string, to: string): "ok" | "free" | "taken" {
   // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
   if (isLink(link) && !isDir(link)) return "free";
   if (!entryExists(link)) return "free";
-  return isLink(link) && realpathOrNull(link) === realpathOrNull(to) ? "ok" : "taken";
+  // A link to it, or the copy itself seen through a skills folder that links to its own (.claude/skills → .agents/skills).
+  return realpathOrNull(link) === realpathOrNull(to) ? "ok" : "taken";
 }
 
 /**
@@ -424,7 +425,10 @@ function dependencyDirs(root: string, name: string, dep: Dependency | undefined)
   const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? installDirs(enabledHarnesses())[0]!);
   // The fewest folders, counted from where the real copy is: no link an agent doesn't need.
   const wanted = installDirs(enabledHarnesses(), primary);
-  return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
+  // A skills folder that is the primary one (a link to it, or it to that) needs no link: its agents see the copy.
+  const real = (d: string) => realpathOrNull(join(root, d));
+  const same = (d: string) => d === primary || (real(d) !== null && real(d) === real(primary));
+  return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => !same(d))])];
 }
 
 /**

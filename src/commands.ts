@@ -604,14 +604,14 @@ export function restore(args: Args) {
   const newest = backups.find((b) => b.name === name);
   if (!newest) throw new Error(`No backup named ${name} (skilllib restore lists them; a skill removed from a repo that your library has comes back with skilllib add ${name})`);
   // Copies moved out in one go come back together.
+  const failures: string[] = [];
   for (const backup of movedTogether(backups, newest)) {
     const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
     if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
-    else {
-      error(`Can't restore ${name}: ${r.reason}`);
-      process.exitCode = 1;
-    }
+    else failures.push(r.reason);
   }
+  // A stopping error, as every command's: with --json it's {"error"} on stdout.
+  if (failures.length) throw new Error(`Can't restore ${name}: ${failures.join("; ")}`);
 }
 
 /**
@@ -672,7 +672,9 @@ export async function doctor(args: Args) {
   for (const issue of issues) {
     info(`${issue.severity === "problem" ? red("●") : yellow("◆")} ${issue.title}`);
     info(dim(`  ${issue.detail}${issue.fix ? `  →  ${issue.fix.label}` : ""}`));
-    if (issue.choices) info(dim(`  your call: ${issue.choices.map((c, i) => `${i + 1}) ${c.label}`).join("  ")}  →  skilllib apply ${issue.id} <n>`));
+    // One that spans repos (or your global skills) can list other choices inside a repo: there only a label is sure.
+    const spans = new Set(issue.at?.map((a) => a.root)).size > 1;
+    if (issue.choices) info(dim(`  your call: ${issue.choices.map((c, i) => `${i + 1}) ${c.label}`).join("  ")}  →  skilllib apply ${issue.id} ${spans ? '"<choice>"' : "<n>"}`));
     if (args.fix && issue.fix) {
       const r = fixed(issue.fix);
       info(`  ${r.ok ? green("✓") : red("✗")} ${r.message}`);
@@ -699,7 +701,7 @@ export async function apply(args: Args) {
   // doctor: then a number could mean either list, so only a label says which.
   if (!byLabel && found.some((i) => labels(i) !== labels(found[0]!))) {
     const all = [...new Set(found.flatMap((i) => optionsOf(i).map((c) => c.label)))];
-    throw new Error(`${found[0]!.title}: its choices differ between this repo and all your repos; pick one by label: ${all.map((l) => `"${l}"`).join("  ")}`);
+    throw new Error(`${found[0]!.title}: its choices here differ from doctor's (all your repos); pick one by label: ${all.map((l) => `"${l}"`).join("  ")}`);
   }
   const issue = byLabel ?? found[0]!;
   const options = optionsOf(issue);
