@@ -198,7 +198,7 @@ Every change to a library skill becomes a new version, kept in `~/.skilllib/stor
 
 | | Like | What it does |
 |---|---|---|
-| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones. It never touches your edits (`--force` resets them, backing them up first). |
+| `skilllib sync` | `npm ci` | Installs exactly the pinned versions and restores missing ones, with the links skilllib.json records; it never rewrites skilllib.json. It never touches your edits (`--force` resets them, backing them up first). |
 | `skilllib outdated` | `npm outdated` | Lists skills with a newer version |
 | `skilllib update [name]` | `npm update` | Moves to the newest version |
 | *Other versions…* in a skill's actions | `npm i x@1` | Pins any version, including older ones |

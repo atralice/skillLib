@@ -408,7 +408,10 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
   if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
   if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath, wasOn);
-  return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? "removed" : "turned off"}${saved}` };
+  // One install goes; another (in a project) stays, and the message says so.
+  const others = how === "delete" ? (installedPluginsJson()[plugin.id] ?? []).filter((e) => (e.scope ?? "user") !== (plugin.scope ?? "user") || e.projectPath !== plugin.projectPath) : [];
+  const left = others.length ? `; its ${others.map((e) => `${e.scope ?? "user"} install${e.projectPath ? ` in ${basename(e.projectPath)}` : ""}`).join(", ")} stays` : "";
+  return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? `removed (${plugin.scope ?? "user"} install)` : "turned off"}${saved}${left}` };
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */

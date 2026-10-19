@@ -421,7 +421,7 @@ export function sync(args: Args) {
   if (args.positional.length) throw new Error(`sync takes no skill names: it installs exactly what skilllib.json pins. To add a skill: skilllib add ${args.positional.join(" ")}`);
   const roots = changeEach(
     args,
-    (root) => syncProject(root, { force: args.force, allowTracked: args.allowTracked }),
+    (root) => syncProject(root, { force: args.force }),
     (root) => (existsSync(join(root, MANIFEST_FILE)) ? success("Installed versions match skilllib.json") : info(dim("No skilllib.json: nothing to sync"))),
   );
   if (!args.all) rememberProjects(roots);

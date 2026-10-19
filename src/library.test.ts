@@ -845,3 +845,15 @@ test("a file where a skills folder goes is ignored, not a crash", () => {
   writeFileSync(join(project, ".cursor", "skills"), "x");
   expect(() => projectStatus(project)).not.toThrow();
 });
+
+test("sync restores what skilllib.json pins and never rewrites it", () => {
+  setHarnesses(["claude-code"]);
+  addSkill(project, "alpha");
+  const pinned = JSON.stringify({ skills: { alpha: { version: 9, hash: latestVersion("alpha")!.hash } } }); // a number from another library
+  writeFileSync(join(project, "skilllib.json"), pinned);
+  setHarnesses(["claude-code", "codex"]); // an agent that would want another link
+  rmSync(local("alpha"), { recursive: true });
+  expect(syncProject(project).map((c) => [c.name, c.action, c.from, c.to])).toEqual([["alpha", "installed", 1, 1]]);
+  expect(readFileSync(join(project, "skilllib.json"), "utf-8")).toBe(pinned);
+  expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
+});
