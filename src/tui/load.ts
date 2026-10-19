@@ -39,7 +39,7 @@ import {
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
 import { projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
-import { readSkillInfo, treeHash } from "../skills.js";
+import { isDir, readSkillInfo, treeHash } from "../skills.js";
 import { foldersOf } from "../tidy.js";
 import {
   claudeBinary,
@@ -406,7 +406,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
     moveGlobal: (skills, repos, group) => {
       const repoRoots = repos.map(rootOf);
-      const label = (root: string) => repos[repoRoots.indexOf(root)]!;
+      // A repo you picked by its name in the app, any other (one that blocks the move) by its own.
+      const label = (root: string) => repos[repoRoots.indexOf(root)] ?? [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
       const sourced = skills.map((m) => ({ ...m, harnesses: m.agents }));
       // A skill an agent in some repo would only have seen globally never moves (see moveGlobalSkills): it stays global, said.
       const attempt = (names?: string[]) =>
@@ -496,13 +497,23 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const using = projectsUsing(name);
       const hidden = using.filter((root) => ![...roots.values()].includes(root));
       if (hidden.length) return failed(`${name} is also in ${hidden.map((r) => basename(r)).join(", ")}, which ${hidden.length === 1 ? "is" : "are"} hidden: unhide ${hidden.length === 1 ? "it" : "them"} (Settings) to delete it everywhere`);
+      // A repo whose skilllib.json can't be read (a merge conflict) may pin it: deleting it would strand that pin.
+      const unreadable = using.filter((root) => {
+        try {
+          return void readManifest(root), false;
+        } catch {
+          return true;
+        }
+      });
+      if (unreadable.length) return failed(`${name} is pinned in ${unreadable.map((r) => basename(r)).join(", ")}, whose skilllib.json can't be read: fix it first, then delete`);
       // Each copy (edits included) goes to the backups first. One behind a folder that links out of the repo isn't
       // the repo's: remove drops just its pin, touching nothing outside.
       const from: string[] = [];
       for (const root of using) {
         const s = projectStatus(root).find((x) => x.name === name && x.managed);
-        // Its copy to the backups first, unless its own folder isn't the repo's (remove then drops just the pin).
-        if (s && existsSync(s.path) && !notWritable(root, relative(root, dirname(s.path)).split(sep).join("/"))) removeUntracked(root, name, s.path);
+        // Its copy to the backups first: only a skill folder in a folder really the repo's. Otherwise (a file of yours,
+        // a folder outside the repo) remove drops just the pin and leaves what's there.
+        if (s && isDir(s.path) && !notWritable(root, relative(root, dirname(s.path)).split(sep).join("/"))) removeUntracked(root, name, s.path);
         const c = removeSkill(root, name, { force: true });
         if (c.action === "skipped") return failed(`${name}: ${c.reason}${from.length ? `; removed from ${from.join(", ")} so far` : ""}`);
         from.push([...roots].find(([, r]) => r === root)?.[0] ?? basename(root));

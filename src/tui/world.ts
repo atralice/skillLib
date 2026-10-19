@@ -307,7 +307,7 @@ function viewOf(found: Found): Issue {
     title: found.title,
     short: shortOf(found),
     detail: found.detail,
-    skills: [...new Set(found.at?.map((a) => a.skill))],
+    skills: [...new Set(found.at?.flatMap((a) => (a.skill ? [a.skill] : [])))],
     decision: !found.fix,
     fixes: (found.fix ? [found.fix] : (found.choices ?? [])).map((c) => fixOf(c, found)),
   };
@@ -368,7 +368,7 @@ export function repoIssues(w: World, repo: string): Issue[] {
 export function unlisted(w: World, repo: string): string[] {
   const root = project(w, repo).path;
   const listed = new Set(usable(w, repo).map((u) => u.name));
-  return [...new Set(w.issues.flatMap((i) => (i.at ?? []).filter((a) => a.root === root && !listed.has(a.skill)).map((a) => a.skill)))];
+  return [...new Set(w.issues.flatMap((i) => (i.at ?? []).filter((a) => a.root === root && a.skill && !listed.has(a.skill)).map((a) => a.skill)))];
 }
 
 /** Doctor's issue on a library skill's row: in no repo, unused (the rest are where the skill is). */
@@ -394,7 +394,7 @@ function globalFixes(m: MachineSkill): Fix[] {
     m.kept
       ? { label: "Stop marking it as global on purpose", preview: `${m.name} shows as Not reviewed again, like any global skill.`, run: (w) => w.ops.keepGlobal(m.name, false) }
       : { label: "Keep it global on purpose", preview: `Mark ${m.name} as global on purpose: it no longer shows as Not reviewed. Its other issues stay.`, run: (w) => w.ops.keepGlobal(m.name, true) },
-    { label: "Delete it", preview: `Remove ${m.path}. A backup is kept in Settings › Backups.`, run: (w) => w.ops.deleteGlobal(m) },
+    { label: "Delete it", preview: `Remove ${m.where}/${m.name}. A backup is kept in Settings › Backups.`, run: (w) => w.ops.deleteGlobal(m) },
   ];
 }
 

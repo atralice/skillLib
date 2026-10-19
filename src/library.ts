@@ -4,7 +4,7 @@ import { basename, dirname, join, posix, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
-import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
+import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { localStamp, tildify } from "./output.js";
@@ -190,17 +190,7 @@ export function blindWithoutGlobal(name: string, copies: { path: string; harness
   // The repo wants it: pinned (even with its folder missing: its agents run the global copy until sync), or present in
   // a folder that really is the repo's (one linking out to ~/.claude holds every global skill, and none of them).
   const holds = (root: string) => {
-    if (ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name)))) return true;
-    try {
-      return name in readManifest(root).skills;
-    } catch {
-      // A skilllib.json that can't be read (a merge conflict, say) may still pin it: if it names it, it counts.
-      try {
-        return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
-      } catch {
-        return false;
-      }
-    }
+    return ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
   };
   const blindIn = (root: string) =>
     enabled.flatMap((id): Blind[] => {
@@ -235,6 +225,35 @@ function dependencyDirs(root: string, name: string, dep: Dependency | undefined)
   // The fewest folders, counted from where the real copy is: no link an agent doesn't need.
   const wanted = installDirs(enabledHarnesses(), primary);
   return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
+}
+
+/**
+ * What stops skilllib adding (tracking) a skill in a repo, before anything is written: a skills folder add would
+ * use that isn't one in the repo (a file, a link out of it). doctor offers no Track or Import there, and global
+ * move refuses first.
+ */
+export function trackBlocker(root: string, name: string): string | null {
+  let recorded: Dependency | undefined;
+  try {
+    recorded = readManifest(root).skills[name];
+  } catch {
+    return `${MANIFEST_FILE} can't be read`;
+  }
+  const stuck = firstStuck(root, dependencyDirs(root, name, recorded));
+  return stuck ? blockerSaid(root, stuck) : null;
+}
+
+/** Whether a repo pins a skill, reading even a skilllib.json that can't be parsed (a merge conflict): if it names it, it counts. */
+export function pinsSkill(root: string, name: string): boolean {
+  try {
+    return name in readManifest(root).skills;
+  } catch {
+    try {
+      return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
+    } catch {
+      return false;
+    }
+  }
 }
 
 /** True when git tracks files under `dir` in `root` (so writing there shows up in git status). */
@@ -693,9 +712,8 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const leftLinks = (recorded.links ?? []).flatMap((d) => ((b) => (b ? [`${blockerSaid(root, b)}: its link there was left alone`] : []))(notWritable(root, d)));
   const ownStuck = notWritable(root, home);
   if (ownStuck || fileAt(dir)) {
-    // Its copy isn't skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes (and its own
-    // links in the repo), so skilllib.json stops asking for it. The copy stays as it is.
-    unlinkOwn();
+    // Its copy isn't skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
+    // skilllib.json stops asking for it. Every file and link stays as it is.
     delete manifest.skills[name];
     writeManifest(root, manifest);
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
@@ -899,8 +917,9 @@ export function removeUntracked(root: string, name: string, path: string): strin
   return to;
 }
 
+/** Repos that pin a skill, one whose skilllib.json can't be read included (deleting it from your library would strand that pin). */
 export function projectsUsing(name: string): string[] {
-  return knownProjects().filter((p) => name in pinsIn(p));
+  return knownProjects().filter((p) => pinsSkill(p, name));
 }
 
 /** Removes a skill from the library by moving it to ~/.skilllib/trash. Refuses while projects still use it. */

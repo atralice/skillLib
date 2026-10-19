@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, linksOut, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -74,7 +74,7 @@ export type Issue = {
   choices?: Choice[];
   /**
    * Where the app shows it: the rows of the skills it names, in a repo (`root`) or in Global (`root`
-   * null). doctor and `status --json` leave it out.
+   * null); `skill` "" is the repo itself. doctor and `status --json` leave it out.
    */
   at?: { root: string | null; skill: string }[];
   /** The plugin it's about (name@marketplace; a Cursor plugin's name), for the app's Plugins rows. */
@@ -244,7 +244,7 @@ export function findIssues(
     severity: "problem",
     title: `${basename(root)}: skilllib.json can't be read`,
     detail: `${reason}. Until it's fixed, skilllib leaves ${basename(root)} out.`,
-    at: [],
+    at: [{ root, skill: "" }],
   }));
   const statuses = new Map(projects.map((root) => [root, statusOf(root)]));
   issues.push(...grokDiffers(projects, machine, (root) => statuses.get(root)!));
@@ -704,7 +704,7 @@ export function findIssues(
         detail: out
           ? `${blockerSaid(root, blocker)}. ${who} ${who.includes(",") || who.includes(" and ") ? "load" : "loads"} what's there, but skilllib treats it as outside ${where}: it adds, links and removes nothing there.`
           : `${blockerSaid(root, blocker)}: ${who} can't load skills from ${where}, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
-        at: rows(root, []),
+        at: [{ root, skill: "" }], // the repo itself: its row in Places
       });
     }
     for (const { s, would } of blindHere) {
@@ -779,17 +779,20 @@ export function findIssues(
     // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
     const git = gitInfo(root);
     const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
+    // Where add would refuse (a skills folder it'd use isn't one in the repo), it can't be tracked here: copy, never track.
+    const untrackable = (s: ProjectSkill) => trackBlocker(root, s.name);
     for (const s of unstuck) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
       // and copies that differ need a winner first (the conflict issue above).
       if (isLink(s.path) || differing.has(s.name)) continue;
       // Importing and tracking change the library and the repo's skilllib.json: choices, never run by `doctor --fix`.
-      if (s.state === "local only" && committed(s)) {
+      if (s.state === "local only" && (committed(s) || untrackable(s))) {
+        const why = committed(s) ? "it's the team's (committed)" : `${untrackable(s)}, so skilllib can't track it here`;
         issues.push({
           id: `local:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name} in ${where} isn't in your library`,
-          detail: "Copy it into the library to reuse it in other projects. The repo's copy stays as it is: it's the team's (committed).",
+          detail: `Copy it into the library to reuse it in other projects. The repo's copy stays as it is: ${why}.`,
           at: rows(root, [s.name]),
           choices: [
             {
@@ -822,7 +825,7 @@ export function findIssues(
             },
           ],
         });
-      } else if (s.state === "untracked copy of library skill" && !committed(s)) {
+      } else if (s.state === "untracked copy of library skill" && !committed(s) && !untrackable(s)) {
         // (A committed copy is the team's: never tracked from here, so update and remove never touch it.)
         issues.push({
           id: `adopt:${root}:${s.name}`,
@@ -834,7 +837,7 @@ export function findIssues(
         });
       } else if (s.state === "untracked, differs from library" || s.state === "repo skill, differs from library") {
         // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
-        const teams = s.state.startsWith("repo skill") || committed(s);
+        const teams = s.state.startsWith("repo skill") || committed(s) || !!untrackable(s);
         issues.push({
           id: `differs:${root}:${s.name}`,
           severity: "suggestion",
@@ -873,7 +876,7 @@ export function findIssues(
       } else if (s.state === "from npx skills" && !(committed(s) && versionForHash(s.name, treeHash(s.path) ?? "") !== null)) {
         // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it
         // (and once your library has this copy, there's nothing left to do).
-        const teams = committed(s);
+        const teams = committed(s) || !!untrackable(s);
         issues.push({
           id: `npx:${root}:${s.name}`,
           severity: "suggestion",

@@ -1117,3 +1117,15 @@ test("remove still removes skilllib's copy when only a link's folder links out o
   expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
   expect(readManifest(project).skills).toEqual({});
 });
+
+test("global move refuses a repo that can't take the skill before writing anything, the library included", () => {
+  writeSkill(join(tmp, ".claude", "skills", "gm"), "v1");
+  const out = join(tmp, "out");
+  mkdirSync(out);
+  symlinkSync(join(tmp, ".claude"), join(out, ".claude"));
+  const [mv] = moveGlobalSkills([{ name: "gm", path: join(tmp, ".claude", "skills", "gm"), links: [], harnesses: ["claude-code"] }], [project, out]);
+  expect(mv).toMatchObject({ moved: false, changes: [] });
+  expect(mv!.reason).toStartWith("nothing moved: it can't be added to out (.claude links out of the repo");
+  expect(existsSync(lib("gm"))).toBe(false);
+  expect(readManifest(project).skills).toEqual({});
+});
