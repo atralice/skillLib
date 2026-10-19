@@ -416,7 +416,11 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
       }
       const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
-      return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : failed(`${m.name}: ${r.reason}`);
+      if (!r.ok) return failed(`${m.name}: ${r.reason}`);
+      if (m.broken) return `Removed the broken link ${m.name}`;
+      // Another global copy by that name still loads: said, so nobody thinks it's gone everywhere.
+      const still = stays.map((o) => tildify(o.path));
+      return `Deleted ${tildify(m.path)} (in Settings › Backups)${still.length ? `; ${m.name} still loads globally from ${still.join(", ")}` : ""}`;
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
     moveGlobal: (skills, repos, group) => {
@@ -525,6 +529,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       // Each copy (edits included) goes to the backups first. One behind a folder that links out of the repo isn't
       // the repo's: remove drops just its pin, touching nothing outside.
       const from: string[] = [];
+      const left: string[] = [];
       for (const root of using) {
         const s = projectStatus(root).find((x) => x.name === name && x.managed);
         // Its copy to the backups first: only a skill folder in a folder really the repo's. Otherwise (a file of yours,
@@ -532,11 +537,14 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         if (s && isDir(s.path) && !notWritable(root, relative(root, dirname(s.path)).split(sep).join("/"))) removeUntracked(root, name, s.path);
         const c = removeSkill(root, name, { force: true });
         if (c.action === "skipped") return failed(`${name}: ${c.reason}${from.length ? `; removed from ${from.join(", ")} so far` : ""}`);
-        from.push([...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
+        const repo = [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
+        from.push(repo);
+        // What was left there (a file of yours, a copy outside the repo): said, as remove says it.
+        if (c.reason) left.push(`in ${repo}, ${c.reason}`);
       }
       const r = deleteLibrarySkill(name);
       if (!r.ok) return failed(`${name}: ${r.reason}`);
-      return `Deleted ${name} from your library${from.length ? ` and from ${from.join(", ")}` : ""} (in Settings › Backups)`;
+      return `Deleted ${name} from your library${from.length ? ` and from ${from.join(", ")}` : ""} (in Settings › Backups)${left.length ? `; ${left.join("; ")}` : ""}`;
     },
     restoreBackup: (i) => {
       // Copies moved out in one go (a global skill and its links) come back together, as `skilllib restore` does.

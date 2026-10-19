@@ -103,6 +103,17 @@ export function inTheWaySaid(root: string, paths: string[]): string {
 }
 
 const writableDir = (root: string, dir: string) => notWritable(root, dir) === null;
+
+/**
+ * A skills folder whose skills are the repo's choice: one inside it, or one linked to a folder of yours that isn't a
+ * global skills folder (a shared ~/devskills, say). One linked to a global folder (~/.claude/skills) just shows the
+ * global skills: nothing in it is the repo's. skilllib writes only in the first kind (notWritable).
+ */
+function reposChoice(root: string, dir: string): boolean {
+  if (writableDir(root, dir)) return true;
+  const real = isDir(join(root, dir)) ? realpathOrNull(join(root, dir)) : null;
+  return real !== null && !globalSkillDirs().some((g) => realpathOrNull(g) === real);
+}
 /** The first of these repo skill folders skilllib can't write into, named as notWritable names it. */
 const firstStuck = (root: string, dirs: string[]) => dirs.map((d) => notWritable(root, d)).find((p) => p !== null) ?? null;
 /** A file (not a folder or a link) where a skill's folder goes: never replaced, it may be yours. */
@@ -223,7 +234,7 @@ export function blindWithoutGlobal(
   const enabled = enabledHarnesses();
   // The repo wants it: pinned (even with its folder missing: its agents run the global copy until sync), or present in
   // a folder that really is the repo's (one linking out to ~/.claude holds every global skill, and none of them).
-  const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
+  const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => reposChoice(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
   // Agents with a copy at the repo's top that survives.
   const keepsTop = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && survives(join(root, d, name), gone));
   const blindIn = (root: string) =>
@@ -465,8 +476,8 @@ export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnes
       for (const [skillsDir] of NESTED_READERS) {
         if (!existsSync(join(sub, skillsDir))) continue;
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
-        // A package's skills folder that links out of the repo (to ~/.claude, say) isn't the repo's, as at the top.
-        if (!writableDir(root, location)) continue;
+        // A package's skills folder that links to a global one (~/.claude, say) just shows the global skills.
+        if (!reposChoice(root, location)) continue;
         for (const path of skillDirsIn(join(sub, skillsDir))) {
           // A link to a skill elsewhere in the repo is that skill, already reported.
           if (isLink(path) && (realpathOrNull(path) ?? "").startsWith(top + sep)) continue;
