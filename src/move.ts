@@ -62,7 +62,8 @@ export function moveGlobalSkills(
     const blindIn = changes.flatMap(([root, c]) => ((b) => (b.length ? [{ root, c, b }] : []))(blindWithoutGlobal(name, copies, [root])));
     if (blindIn.length) {
       const per = blindIn.map(({ root, c, b }) => {
-        const who = b.map((x) => harness(x.id).name).join(", ");
+        // Each agent where it is (a package of that repo, say), not only the repo.
+        const who = b.map((x) => `${harness(x.id).name}${realPath(x.root) === realPath(root) ? "" : ` in ${label(x.root)}`}`).join(", ");
         // What would help there: clear the way; commit the copy (git doesn't share it); or allow links where git tracks the folder.
         const next = c.inTheWay?.length
           ? `${inTheWaySaid(root, c.inTheWay)}: clear the way, then run skilllib link there`
@@ -71,7 +72,7 @@ export function moveGlobalSkills(
             : c.blocked?.length
               ? `git tracks ${c.blocked.join(", ")}: ${allowTrackedHint}`
               : blindSaid(name, b, label);
-        return `${who} in ${label(root)} couldn't see it (${next})`;
+        return `${who} ${b.every((x) => realPath(x.root) === realPath(root)) ? `in ${label(root)} ` : `(${label(root)}) `}couldn't see it (${next})`;
       });
       return { name, moved: false, reason: `added, but ${per.join("; ")}, so it still loads globally`, changes };
     }

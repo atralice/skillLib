@@ -219,8 +219,9 @@ function lostAt(path: string, gone: string[]): string | null {
   const canon = (p: string) => {
     const dir = realNative(dirname(p)) ?? dirname(p);
     const leaf = basename(p);
-    if (process.platform === "linux") return join(dir, leaf);
     try {
+      // Only when the disk took this spelling (it exists) yet holds it under another: a case-insensitive disk.
+      lstatSync(join(dir, leaf));
       const names = readdirSync(dir);
       return join(dir, names.includes(leaf) ? leaf : (names.find((n) => n.toLowerCase() === leaf.toLowerCase()) ?? leaf));
     } catch {
@@ -267,7 +268,7 @@ export function blindWithoutGlobal(
   copies: { path: string; harnesses: HarnessId[]; links?: string[] }[],
   roots: string[],
   nestedOf: (root: string) => NestedEntry[] = (root) => nestedEntries(root),
-  packagesOf: (root: string) => { sub: string }[] = (root) => packageSkillFolders(root),
+  packagesOf: (root: string) => string[] = (root) => packageDirs(root),
 ): Blind[] {
   const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const readers = new Set(copies.flatMap((c) => c.harnesses));
@@ -307,9 +308,23 @@ export function blindWithoutGlobal(
       );
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  // A package with its own skilllib.json pinning it (a project inside the repo) holds it in its own folders.
-  const pinnedPackages = (root: string) => [...new Set(packagesOf(root).map((f) => f.sub))].filter((sub) => pinsSkill(sub, name));
-  return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root), ...pinnedPackages(root).flatMap(blindIn)]);
+  const key = (p: string) => realpathOrNull(p) ?? p;
+  const asked = new Set(unique.map(key));
+  // A package with its own skilllib.json pinning it (a project inside the repo, maybe not one you've opened) holds it,
+  // even with no skills folder yet. Its agents read the repo's top folders too, so a copy there serves them.
+  const pinnedPackages = (root: string) =>
+    packagesOf(root)
+      .filter((sub) => !asked.has(key(sub)) && existsSync(join(sub, MANIFEST_FILE)) && pinsSkill(sub, name))
+      .flatMap((sub) => blindIn(sub).filter((b) => !keepsTop(root, b.id)));
+  // One per repo or package and agent: the entry that says what to change wins.
+  const all = unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root), ...pinnedPackages(root)]);
+  const byWho = new Map<string, Blind>();
+  for (const b of all) {
+    const k = `${key(b.root)}\0${b.id}`;
+    const had = byWho.get(k);
+    if (!had || (!(had.link || had.folder || had.shared) && (b.link || b.folder || b.shared))) byWho.set(k, b);
+  }
+  return [...byWho.values()];
 }
 
 /**
@@ -341,14 +356,16 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
   const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link] : [])))];
-  // One piece of advice per shared folder, naming every repo that links there.
-  const sharedBy = new Map<string, { dir: string; to: string; repos: Set<string> }>();
+  // One piece of advice per shared folder, naming every repo folder that links there.
+  const sharedBy = new Map<string, { to: string; where: Set<string>; dirs: Set<string> }>();
   for (const b of blind.filter((x) => x.shared)) {
-    const k = `${b.shared!.to}\0${b.shared!.dir}`;
-    if (!sharedBy.has(k)) sharedBy.set(k, { ...b.shared!, repos: new Set() });
-    sharedBy.get(k)!.repos.add(label(b.root));
+    if (!sharedBy.has(b.shared!.to)) sharedBy.set(b.shared!.to, { to: b.shared!.to, where: new Set(), dirs: new Set() });
+    sharedBy.get(b.shared!.to)!.where.add(`${b.shared!.dir} in ${label(b.root)}`);
+    sharedBy.get(b.shared!.to)!.dirs.add(b.shared!.dir);
   }
-  const shared = [...sharedBy.values()].map((g) => `put a copy of ${name} in ${g.to} (${g.dir} in ${[...g.repos].join(", ")} link${g.repos.size === 1 ? "s" : ""} there), or point ${g.dir} back into the repo`);
+  const shared = [...sharedBy.values()].map(
+    (g) => `put a copy of ${name} in ${g.to} (${[...g.where].join(", ")} link${g.where.size === 1 ? "s" : ""} there), or point ${[...g.dirs].join(" and ")} back into the repo`,
+  );
   const repos = blind.filter((b) => !b.folder && !b.link && !b.shared);
   const fixes = [
     ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),
@@ -546,9 +563,12 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
 export type NestedEntry = { name: string; path: string; location: string; skillsDir: string; readers: HarnessId[] };
 
 /** nestedSkills' walk, without comparing anything to the library: what blindWithoutGlobal needs, cheaply. */
-export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): NestedEntry[] {
+export function nestedEntries(
+  root: string,
+  { depth = 3, enabled = enabledHarnesses(), subs }: { depth?: number; enabled?: HarnessId[]; subs?: string[] } = {},
+): NestedEntry[] {
   const top = realpathOrNull(root) ?? root;
-  const found = packageSkillFolders(root, depth).flatMap(({ sub, skillsDir, location }) =>
+  const found = packageSkillFolders(root, subs ?? packageDirs(root, depth)).flatMap(({ sub, skillsDir, location }) =>
     skillDirsIn(join(sub, skillsDir)).flatMap((path): NestedEntry[] => {
       // A link to a skill elsewhere in the repo is that skill, already reported.
       if (isLink(path) && (realpathOrNull(path) ?? "").startsWith(top + sep)) return [];
@@ -561,12 +581,9 @@ export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnes
   return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
-/**
- * The skills folders of a repo's packages (a monorepo) that are the repo's choice (see reposChoice), down to `depth`
- * folders: `location` relative to the repo. Not below another repo (a .git), node_modules and the like.
- */
-export function packageSkillFolders(root: string, depth = 3): { sub: string; skillsDir: string; location: string }[] {
-  const found: { sub: string; skillsDir: string; location: string }[] = [];
+/** A repo's package folders (a monorepo), down to `depth`: not dot-folders, dependencies or build output, nor below another repo (a .git). */
+export function packageDirs(root: string, depth = 3): string[] {
+  const found: string[] = [];
   const walk = (dir: string, left: number) => {
     let subs: string[] = [];
     try {
@@ -578,17 +595,24 @@ export function packageSkillFolders(root: string, depth = 3): { sub: string; ski
     }
     for (const sub of subs) {
       if (existsSync(join(sub, ".git"))) continue;
-      for (const [skillsDir] of NESTED_READERS) {
-        if (!existsSync(join(sub, skillsDir))) continue;
-        const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
-        // A package's skills folder that links to a global one (~/.claude, say) just shows the global skills.
-        if (reposChoice(root, location)) found.push({ sub, skillsDir, location });
-      }
+      found.push(sub);
       if (left > 1) walk(sub, left - 1);
     }
   };
   walk(root, depth);
   return found;
+}
+
+/** The skills folders of a repo's packages that are the repo's choice (see reposChoice): `location` relative to the repo. */
+export function packageSkillFolders(root: string, subs: string[] = packageDirs(root)): { sub: string; skillsDir: string; location: string }[] {
+  return subs.flatMap((sub) =>
+    NESTED_READERS.flatMap(([skillsDir]) => {
+      if (!existsSync(join(sub, skillsDir))) return [];
+      const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
+      // A package's skills folder that links to a global one (~/.claude, say) just shows the global skills.
+      return reposChoice(root, location) ? [{ sub, skillsDir, location }] : [];
+    }),
+  );
 }
 
 /**

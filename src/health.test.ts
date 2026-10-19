@@ -997,3 +997,22 @@ const isLinkAt = (p: string) => {
     return false;
   }
 };
+
+test("a package with its own skilllib.json reports its broken links in its own scan only, and a committed one is asked first", () => {
+  const mono = join(tmp, "mono");
+  const web = join(mono, "packages", "web");
+  mkdirSync(join(web, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(web, "skilllib.json"), "{}\n");
+  symlinkSync(join(tmp, "gone"), join(web, ".claude", "skills", "zz"));
+  const ids = findIssues([mono, web], machineSkills(), new Set()).map((i) => i.id).filter((id) => id.startsWith("broken:"));
+  expect(ids).toEqual([`broken:${web}:.claude/skills/zz`]);
+
+  // A package without its own skilllib.json: mono's scan; committed, it's a choice, not a fix.
+  rmSync(join(web, "skilllib.json"));
+  execFileSync("git", ["init", "-q"], { cwd: mono });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: mono });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "link"], { cwd: mono });
+  const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/zz`)!;
+  expect(broken.fix).toBeUndefined();
+  expect(broken.choices!.map((c) => c.label)).toEqual(["Remove the link"]);
+});
