@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
-import { addSkill, blindSaid, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, createSkill, strandedLinks, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
@@ -1332,4 +1332,34 @@ test("a leftover copy in your home folder never counts as a repo's own, even whe
   writeFileSync(join(proj, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
   expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [proj]).map((b) => b.id)).toEqual(["claude-code"]);
   process.env.CLAUDE_CONFIG_DIR = join(tmp, ".claude");
+});
+
+test("an opened package's own link to the global copy is named, and said as left when its repo's top copy serves it", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  mkdirSync(join(mono, ".git"), { recursive: true });
+  const web7 = join(mono, "packages", "web7");
+  mkdirSync(join(web7, ".claude", "skills"), { recursive: true });
+  symlinkSync(entry, join(web7, ".claude", "skills", "g1"));
+  writeFileSync(join(web7, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const copies = [{ path: entry, harnesses: ["claude-code" as const], links: [] }];
+  // No top copy: the package's own link is what to change.
+  expect(blindSaid("g1", blindWithoutGlobal("g1", copies, [web7]))).toContain("give .claude/skills/g1 a copy of its own instead of a link to the global one");
+  // A top copy serves it: the move goes ahead, and the link it leaves is said.
+  writeSkill(join(mono, ".claude", "skills", "g1"), "top");
+  expect(blindWithoutGlobal("g1", copies, [web7])).toEqual([]);
+  expect(strandedLinks("g1", copies, [web7])).toEqual([".claude/skills/g1 in web7"]);
+});
+
+test("a package that pins a skill four folders deep is still found", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  const deep = join(mono, "apps", "a", "b", "c");
+  mkdirSync(deep, { recursive: true });
+  writeFileSync(join(deep, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono]).map((b) => basename(b.root))).toEqual(["c"]);
 });

@@ -171,7 +171,12 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
     return { opened: false, own: nearest };
   };
   const seen = new Set<string>();
-  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageSkillFolders(root).map((f) => ({ dir: f.location, top: false }))].flatMap(({ dir, top }) => {
+  // A package's real folder before one that's only a link to it: the link is named where it really is.
+  const aliased = (dir: string) => (realNative(join(root, dir)) ?? "") !== join(realRoot, dir);
+  const packageFolders = packageSkillFolders(root)
+    .map((f) => ({ dir: f.location, top: false }))
+    .sort((a, b) => Number(aliased(a.dir)) - Number(aliased(b.dir)));
+  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageFolders].flatMap(({ dir, top }) => {
     const real = realNative(join(root, dir)) ?? join(root, dir);
     if (seen.has(real)) return [];
     seen.add(real);

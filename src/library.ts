@@ -295,7 +295,10 @@ export function blindWithoutGlobal(
       const at = shared && existsSync(join(root, shared, name, "SKILL.md")) ? lostAt(join(root, shared, name), gone) : null;
       // skilllib doesn't write in a shared folder: the copy goes there by hand (or the folder points back).
       if (shared && !at) return [{ root, id, folder, shared: { dir: shared, to: shown(root, realNative(join(root, shared)) ?? join(root, shared)) } }];
-      return [{ root, id, folder, ...(at ? { link: shown(root, at) } : {}) }];
+      // Its own link that goes to the global copy: that link is what to change, however this repo was asked about.
+      const own = at ? null : harness(id).projectDirs.find((d) => writableDir(root, d) && isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
+      const ownAt = own ? lostAt(join(root, own, name), gone) : null;
+      return [{ root, id, folder, ...(at ? { link: shown(root, at) } : ownAt ? { link: shown(root, ownAt) } : {}) }];
     });
   // A package's copy loads in its package: one that wouldn't survive leaves the agents reading it there without it.
   const nestedBlind = (root: string) =>
@@ -358,11 +361,15 @@ export function strandedLinks(
 ): string[] {
   const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  return unique.flatMap((root) =>
-    nestedEntries(root)
+  // A package's links, and a repo's own (when a copy above it serves it, the repo being a package opened on its own).
+  return unique.flatMap((root) => [
+    ...ALL_PROJECT_DIRS.filter((d) => writableDir(root, d) && isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")) && !survives(join(root, d, name), gone)).map(
+      (d) => `${d}/${name} in ${label(root)}`,
+    ),
+    ...nestedEntries(root)
       .filter((n) => n.name === name && isLink(n.path) && !survives(n.path, gone))
       .map((n) => `${relative(root, n.path).split(sep).join("/")} in ${label(root)}`),
-  );
+  ]);
 }
 
 /** Whether these copies of one skill differ in content: what's there, a broken link (no content) left out. */
@@ -568,7 +575,7 @@ const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "
  * so linking, tracking or tidying them into the root folders would change who loads them.
  * A nested git repo is a project of its own and isn't searched.
  */
-export function nestedSkills(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): ProjectSkill[] {
+export function nestedSkills(root: string, { depth = PACKAGE_DEPTH, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): ProjectSkill[] {
   return nestedEntries(root, { depth, enabled }).map((n) => ({
     name: n.name,
     managed: false,
@@ -587,7 +594,7 @@ export type NestedEntry = { name: string; path: string; location: string; skills
 /** nestedSkills' walk, without comparing anything to the library: what blindWithoutGlobal needs, cheaply. */
 export function nestedEntries(
   root: string,
-  { depth = 3, enabled = enabledHarnesses(), subs }: { depth?: number; enabled?: HarnessId[]; subs?: string[] } = {},
+  { depth = PACKAGE_DEPTH, enabled = enabledHarnesses(), subs }: { depth?: number; enabled?: HarnessId[]; subs?: string[] } = {},
 ): NestedEntry[] {
   const top = realpathOrNull(root) ?? root;
   const found = packageSkillFolders(root, subs ?? packageDirs(root, depth)).flatMap(({ sub, skillsDir, location }) =>
@@ -603,8 +610,11 @@ export function nestedEntries(
   return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
 }
 
+/** How deep a repo's packages are looked for (apps/web/packages/ui is 4): deeper ones go unseen. */
+const PACKAGE_DEPTH = 5;
+
 /** A repo's package folders (a monorepo), down to `depth`: not dot-folders, dependencies or build output, nor below another repo (a .git). */
-export function packageDirs(root: string, depth = 3): string[] {
+export function packageDirs(root: string, depth = PACKAGE_DEPTH): string[] {
   const found: string[] = [];
   const walk = (dir: string, left: number) => {
     let subs: string[] = [];
