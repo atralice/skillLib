@@ -38,7 +38,7 @@ import {
 import { harness, type HarnessId } from "../harnesses.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
-import { projectHere, readableRoots, readManifest } from "../project.js";
+import { projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
 import { readSkillInfo, treeHash } from "../skills.js";
 import { foldersOf } from "../tidy.js";
 import {
@@ -171,6 +171,8 @@ export function loadWorld(): World {
   forgetClaudeBinary();
   const agents = enabledHarnesses();
   const here = projectHere();
+  // Remembered, as a CLI command there would: "who uses this skill" (deleting from your library) sees it too.
+  if (here) rememberProjects([here]);
   // The same repo can come as two paths (a symlinked folder, /var vs /private/var): match by real path.
   const real = realPath;
   const visible = visibleProjects();

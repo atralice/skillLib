@@ -57,7 +57,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
   - whether it's committed to git or gitignored
   - how often it was used
 - **🖥 An app when you want to look yourself.** `skilllib` opens a terminal app with the same data and fixes, and can copy a review prompt for any agent.
-- **🛟 Nothing is lost.** Every removal goes to a backup you can restore with one key.
+- **🛟 Nothing is lost.** Your library keeps the skills you remove from a repo, and everything else skilllib removes goes to a backup you can restore with one key.
 
 Everything runs locally: no server, no account, no network calls.
 

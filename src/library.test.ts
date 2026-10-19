@@ -857,3 +857,13 @@ test("sync restores what skilllib.json pins and never rewrites it", () => {
   expect(readFileSync(join(project, "skilllib.json"), "utf-8")).toBe(pinned);
   expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
 });
+
+test("add never writes through a .claude/skills link that leads out of the repo", () => {
+  const outside = join(tmp, "elsewhere");
+  mkdirSync(outside);
+  mkdirSync(join(project, ".claude"));
+  symlinkSync(outside, join(project, ".claude", "skills"));
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills links outside the repo" });
+  expect(existsSync(join(outside, "alpha"))).toBe(false);
+  expect(readManifest(project).skills).toEqual({});
+});

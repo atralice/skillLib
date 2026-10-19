@@ -21,7 +21,7 @@ These came out of many rounds of using it. Each one has been broken before and f
 5. **Every row has something to do.** A details pane is never empty of actions. Rows that start something (`+ Add a skill…`) are rows too, pinned on top.
 6. **Fix it where you see it.** An issue carries its fixes. `★` marks the recommended one and `space` applies it. Issues that are a matter of taste are marked *your call*: `space` shows the choices instead, and "fix all" never touches them.
 7. **Say what happens before it happens.** Every change shows a preview (what moves where, which repos) in the confirm box or the repo picker.
-8. **Nothing is lost.** Anything skilllib removes goes to Settings › Backups, and `enter` there puts it back.
+8. **Nothing is lost.** A skill removed from a repo stays in Your skills; anything else skilllib removes goes to Settings › Backups, and `enter` there puts it back.
 9. **Quiet by default.** One line at the bottom: a few hints for where you are, replaced by the result of what you just did until the next key.
 
 ---

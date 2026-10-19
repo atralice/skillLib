@@ -125,7 +125,7 @@ function conflictIssue(c: Conflict): Issue {
     at: rows(c.root, [c.name]),
     choices: winners.flatMap((x): Choice[] => {
       const plan = planFor(x.dir);
-      const visible = plan ? gitVisibleSteps(plan).map((s) => describeStep(s, c.root!)) : [];
+      const visible = plan ? gitVisibleSteps(plan).map((s) => describeStep(s, c.root)) : [];
       const label = `Keep the ${folderLabel(c.root, x.dir)} copy`;
       if (!visible.length) return [{ label, hint: x.dir === c.managed ? "skilllib's version" : "the others become links to it", run: keep(x.dir, "go") }];
       return [
@@ -308,7 +308,7 @@ export function findIssues(
         ? [
             {
               label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
-              hint: "the plugin's copy stays; Your skills keeps yours",
+              hint: `the plugin's copy stays; Your skills keeps yours${gitNote(root, [join(root, MANIFEST_FILE)])}`,
               run: () => {
                 for (const s of copies) {
                   const r = removeSkill(root, s.name);
@@ -854,7 +854,7 @@ export function findIssues(
             },
             {
               label: "Discard the edits",
-              hint: `back to ${pinned}; the edited copy is restorable with skilllib restore${gitNote(root, [s.path])}`,
+              hint: `back to ${pinned}; the edited copy is restorable with skilllib restore${gitNote(root, [s.path, join(root, MANIFEST_FILE)])}`,
               run: () => {
                 const c = discardEdits(root, s.name);
                 if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
@@ -907,7 +907,8 @@ export function findIssues(
           ? [
               {
                 label: `Remove the copies in ${removeWheres}`,
-                hint: `the global copy stays${extra.some((r) => gitNote(r, statuses.get(r)!.filter((s) => s.name === name).map((s) => s.path))) ? "; git will see it" : ""}`,
+                // Removing a managed copy edits its skilllib.json too.
+                hint: `the global copy stays${extra.some((r) => gitNote(r, [...statuses.get(r)!.filter((s) => s.name === name).map((s) => s.path), join(r, MANIFEST_FILE)])) ? "; git will see it" : ""}`,
                 run: () => {
                   const removed = extra.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
                   if (!removed.length) throw new Error(`${name}: removed from no project (local edits?)`);
@@ -1028,7 +1029,7 @@ export function usageIssues(
         ? [
             {
               label: `Remove ${removable.length === unused.length ? "them" : `the ${plural(removable.length, "skill")} skilllib installed`} from ${where}`,
-              hint: `Your skills keeps them; edited ones stay${gitNote(root, removable.map((s) => s.path))}`,
+              hint: `Your skills keeps them; edited ones stay${gitNote(root, [...removable.map((s) => s.path), join(root, MANIFEST_FILE)])}`,
               run: () => {
                 const changes = removable.map((s) => removeSkill(root, s.name));
                 const removed = changes.filter((c) => c.action === "removed").map((c) => c.name);

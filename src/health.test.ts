@@ -424,6 +424,22 @@ test("usage hints: skills a repo hasn't used, and library skills in no repo; ski
   expect(usageIssues([project], machineSkills(), library, { ...none, days: 0 })).toEqual([]);
 });
 
+test("removing a managed skill says git will see it when only skilllib.json is committed", () => {
+  const project = join(tmp, "web");
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(project, "alpha");
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: project, stdio: "ignore" });
+  git("init", "-q");
+  writeFileSync(join(project, ".gitignore"), ".claude/\n");
+  git("add", ".");
+  git("commit", "-qm", "pins");
+  Bun.sleepSync(5);
+  const none = { inProject: () => 0, total: () => 0, days: 0 };
+  const [unused] = usageIssues([project], machineSkills(), new Set(["alpha"]), none);
+  expect(unused?.choices?.[0]?.hint).toEndWith("; git will see it");
+});
+
 test("Codex's global skills, in ~/.agents/skills and ~/.codex/skills, get a link for Claude Code", () => {
   setHarnesses(["claude-code", "codex"]);
   skill(join(tmp, ".agents", "skills", "shared"));

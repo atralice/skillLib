@@ -73,6 +73,13 @@ export function isLink(path: string): boolean {
  * the repo can be moved), a directory junction on Windows (no admin rights or
  * Developer Mode needed; junctions need an absolute target).
  */
+/** Whether a repo skill folder (which may not exist yet) really is inside the repo, not a link out of it. */
+function insideRepo(root: string, dir: string): boolean {
+  const real = realpathOrNull(join(root, dir));
+  const top = realpathOrNull(root) ?? root;
+  return real === null || real === top || real.startsWith(top + sep);
+}
+
 export function linkDir(target: string, link: string) {
   if (process.platform === "win32") symlinkSync(target, link, "junction");
   else symlinkSync(relative(dirname(link), target), link);
@@ -411,7 +418,10 @@ export function addSkill(
 
   const manifest = readManifest(root);
   const recorded = manifest.skills[name];
-  const [primary = PROJECT_SKILLS_DIR, ...linkDirs] = dependencyDirs(root, name, recorded);
+  const [primary = PROJECT_SKILLS_DIR, ...wantedLinks] = dependencyDirs(root, name, recorded);
+  // A skills folder that's a link out of the repo (to ~/.claude/skills, say) isn't the repo's: never write there.
+  if (!insideRepo(root, primary)) return { name, action: "skipped", reason: `${primary} links outside the repo` };
+  const linkDirs = wantedLinks.filter((d) => insideRepo(root, d));
   const to = join(root, primary, name);
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
@@ -493,6 +503,7 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const recorded = manifest.skills[name];
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
+  if (!insideRepo(root, recorded.dir ?? PROJECT_SKILLS_DIR)) return { name, action: "skipped", reason: `${recorded.dir ?? PROJECT_SKILLS_DIR} links outside the repo` };
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
@@ -568,7 +579,7 @@ function relinkPinned(root: string, name: string, dep: Dependency): Change {
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
   }
-  return { name, action: "relinked", to: dep.version };
+  return { name, action: "relinked", to: versionForHash(name, dep.hash)?.version ?? dep.version };
 }
 
 /**
