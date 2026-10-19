@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.11.4](https://github.com/atralice/skillLib/compare/v1.11.3...v1.11.4) (2026-10-19)
+
+A reliability release from many rounds of review. Nothing new to learn; skilllib is now much harder to make lose a skill, leave a change half done, or write somewhere it shouldn't.
+
+### Safer global skills
+* `global move`, doctor's "Stop loading it globally" and the app's Delete / Move to repos never take a global skill away from an agent that still needs it in any repo you have, including a repo that reaches it through a link, a skills folder linked to a shared folder of yours (`~/devskills`), or a monorepo package that pins it. When one would, skilllib refuses and says what to change, or that `skilllib global keep` keeps it.
+* Moving or deleting one global row now covers every global copy of that skill; copies that differ must be reconciled first (`skilllib tidy --global`).
+* Package links a move leaves pointing at nothing are named (`left` in `global move --json`).
+
+### Never half done
+* `add`, `sync`, `link`, `update` and `remove` check every folder they'd touch before writing anything. A skills folder that is a file, or links out of the repo, is reported, not written through.
+* A file where a skill's folder goes is never deleted.
+* `sync` never repoints a link that reaches other content.
+
+### Doctor
+* Doctor offers no choice that can't succeed, and `doctor --fix` converges.
+* `doctor --fix` removes a broken link by itself only at a repo's top, uncommitted; committed links and links inside monorepo packages are always asked first.
+* New reports: what's in the way of a link, a skills folder that isn't one, copies that differ behind a link, pins sync can't put back, pins from another library.
+
+### Changes agents and scripts will notice
+* `add` reports `unchanged` (nothing written) or `relinked` (only links written) instead of `updated` when nothing new was installed.
+* `remove` drops just the pin when the skill's own folder isn't the repo's (a folder outside the repo, a file), and says what it left in `reason`.
+* Change results can carry `inTheWay` (something is where a link goes); the command exits 1.
+* `status` and other commands that take no names reject stray words; `unhide` and `folders` failures print `{"error"}` with `--json`.
+
+### Plugins
+* A plugin only turned on in your settings (not installed) is never offered for removal; turning it off edits your settings.
+* A plugin a repo's settings turn on is shown as loading in that repo, not every repo, and its review prompt says so.
+* Replacing a plugin with your own copies checks every repo can take them before anything changes.
+
+### Also
+* A skills folder that links to another folder in the repo (`.claude/skills` → `.agents/skills`) is treated as one folder: committed team skills there are the team's (never removed), and `add` finds nothing in its own way.
+* `restore` that can't put a copy back prints `{"error"}` with `--json`; doctor shows a choice by label where `apply` needs one.
+* Usage counts skip a transcript (or transcript folder) that can't be read, so `doctor` and `usage` no longer fail on one, and the app says when usage can't be shown; plugin skills are counted under `plugin:skill`.
+* An empty `SKILLLIB_HOME` or `CLAUDE_CONFIG_DIR` falls back to the default; agents' own config folders are never treated as projects.
+* A `SKILL.md` that starts with a byte-order mark is read correctly.
+* Monorepo packages are looked for up to five folders deep; a package with its own `skilllib.json` counts even before you open it.
+* The app's results wrap to three lines instead of being cut off; deletes and moves say what was left.
+* Windows: link checks handle drive paths, `\\?\` targets and case.
+
 ## [1.11.3](https://github.com/atralice/skillLib/compare/v1.11.2...v1.11.3) (2026-10-19)
 
 
