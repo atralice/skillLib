@@ -461,7 +461,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
             run: (w) => {
               const linked = resultSaid(ask.run(w));
               const retry = said(attempt(names));
-              const text = [linked, retry.text].filter(Boolean).join("; ");
+              // The others that stayed global (for their own reasons) are still said.
+              const others = results.filter((mv) => !mv.moved && !names.includes(mv.name)).map((mv) => `${mv.name}: ${mv.reason}`);
+              const text = [linked, retry.text, ...others].filter(Boolean).join("; ");
               return retry.moved.length === names.length ? text : failed(text);
             },
           },

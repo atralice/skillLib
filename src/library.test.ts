@@ -1214,3 +1214,12 @@ test("the advice names the link to change: in a shared folder of yours, not the 
   const blind = blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [r1]);
   expect(blindSaid("g1", blind)).toBe("Claude Code in r1 only sees the global copy: give ~/devskills/g1 a copy of its own instead of a link to the global one, or keep g1 global (skilllib global keep)");
 });
+
+test("remove's pin-only reason names the repo's own links it left", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha"); // copy in .agents/skills, link in .claude/skills
+  mkdirSync(join(tmp, "devA"));
+  execFileSync("mv", [join(project, ".agents", "skills"), join(tmp, "devA", "skills")]);
+  symlinkSync(join(tmp, "devA", "skills"), join(project, ".agents", "skills"));
+  expect(removeSkill(project, "alpha").reason).toBe(".agents/skills links out of the repo (to ~/devA/skills): only its pin was removed, and that copy was left as it is; its link .claude/skills/alpha was left too");
+});

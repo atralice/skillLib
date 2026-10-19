@@ -815,7 +815,9 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
     delete manifest.skills[name];
     writeManifest(root, manifest);
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
-    return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...leftLinks].join("; ") };
+    // Its links in the repo's own folders stay too (they reach that copy): named, so nobody thinks they're gone.
+    const keptLinks = (recorded.links ?? []).filter((d) => writableDir(root, d) && isLink(join(root, d, name))).map((d) => `its link ${d}/${name} was left too`);
+    return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...keptLinks, ...leftLinks].join("; ") };
   }
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
