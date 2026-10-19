@@ -271,6 +271,7 @@ function shortOf(found: Found): string {
     sync: "Folder missing",
     unavailable: "Pinned, not in your library",
     pin: "Pinned version not in your library",
+    "out-of-sync": "Not the pinned version",
     update: "Out of date",
     uncommitted: "Commit it first",
     local: "Not in your library",
@@ -424,10 +425,7 @@ function removeAgentSkillFix(): Fix {
   };
 }
 
-/**
- * "Fix all": runs the fixes and says what happened. A fix whose result asks a follow-up was held back
- * (it needs your OK, e.g. git tracks the folder); its message says what and why.
- */
+/** "Fix all": runs doctor's fixes (never a decision) and says how many applied, and which failed and why. */
 export function runAll(w: World, fixes: Fix[]): Result {
   const bad = fixes.map((fix) => fix.run(w)).filter(isFailure).map(said);
   const ok = fixes.length - bad.length;

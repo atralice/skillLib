@@ -219,8 +219,7 @@ function usageLines(w: W.World, name: string, width: number, repo: string | null
   ];
 }
 
-/** One row per skill, whatever number of places it loads from. */
-/** `repo`: the repo you're looking from, or null in Global, where everything is machine-wide. */
+/** One row per skill, whatever number of places it loads from. `repo`: the repo you're looking from, or null in Global. */
 function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: number, actions: Option[], repo: string | null): Item {
   const u = copies[0]!;
   const top = W.worst(issues);
@@ -1613,7 +1612,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         <Text color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
           {" " + toast}
         </Text>
-        {toast ? null : <Text color={color.faint}>{hints + " "}</Text>}
+        {/* A confirm (a follow-up after a result too) always shows its keys; the toast gives way. */}
+        {toast && modal?.kind !== "confirm" ? null : <Text color={color.faint}>{hints + " "}</Text>}
       </Box>
     </Box>
   );

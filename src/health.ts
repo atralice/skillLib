@@ -85,6 +85,11 @@ function summarize(where: string, verb: string, changes: Change[]): string {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** Issue.at for skills in one repo, or in Global (`root` null). */
 const rows = (root: string | null, skills: string[]) => skills.map((skill) => ({ root, skill }));
+/** "; git will see it" when any of these copies is committed: a choice that changes them says so. */
+const gitNote = (root: string, paths: string[]) => {
+  const git = gitInfo(root);
+  return paths.some((p) => ["committed", "changed"].includes(git?.of(relativeTo(root, p)) ?? "")) ? "; git will see it" : "";
+};
 const agentNames = (ids: HarnessId[]) => ids.map((id) => harness(id).name).join(", ");
 
 /**
@@ -283,10 +288,15 @@ export function findIssues(
     const where = basename(root);
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
     const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
+    // Not a copy the repo commits (it's the team's, as README says), and only when every agent that reads
+    // your copy also loads the plugin's: Codex, Zed and Grok never load a Claude Code plugin.
+    const committed = gitNote(root, copies.map((s) => s.path)) !== "";
+    const pluginAgents = pluginAgentsIn(plugin, root);
+    const leftOut = copies.flatMap((s) => s.visibility.filter((v) => v.paths > 0 && !pluginAgents.has(v.id)).map((v) => v.id));
     return [
       { label: `Turn the plugin ${plugin.id} off in ${where} only`, hint: "other repos keep it; in .claude/settings.local.json, a local-only file", run: () => orThrow(turnOffIn(plugin, root)) },
       // Only copies skilllib installed: Your skills keeps them. A repo's own skill is the team's, never removed from here.
-      ...(names.length && allManaged
+      ...(names.length && allManaged && !committed && !leftOut.length
         ? [
             {
               label: `Remove your ${copies.map((s) => s.name).join(", ")} from ${where}`,
@@ -524,6 +534,21 @@ export function findIssues(
           label: "Sync the project",
           run: () => summarize(where, "restored", syncProject(root)),
         },
+      });
+    }
+    // A copy that's another library version than the pin (after a pull, say): sync installs the pinned one. It
+    // replaces a copy your library keeps, so nothing is lost; when the copy is committed, git sees it: a choice.
+    const drifted = status.filter((s) => s.state === "out of sync");
+    if (drifted.length) {
+      const seen = drifted.some((s) => ["committed", "changed"].includes(gitInfo(root)?.of(relativeTo(root, s.path)) ?? ""));
+      const install: Choice = { label: "Install the pinned versions", hint: seen ? "git will see the copies change" : "your library keeps every version", run: () => summarize(where, "synced", syncProject(root)) };
+      issues.push({
+        id: `out-of-sync:${root}`,
+        severity: "suggestion",
+        title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
+        detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.`,
+        at: rows(root, drifted.map((s) => s.name)),
+        ...(seen ? { choices: [install] } : { fix: install }),
       });
     }
     for (const s of status.filter((s) => s.state === "folder missing" && s.latest === null))
@@ -815,7 +840,7 @@ export function findIssues(
             },
             {
               label: "Discard the edits",
-              hint: `back to ${pinned}; the edited copy is restorable with skilllib restore`,
+              hint: `back to ${pinned}; the edited copy is restorable with skilllib restore${gitNote(root, [s.path])}`,
               run: () => {
                 const c = discardEdits(root, s.name);
                 if (c.action === "skipped") throw new Error(`${s.name}: ${c.reason}`);
@@ -868,7 +893,7 @@ export function findIssues(
           ? [
               {
                 label: `Remove the copies in ${removeWheres}`,
-                hint: "the global copy stays",
+                hint: `the global copy stays${extra.some((r) => gitNote(r, statuses.get(r)!.filter((s) => s.name === name).map((s) => s.path))) ? "; git will see it" : ""}`,
                 run: () => {
                   const removed = extra.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
                   if (!removed.length) throw new Error(`${name}: removed from no project (local edits?)`);
@@ -989,7 +1014,7 @@ export function usageIssues(
         ? [
             {
               label: `Remove ${removable.length === unused.length ? "them" : `the ${plural(removable.length, "skill")} skilllib installed`} from ${where}`,
-              hint: "Your skills keeps them; edited ones stay",
+              hint: `Your skills keeps them; edited ones stay${gitNote(root, removable.map((s) => s.path))}`,
               run: () => {
                 const changes = removable.map((s) => removeSkill(root, s.name));
                 const removed = changes.filter((c) => c.action === "removed").map((c) => c.name);

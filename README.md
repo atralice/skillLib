@@ -148,7 +148,7 @@ The list shows everything agents can use in the repo, one row per skill, even wh
 
 | Column | Meaning |
 |---|---|
-| Source | `lib v2`: from your library · `repo`: committed by your team (`.agents/skills` or `.grok/skills`) · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` · `grok` |
+| Source | `lib v2`: from your library · `repo`: the team's (committed to git, or in `.agents/skills` or `.grok/skills`) · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` · `grok` |
 | Uses | Claude Code uses in this repo, last 30 days |
 | Issue | The worst of its issues; the details show them all |
 
@@ -165,6 +165,7 @@ What skilllib flags:
 | **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo. If you keep it global on purpose, remove the repo copies skilllib installed instead |
 | **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
 | **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
+| **Not the pinned version** (the copy is another version from your library, e.g. after a pull) | Install the pinned versions (`sync`; a choice when the copies are committed) |
 | **Out of date** · **Edited here** | Update every out-of-date skill in the repo (or one, from its *Update to vN* action) · save the edits as a new version, or discard them |
 | **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
 | **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
@@ -229,7 +230,7 @@ Plugins are a big part of what agents load (one plugin can bring dozens of skill
 | Scope | `user` (every repo) · `project` / `local` and the repo it's installed in · `claude.ai` (synced from your account) |
 | Brings | Its skills, and `+N` for the other kinds of things it brings: commands, agents, hooks, MCP servers |
 | On | `on` · `off` · `?` for Cursor, which keeps that in its own database |
-| Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart; two installs of one plugin share a count |
+| Uses | Claude Code uses of its skills (`plugin:skill`), last 30 days. Your own skill by the same name is counted apart here; `skilllib usage` and `status` count both for the skill's name, so moving a skill out of a plugin keeps its history. Two installs of one plugin share a count |
 | Issue | **Repeats N of yours** (a skill in your library or global folders) · **Unused 30 days** (on, ships skills, none used) · **Update available** (its marketplace has a newer version or commit) |
 
 Every plugin issue is *your call*: turning plugins on or off, or updating them, changes code that runs in your sessions, so **Fix automatically** never does it.
@@ -296,7 +297,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 | Where | Examples | Who sees it |
 |---|---|---|
 | **The repo** | `.claude/skills`, `.agents/skills`, `.grok/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
-| **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide |
+| **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide. A subfolder with its own `skilllib.json` is a project of its own: run skilllib there (scan finds repos, not subfolders) |
 | **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills`, `~/.grok/skills` | **Every repo** |
 | **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin), Grok's bundled skills | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
@@ -389,7 +390,8 @@ skilllib global [keep|unkeep]   your global skills; mark the ones you keep globa
 skilllib global move <name> --to <repo>   load a global skill only in those repos
 skilllib new <name> [desc]      create a skill
 
-skilllib usage [--days N]       which skills Claude Code used
+skilllib projects               your projects and their skills
+skilllib usage [--days N]       which skills Claude Code used (a plugin's copy counts for the skill's name)
 skilllib doctor [--fix]         find (and fix) problems
 skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from status or doctor --json)
 skilllib restore [name]         put back something skilllib moved out (copies moved together come back together)

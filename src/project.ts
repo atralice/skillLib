@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { MANIFEST_FILE, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
+import { ALL_PROJECT_DIRS } from "./harnesses.js";
 
 /**
  * skilllib.json: the library skills this project depends on, each with the
@@ -65,6 +66,11 @@ export function readManifest(root: string): Manifest {
       if (typeof value === "string") return [[name, { version: versionForHash(name, value)?.version ?? 0, hash: value }]];
       if (value && typeof value === "object" && "hash" in value) {
         const dep = value as Partial<Dependency>;
+        // dir and links name the repo's own skill folders: anything else (a "../" path, "") would make sync and
+        // remove write or delete outside the repo. A skilllib.json that says so is wrong: say so, don't guess.
+        const folders = [...(typeof dep.dir === "string" ? [dep.dir] : []), ...(Array.isArray(dep.links) ? dep.links.map(String) : [])];
+        const bad = folders.find((d) => !(ALL_PROJECT_DIRS as readonly string[]).includes(d));
+        if (bad !== undefined) throw new Error(`${path} isn't a valid skilllib.json: ${name}'s folder "${bad}" isn't a skill folder (${ALL_PROJECT_DIRS.join(", ")})`);
         return [
           [
             name,
@@ -77,7 +83,7 @@ export function readManifest(root: string): Manifest {
           ],
         ];
       }
-      return [];
+      throw new Error(`${path} isn't a valid skilllib.json: ${name}'s pin has no hash`);
     }),
   );
   return { ...data, skills };
