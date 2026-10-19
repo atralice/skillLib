@@ -188,7 +188,7 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  * A real path as the file system spells it: Node's JS realpath keeps the case you asked with on a case-insensitive
  * disk (macOS), and the short names Windows can hand out; the native one gives the one true spelling.
  */
-function realNative(p: string): string | null {
+export function realNative(p: string): string | null {
   try {
     return realpathSync.native(p);
   } catch {
@@ -324,7 +324,15 @@ export function blindWithoutGlobal(
     const had = byWho.get(k);
     if (!had || (!(had.link || had.folder || had.shared) && (b.link || b.folder || b.shared))) byWho.set(k, b);
   }
-  return [...byWho.values()];
+  // An agent in a package reads every enclosing folder up to the repo's top too: a surviving copy in one (an enclosing
+  // package, the top) serves it there, whichever way the package was asked about.
+  // Only within the repos asked about: never above one.
+  const within = (d: string) => unique.some((r) => d === r || d.startsWith(r + sep));
+  const servedAbove = (b: Blind) => {
+    for (let d = dirname(b.root); within(d) && d !== dirname(d); d = dirname(d)) if (keepsTop(d, b.id)) return true;
+    return false;
+  };
+  return [...byWho.values()].filter((b) => !servedAbove(b));
 }
 
 /**
@@ -364,7 +372,7 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
     sharedBy.get(b.shared!.to)!.dirs.add(b.shared!.dir);
   }
   const shared = [...sharedBy.values()].map(
-    (g) => `put a copy of ${name} in ${g.to} (${[...g.where].join(", ")} link${g.where.size === 1 ? "s" : ""} there), or point ${[...g.dirs].join(" and ")} back into the repo`,
+    (g) => `put a copy of ${name} in ${g.to} (${[...g.where].join(", ")} link${g.where.size === 1 ? "s" : ""} there), or point ${g.where.size === 1 ? `${[...g.dirs][0]} back into the repo` : "those folders back into their repos"}`,
   );
   const repos = blind.filter((b) => !b.folder && !b.link && !b.shared);
   const fixes = [

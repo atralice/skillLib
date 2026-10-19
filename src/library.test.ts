@@ -1290,3 +1290,19 @@ test("a package that pins a skill holds it with no skills folder at all, unless 
   writeSkill(join(mono, ".claude", "skills", "g1"), "top"); // the repo's top copy serves its packages
   expect(blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono])).toEqual([]);
 });
+
+test("a package served by a copy in an enclosing package or the repo's top isn't blind, however it's asked about", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  const a = join(mono, "packages", "a");
+  const sub = join(a, "sub");
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(a, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  writeSkill(join(a, ".claude", "skills", "g1"), "a's");
+  writeFileSync(join(sub, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const copies = [{ path: entry, harnesses: ["claude-code" as const] }];
+  expect(blindWithoutGlobal("g1", copies, [mono])).toEqual([]);
+  expect(blindWithoutGlobal("g1", copies, [mono, sub])).toEqual([]);
+});
