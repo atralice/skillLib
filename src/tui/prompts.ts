@@ -1,4 +1,5 @@
 /** Prompts the TUI copies for an agent: reviewing skills, and writing a new one. */
+import { dirname } from "node:path";
 import { harness, type HarnessId } from "../harnesses.js";
 import { buildReviewPrompt, type ReviewSkill } from "../review.js";
 import { totalUses, type LocalSkill, type World } from "./world.js";
@@ -47,7 +48,7 @@ export function reviewPrompt(w: World, names: string[], scope: string, repo?: st
       description: w.descriptions[name] ?? "",
       source: m ? (m.source === "global" ? "my global skills" : `vendor: ${m.source} (${m.where})`) : lib ? "Your skills (skilllib library)" : local ? localSource(local) : "a repo's own skill",
       installedHow: m?.origin ?? (m ? m.where : lib ? "created or imported into skilllib" : local ? localInstalled(local) : "committed in the repo"),
-      path: m?.path ?? (lib ? w.ops.libraryFile(name).replace(/\/SKILL\.md$/, "") : (local?.path ?? "")),
+      path: m?.path ?? (lib ? dirname(w.ops.libraryFile(name)) : (local?.path ?? "")),
       links: m?.links ?? [],
       loadedBy: m
         ? `${agentNames(m.agents)} — in every repo`

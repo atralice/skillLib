@@ -36,7 +36,7 @@ export type ReviewContext = {
 
 const EXCERPT_CHARS = 1200;
 
-/** First part of SKILL.md (frontmatter included), plus the file count, so the agent can judge quality. */
+/** First part of SKILL.md (without its frontmatter), plus the file count, so the agent can judge quality. */
 function skillExcerpt(dir: string, chars: number): { text: string; files: number; size: number } {
   const file = join(dir, "SKILL.md");
   if (!existsSync(file)) return { text: "(SKILL.md not found)", files: 0, size: 0 };

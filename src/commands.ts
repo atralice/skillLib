@@ -36,7 +36,7 @@ import { findIssues, runFix, usageIssues, type Choice, type Issue } from "./heal
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import type { AllChangesJson, ApplyJson, ChangeJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
-import { applyTidy, copyLabel, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
+import { applyTidy, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
 const USAGE_DAYS = 30;
 
@@ -255,9 +255,11 @@ export async function status(args: Args) {
   const notInLibrary = missing.filter((s) => s.latest === null).map((s) => s.name);
   if (notInLibrary.length)
     hints.push(`${notInLibrary.join(", ")} ${notInLibrary.length === 1 ? "isn't" : "aren't"} in your library (${tildify(libraryDir())}): \`skilllib import <dir>\` to add, or set SKILLLIB_HOME to the library that has ${notInLibrary.length === 1 ? "it" : "them"}`);
-  if (states.has("edited locally") || states.has("edited locally, update available"))
-    hints.push("`skilllib import .claude/skills/<name> --force` to save local edits to the library");
-  if (states.has("local only")) hints.push("`skilllib import .claude/skills/<name>` to add a local skill to the library");
+  // Each hint names the skill's own folder: the real copy may be in .agents/skills.
+  const at = (s: { path: string }) => relativeTo(root, s.path);
+  for (const s of skills.filter((x) => x.state === "edited locally" || x.state === "edited locally, update available"))
+    hints.push(`\`skilllib import ${at(s)} --force\` to save ${s.name}'s local edits to the library`);
+  for (const s of skills.filter((x) => x.state === "local only")) hints.push(`\`skilllib import ${at(s)}\` to add ${s.name} to the library`);
   if (states.has("untracked copy of library skill") || states.has("untracked, differs from library"))
     hints.push("`skilllib add <name>` to manage an untracked skill (--force if it differs)");
   if (hints.length > 0) info("\n" + hints.map((h) => dim(`→ ${h}`)).join("\n"));
@@ -805,7 +807,8 @@ export function link(args: Args) {
 /** Your global skills, and which you keep global on purpose: skilllib global [keep|unkeep <name>...] */
 export function globalCommand(args: Args) {
   const [action, ...names] = args.positional;
-  const yours = yourGlobals();
+  // Global skills one of your agents loads (a folder none of them reads loads nothing).
+  const yours = yourGlobals().filter((m) => m.harnesses.length);
   if (action === "move") return moveGlobal(args, names, yours);
   if (action === "keep" || action === "unkeep") {
     const unknown = names.filter((n) => !yours.some((m) => m.name === n));
@@ -927,9 +930,9 @@ export function tidy(args: Args) {
       warn(`${label} · ${c.name}: the copies differ`);
       for (const copy of c.copies) {
         const runs = copy.runs.map((id) => harness(id).name);
-        info(`    ${copyLabel(c, copy.dir)}${runs.length ? dim(`  run by ${runs.join(", ")}`) : ""}${c.managed === copy.dir ? dim("  (skilllib's copy)") : ""}`);
+        info(`    ${folderLabel(c.root, copy.dir)}${runs.length ? dim(`  run by ${runs.join(", ")}`) : ""}${c.managed === copy.dir ? dim("  (skilllib's copy)") : ""}`);
       }
-      const pick = copyLabel(c, c.managed ?? c.copies[0]!.dir);
+      const pick = folderLabel(c.root, c.managed ?? c.copies[0]!.dir);
       info(dim(`    keep one: skilllib tidy ${c.name}${args.global ? " --global" : ""} --keep ${pick}`));
     }
     for (const s of report.skipped.filter((x) => !names.length || names.includes(x.name))) info(dim(`- ${label} · ${s.name}: skipped, ${s.reason}`));

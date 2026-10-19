@@ -326,10 +326,9 @@ export function unlinkEverywhere(root: string, name: string, removing?: string):
   return ALL_PROJECT_DIRS.filter((dir) => {
     const link = join(root, dir, name);
     if (!isLink(link)) return false;
-    if (dir === GROK_SKILLS_DIR) {
-      const target = realpathOrNull(link);
-      if (target !== null && target !== gone) return false;
-    }
+    // Only links to nothing or to the copy being removed: one to another copy (the team's, say) stays.
+    const target = realpathOrNull(link);
+    if (target !== null && target !== gone) return false;
     unlinkSync(link);
     return true;
   });
@@ -410,8 +409,9 @@ export function addSkill(
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
 
-  // A copy git tracks that skilllib.json doesn't pin is the team's: never replaced, even with --force.
-  if (local !== null && !recorded && local !== target.hash && isGitTracked(root, `${primary}/${name}`))
+  // A copy (or a link) git tracks that skilllib.json doesn't pin is the team's: never replaced or taken over,
+  // even when identical (managed, remove could then delete it), even with --force.
+  if (!recorded && entryExists(to) && isGitTracked(root, `${primary}/${name}`))
     return { name, action: "skipped", reason: `${primary}/${name} is the repo's own (committed): skilllib doesn't replace it; remove it in the repo first if the library's should win` };
   if (local !== null && local !== target.hash && !knownContent && !force) {
     return {

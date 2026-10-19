@@ -276,7 +276,9 @@ describe("harnesses", () => {
       { id: "cursor", paths: 2 },
       { id: "codex", paths: 1 },
     ]);
-    expect(unlinkEverywhere(project, "team-flow")).toEqual([".claude/skills"]);
+    // A link to another copy stays; one to the copy being removed goes.
+    expect(unlinkEverywhere(project, "team-flow")).toEqual([]);
+    expect(unlinkEverywhere(project, "team-flow", repo("team-flow"))).toEqual([".claude/skills"]);
     expect(existsSync(repo("team-flow"))).toBe(true);
   });
 
