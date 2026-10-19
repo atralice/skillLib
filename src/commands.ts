@@ -246,7 +246,8 @@ export async function status(args: Args) {
     );
   }
 
-  const states = new Set(skills.map((s) => s.state));
+  // As the table shows them: a committed copy is the team's (no "add" hint for it).
+  const states = new Set(skills.map((s) => teamState(s)));
   const hints: string[] = [];
   if (states.has("update available")) hints.push("`skilllib update` to install the newest versions");
   const missing = skills.filter((s) => s.state === "folder missing");
@@ -311,7 +312,7 @@ export async function list(args: Args) {
 
   const libraryNames = new Set(skills.map((s) => s.name));
   // By name: a skill in two global folders is one skill.
-  const globals = [...new Set(yourGlobals().map((m) => m.name))];
+  const globals = [...new Set(yourGlobals().filter((m) => m.harnesses.length).map((m) => m.name))];
   if (globals.length > 0) {
     info("");
     warn(`${globals.length} of your global ${globals.length === 1 ? "skill still loads" : "skills still load"} in every project`);
@@ -940,7 +941,11 @@ export function tidy(args: Args) {
   }
   if (args.dryRun) info(dim("\nNothing changed (--dry-run)."));
   else if (changed) info(dim("\nReplaced copies are in ~/.skilllib/tidy-backup; `skilllib restore` puts them back."));
-  if (held) info(dim(`${held} change${held === 1 ? "" : "s"} held back because git would see them. Re-run with --allow-git to make them.`));
+  if (held) {
+    // Not everything asked was done: exit 1, as link does when git blocks a link.
+    process.exitCode = 1;
+    info(dim(`${held} change${held === 1 ? "" : "s"} held back because git would see them. Re-run with --allow-git to make them.`));
+  }
 }
 
 /** Show, install or remove the skill that lets your agents use skilllib. */

@@ -711,3 +711,17 @@ test("a committed npx skill your library already has raises nothing more (doctor
   expect(runFix(before.choices![0]!).ok).toBe(true);
   expect(findIssues([project], machineSkills(), new Set(["npx-one"])).some((i) => i.id === id)).toBe(false);
 });
+
+test("a kept-global skill's repo copy isn't offered for removal when an agent reads only that copy", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, ".agents", "skills", "review")); // global for Codex only
+  setKeepGlobal(["review"], true);
+  skill(join(tmp, "src", "review"));
+  importSkill(join(tmp, "src", "review"));
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  addSkill(project, "review"); // Claude Code's only copy is this one
+  const twice = findIssues([project], machineSkills(), new Set(["review"])).find((i) => i.id === "twice:review");
+  expect(twice?.choices).toBeUndefined();
+  expect(twice?.detail).toContain("Claude Code");
+});

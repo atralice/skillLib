@@ -213,6 +213,9 @@ describe("apply and global move, for agents", () => {
     // alpha is kept global and also installed in web and api: from web, status offers to remove web's copy, doctor both.
     mkdirSync(join(tmp, ".claude", "skills", "alpha"), { recursive: true });
     writeFileSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    // Codex loads the global copy too (through ~/.agents/skills): so the repo copies are extra for every agent.
+    mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+    symlinkSync(join(tmp, ".claude", "skills", "alpha"), join(tmp, ".agents", "skills", "alpha"), "junction");
     const repo = web();
     const api = join(tmp, "code", "api");
     mkdirSync(join(api, ".git"), { recursive: true });

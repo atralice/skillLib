@@ -311,7 +311,7 @@ test.skipIf(process.platform === "win32")("a project install is turned off, unin
   fakeClaude();
   const c = installedPlugins().find((p) => p.id === "c@mk")!;
   withPath("/usr/bin:/bin", () => {
-    expect(setPluginOn(c, false)).toMatchObject({ ok: true, message: "c@mk is off in web (project); Claude Code picks it up in its next session" });
+    expect(setPluginOn(c, false)).toMatchObject({ ok: true, message: "c@mk is off in web (project); Claude Code picks it up in its next session; it's in .claude/settings.json, which git tracks, so commit it if the team should get it" });
     expect(uninstallPlugin(c)).toMatchObject({ ok: true });
     const backup = pluginBackups().find((b) => b.from === "c@mk")!;
     expect(restorePlugin(backup)).toEqual({ ok: true, to: "Claude Code plugins (project in web)" });
