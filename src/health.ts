@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
@@ -202,10 +202,17 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
       };
       // Asked where the link really is (git lists nothing through a folder that's a link), package folders included.
       const placeOf = (p: string) => relative(realRoot, p).split(sep).join("/");
-      git ??= gitInfo(root, folders.filter((f) => !f.top).map((f) => placeOf(f.real)));
+      // Every folder's real place inside the repo (one outside, a shared folder, would make git refuse them all).
+      git ??= gitInfo(
+        root,
+        folders.map((f) => placeOf(f.real)).filter((p) => p !== ".." && !p.startsWith("../") && !isAbsolute(p)),
+      );
       const tracked = ["committed", "changed"].includes(git?.of(placeOf(join(real, name))) ?? "");
       // In a project of its own: whether its skilllib.json records this link (then a sync there brings back what it points to).
-      const recorded = own ? (pinsIn(own)[name]?.links ?? []).includes(relative(own, real).split(sep).join("/")) : false;
+      // Said only when a sync there really would: the pin's version is in your library and nothing is in sync's way.
+      const dep = own ? pinsIn(own)[name] : undefined;
+      const recorded =
+        !!own && !!dep && (dep.links ?? []).includes(relative(own, real).split(sep).join("/")) && !syncBlocker(own, name, dep) && versionForHash(name, dep.hash) !== null;
       const pinnedThere = own
         ? ` ${placeOf(own)} has its own skilllib.json${recorded ? `, which records this link: skilllib sync in ${placeOf(own)} brings back what it points to` : ""}.`
         : "";

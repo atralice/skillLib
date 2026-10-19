@@ -307,7 +307,7 @@ export function blindWithoutGlobal(
       .flatMap((n) =>
         n.readers
           .filter((id) => !keepsTop(root, id))
-          .map((id): Blind => ({ root: join(root, n.location, "..", ".."), id, folder: null, link: shown(root, lostAt(n.path, gone) ?? n.path) })),
+          .map((id): Blind => ((pkg) => ({ root: pkg, id, folder: null, link: shown(pkg, lostAt(n.path, gone) ?? n.path) }))(join(root, n.location, "..", ".."))),
       );
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
@@ -361,13 +361,18 @@ export function strandedLinks(
 ): string[] {
   const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  // A package's links, and a repo's own (when a copy above it serves it, the repo being a package opened on its own).
+  // A package's links, and a repo's own (when a copy above it serves it, the repo being a package opened on its own):
+  // each link once, by where it really is, though a repo and its opened package are both asked about.
+  const seen = new Set<string>();
+  const once = (p: string) => ((k) => (seen.has(k) ? false : (seen.add(k), true)))(join(realNative(dirname(p)) ?? dirname(p), basename(p)));
   return unique.flatMap((root) => [
-    ...ALL_PROJECT_DIRS.filter((d) => writableDir(root, d) && isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")) && !survives(join(root, d, name), gone)).map(
+    ...ALL_PROJECT_DIRS.filter(
+      (d) => writableDir(root, d) && isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")) && !survives(join(root, d, name), gone) && once(join(root, d, name)),
+    ).map(
       (d) => `${d}/${name} in ${label(root)}`,
     ),
     ...nestedEntries(root)
-      .filter((n) => n.name === name && isLink(n.path) && !survives(n.path, gone))
+      .filter((n) => n.name === name && isLink(n.path) && !survives(n.path, gone) && once(n.path))
       .map((n) => `${relative(root, n.path).split(sep).join("/")} in ${label(root)}`),
   ]);
 }
@@ -381,7 +386,8 @@ export function copiesDiffer(paths: string[]): boolean {
 export function blindSaid(name: string, blind: Blind[], label: (root: string) => string = basename): string {
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
-  const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link] : [])))];
+  // A link in a repo (or package) by its place there and whose it is; one elsewhere (~/devskills/x) by its path.
+  const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link.startsWith("~") || b.link.startsWith("/") ? b.link : `${b.link} in ${label(b.root)}`] : [])))];
   // One piece of advice per shared folder, naming every repo folder that links there.
   const sharedBy = new Map<string, { to: string; where: Set<string>; dirs: Set<string> }>();
   for (const b of blind.filter((x) => x.shared)) {
