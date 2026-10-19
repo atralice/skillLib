@@ -979,11 +979,13 @@ export function findIssues(
         id: `twice:${name}`,
         severity: "suggestion",
         title: `${name}: in ${wheres}, and you keep it global`,
-        detail: `${extra.length ? `The global copy already loads in ${removeWheres} for every agent that reads the project copy, so those are extra.` : ""}${
-          needed.length ? ` In ${needed.map((r) => `${basename(r)} (${onlyHere(r).join(", ")})`).join(", ")}, some agents read only the repo's copy: keep it there, or link the global one for them.` : ""
-        }${
-          repoOwn.length ? ` ${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : ""
-        }`,
+        detail: [
+          extra.length ? `The global copy already loads in ${removeWheres} for every agent that reads the project copy, so those are extra.` : "",
+          needed.length ? `In ${needed.map((r) => `${basename(r)} (${onlyHere(r).join(", ")})`).join(", ")}, some agents read only the repo's copy: keep it there, or link the global one for them.` : "",
+          repoOwn.length ? `${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
         at,
         choices: extra.length
           ? [
@@ -1003,6 +1005,11 @@ export function findIssues(
       continue;
     }
     const movable = machine.find((m) => m.name === name && m.movable);
+    // Stopping it globally only when no agent in any repo you have would lose it (see blindWithoutGlobal), not only
+    // the repos listed here: status --json scans just the one you're in. Otherwise no choice that can't succeed: why.
+    const readers = machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses);
+    const blind = movable ? blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`) : [];
+    const blindSaid = `${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy: give ${blind.length === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there), then stop loading it globally`;
     issues.push({
       at,
       id: `twice:${name}`,
@@ -1010,28 +1017,33 @@ export function findIssues(
       title: `${name}: in ${wheres} and also loaded globally`,
       detail: `${
         repoOwn.length === copies.length ? `Agents there load both the repo's copy and the global one.` : "The project copies are enough; the global one loads it in every other project too."
-      } ${movable ? "Stop loading it globally, or keep it global on purpose (skilllib global keep)." : `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`}`,
-      choices: movable
-        ? [
-            {
-              label: "Stop loading it globally",
-              hint: "restorable with skilllib restore",
-              run: () => {
-                // Only when no agent in any repo you have would lose it (see blindWithoutGlobal), not only the repos listed here.
-                const readers = machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses);
-                // Every repo you have, not only this scan's (status --json scans just the one you're in).
-                const blind = blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
-                if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; give ${blind.length === 1 ? "that repo" : "those repos"} a copy of its own first (skilllib add, sync or link there)`);
-                if (!libraryNames.has(name)) importSkill(movable.path);
-                for (const m of machine.filter((x) => x.name === name && x.movable)) {
-                  const r = unloadGlobal(m.path, m.links);
-                  if (!r.ok) throw new Error(`${name}: ${r.reason}`);
-                }
-                return `${name} no longer loads globally`;
+      } ${
+        !movable
+          ? `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`
+          : blind.length
+            ? `${blindSaid}, or keep it global on purpose (skilllib global keep).`
+            : "Stop loading it globally, or keep it global on purpose (skilllib global keep)."
+      }`,
+      choices:
+        movable && !blind.length
+          ? [
+              {
+                label: "Stop loading it globally",
+                hint: "restorable with skilllib restore",
+                run: () => {
+                  // Checked again: a repo may have changed since.
+                  const now = blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
+                  if (now.length) throw new Error(`${name}: ${now.join(", ")} ${now.length === 1 ? "only sees" : "only see"} the global copy; give ${now.length === 1 ? "that repo" : "those repos"} a copy of its own first (skilllib add, sync or link there)`);
+                  if (!libraryNames.has(name)) importSkill(movable.path);
+                  for (const m of machine.filter((x) => x.name === name && x.movable)) {
+                    const r = unloadGlobal(m.path, m.links);
+                    if (!r.ok) throw new Error(`${name}: ${r.reason}`);
+                  }
+                  return `${name} no longer loads globally`;
+                },
               },
-            },
-          ]
-        : undefined,
+            ]
+          : undefined,
     });
   }
 

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix, relative, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -189,10 +189,16 @@ export function blindWithoutGlobal(name: string, readers: Iterable<HarnessId>, r
   const read = new Set(readers);
   // A pin (even one whose folder is missing: its agents run the global copy until sync), or anything by that name in a skills folder.
   const holds = (root: string) => {
+    if (ALL_PROJECT_DIRS.some((d) => entryExists(join(root, d, name)))) return true;
     try {
-      return name in pinsIn(root) || ALL_PROJECT_DIRS.some((d) => entryExists(join(root, d, name)));
+      return name in readManifest(root).skills;
     } catch {
-      return false; // a skilllib.json that can't be read: its own issue
+      // A skilllib.json that can't be read (a merge conflict, say) may still pin it: if it names it, it counts.
+      try {
+        return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
+      } catch {
+        return false;
+      }
     }
   };
   // A copy really in the repo: not through a folder or a link that leads out of it (to the global copy itself, say).
@@ -789,7 +795,7 @@ export function updateProject(root: string, names?: string[], { force = false, a
     .filter((name) => !names || names.includes(name))
     .flatMap((name): Change[] => {
       const latest = latestVersion(name);
-      if (!latest) return [{ name, action: "skipped", reason: "no longer in the library" }];
+      if (!latest) return [{ name, action: "skipped", reason: "not in your library" }];
       const dep = skills[name]!;
       const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
       if (dep.hash === latest.hash && local === latest.hash) return [];

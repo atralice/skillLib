@@ -1063,3 +1063,14 @@ test("global move counts a repo that reaches the global copy through a link as s
   expect(mv!.reason).toStartWith("Claude Code in r only sees the global copy");
   expect(existsSync(join(r, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
+
+test("a repo whose skilllib.json can't be read (a merge conflict) still counts when it names the skill", () => {
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  const r = join(tmp, "r");
+  mkdirSync(join(r, ".agents", "skills"), { recursive: true });
+  writeFileSync(join(r, "skilllib.json"), '<<<<<<< HEAD\n{"skills": {"alpha": {"version": 1, "hash": "x"}}}\n');
+  rememberProjects([r, project]);
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: false });
+  expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+});

@@ -928,7 +928,10 @@ export function tidy(args: Args) {
   for (const { label, report } of reports) {
     const plans = report.plans.filter((p) => !names.length || names.includes(p.name));
     const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
-    if (!plans.length && !conflicts.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
+    // A skill you named that tidy has to leave alone isn't done: said below, and the command exits 1.
+    const skippedNamed = names.length ? report.skipped.filter((x) => names.includes(x.name)) : [];
+    if (skippedNamed.length) process.exitCode = 1;
+    if (!plans.length && !conflicts.length && !skippedNamed.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
     for (const plan of plans) {
       // The dry run says what the real one would do: the same steps held back unless --allow-git.
       const wouldHold = args.allowGit ? [] : gitVisibleSteps(plan);

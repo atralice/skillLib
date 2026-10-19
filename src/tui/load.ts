@@ -31,13 +31,11 @@ import {
   syncBlocker,
   restoreBackup,
   updateProject,
-  visibilityOf,
   type Backup,
   type Change,
   type LinkResult,
   type ProjectSkill,
 } from "../library.js";
-import { harness, type HarnessId } from "../harnesses.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
 import { projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
@@ -59,7 +57,7 @@ import {
 import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type SourcedSkill } from "../sources.js";
 import { scanUsage, skillOf } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
-import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
+import { failed, followUp, said as resultSaid, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { localStamp, tildify } from "../output.js";
 
 /** Folder names, with as many parent folders as it takes to tell repos apart (ops find repos by name). */
@@ -407,50 +405,33 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
     moveGlobal: (skills, repos, group) => {
-      const moved: string[] = [];
-      const notes: string[] = [];
-      /**
-       * Links a git-tracked folder held back, where an agent you use now can't see the skill.
-       * `copy`: the real copy's folder; unless git shares it, a link would break for teammates, so none is offered.
-       */
-      const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
       const repoRoots = repos.map(rootOf);
-      for (const mv of moveGlobalSkills(skills.map((m) => ({ ...m, harnesses: m.agents })), repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]!, allowBlind: true })) {
-        if (!mv.moved) {
-          notes.push(`${mv.name}: ${mv.reason}`);
-          continue;
-        }
-        moved.push(mv.name);
-        for (const [i, [root, c]] of mv.changes.entries()) {
-          const repo = repos[i]!;
-          const blind = visibilityOf(root, mv.name).flatMap((v) => (v.paths === 0 ? [v.id] : []));
-          // addSkill holds back a link where git tracks the folder: `uncommitted` when git doesn't share the real copy.
-          const blocked = [...(c.blocked ?? []), ...(c.uncommitted ?? [])];
-          if (!blocked.length || !blind.length) continue;
-          held.push({ repo, name: mv.name, blocked, blind, copy: copyDir(repo, mv.name), shared: !c.uncommitted?.length });
-        }
+      const label = (root: string) => repos[repoRoots.indexOf(root)]!;
+      const sourced = skills.map((m) => ({ ...m, harnesses: m.agents }));
+      // A skill an agent in some repo would only have seen globally never moves (see moveGlobalSkills): it stays global, said.
+      const attempt = (names?: string[]) => moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label });
+      const said = (results: ReturnType<typeof attempt>) => {
+        const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
+        const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
+        return { moved, text: [summary, ...results.filter((mv) => !mv.moved).map((mv) => `${mv.name}: ${mv.reason}`)].filter(Boolean).join("; ") || "Nothing moved" };
+      };
+      const results = attempt();
+      const { moved, text } = said(results);
+      // Added, but git held a link back where it tracks the folder: ask once to link there, then finish the move.
+      const held = results.filter((mv) => !mv.moved).flatMap((mv) => mv.changes.flatMap(([root, c]) => (c.blocked?.length ? [{ repo: label(root), name: mv.name, blocked: c.blocked }] : [])));
+      if (held.length) {
+        const ask = allowTracked(held);
+        const names = [...new Set(held.map((h) => h.name))];
+        return {
+          message: text,
+          then: {
+            ...ask,
+            label: `${ask.label}, then stop loading ${names.length === 1 ? "it" : "them"} globally`,
+            run: (w) => [resultSaid(ask.run(w)), said(attempt(names)).text].filter(Boolean).join("; "),
+          },
+        };
       }
-      // Never drop an agent silently: name who can't see it where, whether or not you then allow the links.
-      // One note per kind of gap, e.g. "Claude Code can't see them in repo-api, repo-web: git tracks .claude/skills".
-      const gaps = new Map<string, { who: string; why: string; repos: string[] }>();
-      for (const repo of new Set(held.map((h) => h.repo)))
-        for (const shared of [true, false]) {
-          const here = held.filter((h) => h.repo === repo && h.shared === shared);
-          if (!here.length) continue;
-          const agents = [...new Set(here.flatMap((h) => h.blind))].map((id) => harness(id).name).join(", ");
-          const what = skills.length === 1 ? "it" : here.length === moved.length ? "them" : here.map((h) => h.name).join(", ");
-          const dirs = [...new Set(here.flatMap((h) => h.blocked))].join(", ");
-          const why = shared ? `git tracks ${dirs}` : `${[...new Set(here.map((h) => h.copy))].join(", ")} isn't committed, so a link in ${dirs} would break for teammates`;
-          const key = `${agents}|${what}|${why}`;
-          if (!gaps.has(key)) gaps.set(key, { who: `${agents} can't see ${what}`, why, repos: [] });
-          gaps.get(key)!.repos.push(repo);
-        }
-      const blindNotes = [...gaps.values()].map((g) => `${g.who} in ${g.repos.join(", ")}: ${g.why}`);
-      const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
-      const text = [summary, ...blindNotes, ...notes].filter(Boolean).join("; ") || "Nothing moved";
-      const askable = held.filter((h) => h.shared);
-      if (!moved.length && notes.length) return failed(text);
-      return askable.length ? { message: text, then: allowTracked(askable) } : text;
+      return moved.length ? text : failed(text);
     },
     createSkill: (name) => {
       const r = createSkill(name, "");

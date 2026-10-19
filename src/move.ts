@@ -24,13 +24,10 @@ export function moveGlobalSkills(
     group,
     allowTracked = false,
     label = basename,
-    allowBlind = false,
   }: {
     group?: string;
     allowTracked?: boolean;
     label?: (root: string) => string;
-    /** Move even if git kept a link out and an agent can't see the skill in a repo (the app asks next). */
-    allowBlind?: boolean;
   } = {},
 ): GlobalMove[] {
   const byName = new Map<string, GlobalSkill[]>();
@@ -67,7 +64,7 @@ export function moveGlobalSkills(
     const blindAt = (root: string) => blindWithoutGlobal(name, readers, [root]);
     const blindIn = changes.filter(([root]) => blindAt(root).length);
     const blind = blindIn.flatMap(([root]) => blindAt(root).map((b) => `${harness(b.id).name} in ${label(root)}`));
-    if (blind.length && (!allowBlind || blindIn.some(([, c]) => c.inTheWay?.length))) {
+    if (blind.length) {
       const inTheWay = blindIn.flatMap(([root, c]) => (c.inTheWay?.length ? [`in ${label(root)}, ${inTheWaySaid(root, c.inTheWay)}`] : []));
       // --allow-tracked helps where git tracks the folder; where git doesn't share the copy, only committing it does.
       const next = inTheWay.length
