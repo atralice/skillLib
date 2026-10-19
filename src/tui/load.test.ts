@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
-import { importSkill, isLink, listBackups } from "../library.js";
+import { addSkill, importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { recordOrigin } from "../sources.js";
 import { forgetLatest } from "../versions.js";
@@ -100,7 +100,7 @@ test("a group moved together stays grouped in your library", () => {
   expect(w.library.map((l) => l.origin)).toEqual(["group: cloudflare set", "group: cloudflare set"]);
 });
 
-test("moving to a repo that commits Claude Code's folder asks before linking, and names who can't see it", () => {
+test("moving to a repo that commits Claude Code's folder keeps it global until you allow the link, then finishes", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
@@ -109,30 +109,31 @@ test("moving to a repo that commits Claude Code's folder asks before linking, an
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   setHarnesses(["claude-code", "codex"]);
-  for (const name of ["tool-a", "tool-b"]) writeSkill(join(tmp, ".agents", "skills", name));
+  // In ~/.claude/skills: Claude Code runs them now, so it must still see them in app before they stop loading globally.
+  for (const name of ["tool-a", "tool-b"]) writeSkill(join(tmp, ".claude", "skills", name));
 
   let w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
   if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toBe("2 skills now load only in app; Claude Code can't see them in app: git tracks .claude/skills");
-  expect(r.then.label).toBe("Also link them in .claude/skills");
-  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(false);
+  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks the folder its link goes in), so it still loads globally");
+  expect(r.then.label).toBe("Also link them in .claude/skills, then stop loading them globally");
+  for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
 
   w = loadWorld();
-  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app");
+  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app; 2 skills now load only in app");
   for (const name of ["tool-a", "tool-b"]) {
     expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
-    expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills[name].links).toEqual([".claude/skills"]);
+    expect(existsSync(join(tmp, ".claude", "skills", name))).toBe(false);
   }
 
   // Remembered for this repo: the next one links without asking.
-  writeSkill(join(tmp, ".agents", "skills", "tool-c"));
+  writeSkill(join(tmp, ".claude", "skills", "tool-c"));
   w = loadWorld();
   expect(w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-c"), ["app"])).toBe("tool-c now loads only in app");
   expect(isLink(join(repo, ".claude", "skills", "tool-c"))).toBe(true);
 });
 
-test("moving to a repo that commits only Claude Code's folder names who can't see it, without offering a link that would break", () => {
+test("moving to a repo where a link would break for teammates keeps it global, saying why, and offers no link", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
@@ -140,12 +141,13 @@ test("moving to a repo that commits only Claude Code's folder names who can't se
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   setHarnesses(["claude-code", "codex"]);
-  writeSkill(join(tmp, ".agents", "skills", "tool-a"));
+  writeSkill(join(tmp, ".claude", "skills", "tool-a"));
 
   const w = loadWorld();
-  expect(w.ops.moveGlobal(w.machine, ["app"])).toBe(
-    "tool-a now loads only in app; Claude Code can't see it in app: .agents/skills isn't committed, so a link in .claude/skills would break for teammates",
-  );
+  const r = w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-a"), ["app"]);
+  expect(r).toMatchObject({ failed: true });
+  expect(said(r)).toContain("commit the skill's copy in the repo");
+  expect(existsSync(join(tmp, ".claude", "skills", "tool-a", "SKILL.md"))).toBe(true);
 });
 
 test("adding library skills to a repo that commits Claude Code's folder asks once, for all of them, and remembers it", () => {
@@ -695,4 +697,31 @@ test("opening the app in a repo remembers it, so it's still listed when opened f
   expect(loadWorld().projects.map((p) => p.name)).toContain("other");
   process.chdir(tmp);
   expect(loadWorld().projects.map((p) => p.name)).toContain("other");
+});
+
+test("Delete from your library goes through every repo, even one whose pin sits behind a folder outside it", () => {
+  writeSkill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  const b = join(tmp, "b");
+  mkdirSync(join(b, ".git"), { recursive: true });
+  rememberProjects([b]);
+  addSkill(repo, "foo");
+  addSkill(b, "foo");
+  mkdirSync(join(tmp, "ext"));
+  execFileSync("mv", [join(b, ".claude"), join(tmp, "ext", "claude")]);
+  symlinkSync(join(tmp, "ext", "claude"), join(b, ".claude"));
+  const w = loadWorld();
+  expect(said(w.ops.deleteLibrary("foo"))).toStartWith("Deleted foo from your library and from app, b");
+  expect(existsSync(join(repo, ".claude", "skills", "foo"))).toBe(false);
+  expect(existsSync(join(tmp, "ext", "claude", "skills", "foo", "SKILL.md"))).toBe(true); // outside b: untouched
+});
+
+test("removing a pin from another library whose copy differs offers Remove it anyway", () => {
+  writeSkill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(repo, "foo");
+  writeSkill(join(repo, ".claude", "skills", "foo"), "edited");
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { foo: { version: 1, hash: "deadbeefdeadbeef" } } }));
+  const r = loadWorld().ops.remove("app", "foo");
+  expect(typeof r !== "string" && "then" in r).toBe(true);
 });

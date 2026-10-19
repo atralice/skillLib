@@ -928,7 +928,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           ui.menu(repo, [
             { label: "Open its folder", action: () => setToast(said(world.ops.openFolder(W.project(world, repo).path))) },
             { label: "Hide it from the list", action: () => (apply((w) => w.ops.hide(repo)), setOpen(null), setFocus(sidebar ? "sidebar" : "list")) },
-            ...(skills.length ? [{ label: `Review prompt for its ${skills.length} skills`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`, repo), `a review prompt for ${repo}`) }] : []),
+            ...(skills.length ? [{ label: `Review prompt for its ${skills.length === 1 ? "skill" : `${skills.length} skills`}`, action: () => ui.copy(reviewPrompt(world, skills, `Review the skills in ${repo}.`, repo), `a review prompt for ${repo}`) }] : []),
           ]),
         ),
       ];

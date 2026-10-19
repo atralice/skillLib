@@ -340,7 +340,9 @@ test("a repo's own skill that also loads globally is flagged, and never offered 
   skill(join(tmp, ".agents", "skills", "alpha")); // now Codex loads a global copy too
   expect(twice()?.title).toBe("alpha: in web and also loaded globally");
   expect(twice()?.detail).toContain("load both the repo's copy and the global one");
-  expect(twice()?.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
+  // Claude Code has only the global copy in web: stopping it would take the skill away, so it isn't offered; the detail says why.
+  expect(twice()?.choices).toBeUndefined();
+  expect(twice()?.detail).toContain("Claude Code in web only sees the global copy");
 
   // Kept global on purpose: skilllib can't remove the team's copy, so it only says so.
   setKeepGlobal(["alpha"], true);
@@ -847,7 +849,8 @@ test("stopping a global copy waits for every repo holding the skill, not only th
   addSkill(app2, "alpha");
   const twice = findIssues([app1, app2], machineSkills(), new Set(["alpha"])).find((i) => i.id === "twice:alpha")!;
   expect(twice.title).toBe("alpha: in app2 and also loaded globally");
-  expect(runFix(twice.choices![0]!)).toEqual({ ok: false, message: "alpha: Claude Code in app1 only sees the global copy; make the repo's copy reach it first (skilllib doctor says what's in the way)" });
+  expect(twice.choices).toBeUndefined();
+  expect(twice.detail).toContain("Claude Code in app1 only sees the global copy: give that repo a copy of its own");
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
 
@@ -860,7 +863,8 @@ test("Stop loading it globally, applied from one repo's scan, still waits for yo
   skill(join(b, ".agents", "skills", "foo")); // Claude Code in b runs the global copy
   rememberProjects([a, b]);
   const twice = findIssues([a], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
-  expect(runFix(twice.choices![0]!).message).toStartWith("foo: Claude Code in b only sees the global copy");
+  expect(twice.choices).toBeUndefined();
+  expect(twice.detail).toContain("Claude Code in b only sees the global copy");
   expect(existsSync(join(tmp, ".claude", "skills", "foo", "SKILL.md"))).toBe(true);
 });
 

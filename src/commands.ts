@@ -16,6 +16,7 @@ import {
   removeSkill,
   inTheWaySaid,
   linkAll,
+  syncBlocker,
   notWritable,
   syncProject,
   updateProject,
@@ -137,6 +138,7 @@ function printChanges(root: string, changes: Change[], args: Args) {
       const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : c.action === "unchanged" ? dim("=") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
       const versions = c.action === "removed" ? "" : c.from && c.from !== c.to ? ` v${c.from} → v${c.to}` : c.to ? ` v${c.to}` : "";
       info(`  ${icon} ${c.name}${versions} ${dim(c.action)}`);
+      if (c.reason) info(dim(`    ${c.reason}`));
     }
     if (c.backedUp) info(dim(`    local edits saved to ${tildify(c.backedUp)}; \`skilllib restore ${c.name}\` brings them back`));
   }
@@ -256,7 +258,9 @@ export async function status(args: Args) {
   const hints: string[] = [];
   if (states.has("update available")) hints.push("`skilllib update` to install the newest versions");
   const missing = skills.filter((s) => s.state === "folder missing");
-  if (missing.some((s) => s.latest !== null)) hints.push("`skilllib sync` to restore missing skills");
+  // Only what sync can put back: a pin something is in the way of is doctor's to explain.
+  if (missing.some((s) => s.latest !== null && !syncBlocker(root, s.name))) hints.push("`skilllib sync` to restore missing skills");
+  if (missing.some((s) => syncBlocker(root, s.name))) hints.push("`skilllib doctor` says what's in sync's way");
   // sync installs from your library: it can't restore a skill the library doesn't have.
   const notInLibrary = missing.filter((s) => s.latest === null).map((s) => s.name);
   if (notInLibrary.length)
@@ -924,7 +928,10 @@ export function tidy(args: Args) {
   for (const { label, report } of reports) {
     const plans = report.plans.filter((p) => !names.length || names.includes(p.name));
     const conflicts = report.conflicts.filter((c) => !names.length || names.includes(c.name));
-    if (!plans.length && !conflicts.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
+    // A skill you named that tidy has to leave alone isn't done: said below, and the command exits 1.
+    const skippedNamed = names.length ? report.skipped.filter((x) => names.includes(x.name)) : [];
+    if (skippedNamed.length) process.exitCode = 1;
+    if (!plans.length && !conflicts.length && !skippedNamed.length && !args.all) success(`${label}: nothing to tidy (no extra copies or links)`);
     for (const plan of plans) {
       // The dry run says what the real one would do: the same steps held back unless --allow-git.
       const wouldHold = args.allowGit ? [] : gitVisibleSteps(plan);

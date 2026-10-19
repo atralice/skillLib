@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, posix, relative, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -85,13 +85,23 @@ export function notWritable(root: string, dir: string): string | null {
   return null;
 }
 
+/** Whether notWritable stopped at a folder that links out of the repo (a setup of yours), not a file or a broken link. */
+export const linksOut = (root: string, path: string) => isLink(join(root, path)) && isDir(join(root, path));
+
 /** Why notWritable stopped at `path`, in words a person can act on. */
 export function blockerSaid(root: string, path: string): string {
   const full = join(root, path);
   if (!isLink(full)) return `${path} is a file, not a folder`;
   const real = realpathOrNull(full);
-  return real === null ? `${path} is a link to nothing` : isDir(full) ? `${path} links out of the repo (to ${tildify(real)})` : `${path} links to a file`;
+  return real === null ? `${path} is a link to nothing` : linksOut(root, path) ? `${path} links out of the repo (to ${tildify(real)})` : `${path} links to a file`;
 }
+
+/** Whether `path` (anything in a repo) really is in the repo: a link out of it isn't. */
+const inRepo = (root: string, path: string) => {
+  const real = realpathOrNull(path);
+  const top = realpathOrNull(root) ?? root;
+  return real !== null && (real === top || real.startsWith(top + sep));
+};
 
 /** What's in the way of links (LinkResult/Change `inTheWay`), as a person reads it. */
 export function inTheWaySaid(root: string, paths: string[]): string {
@@ -124,25 +134,25 @@ function slotAt(link: string, to: string): "ok" | "free" | "taken" {
  * nothing does): a skills folder that isn't one in the repo, a file where its folder goes, or something where a
  * recorded link goes. doctor reports these instead of offering a sync that can't succeed.
  */
-export function syncBlocker(root: string, name: string, dep: Dependency | undefined = readManifest(root).skills[name]): string | null {
+export function syncBlocker(root: string, name: string, dep: Dependency | undefined = readManifest(root).skills[name]): { said: string; outside: boolean } | null {
   if (!dep) return null;
   const dir = dep.dir ?? PROJECT_SKILLS_DIR;
   // Before "already as pinned": through a folder that links out of the repo, what looks pinned isn't the repo's.
   const stuck = firstStuck(root, [dir, ...(dep.links ?? [])]);
-  if (stuck) return blockerSaid(root, stuck);
+  if (stuck) return { said: blockerSaid(root, stuck), outside: linksOut(root, stuck) };
   if (syncDone(root, name, dep)) return null;
   const copy = join(root, dir, name);
-  if (fileAt(copy)) return `${dir}/${name} is a file, not a skill folder`;
+  if (fileAt(copy)) return { said: `${dir}/${name} is a file, not a skill folder`, outside: false };
   // What's at each recorded link's place: a link to nothing (or a file) is put back; a link to a version your
   // library has is pointed back at the pin. A link to other content isn't: repointing it would change what that
   // agent runs, with nothing backed up. Anything that isn't a link is in the way.
   for (const d of dep.links ?? []) {
     const link = join(root, d, name);
     if (!entryExists(link)) continue;
-    if (!isLink(link)) return `${d}/${name} is in the way of its link`;
+    if (!isLink(link)) return { said: `${d}/${name} is in the way of its link`, outside: false };
     if (!isDir(link) || realpathOrNull(link) === realpathOrNull(copy)) continue;
     const there = treeHash(link);
-    if (there !== dep.hash && versionForHash(name, there ?? "") === null) return `${d}/${name} links to a different copy`;
+    if (there !== dep.hash && versionForHash(name, there ?? "") === null) return { said: `${d}/${name} links to a different copy`, outside: false };
   }
   return null;
 }
@@ -177,19 +187,27 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  */
 export function blindWithoutGlobal(name: string, readers: Iterable<HarnessId>, roots: string[]): { root: string; id: HarnessId }[] {
   const read = new Set(readers);
+  // A pin (even one whose folder is missing: its agents run the global copy until sync), or anything by that name in a skills folder.
   const holds = (root: string) => {
+    if (ALL_PROJECT_DIRS.some((d) => entryExists(join(root, d, name)))) return true;
     try {
-      // A pin whose folder is missing counts: its agents run the global copy until sync puts it back.
-      return projectStatus(root).some((s) => s.name === name);
+      return name in readManifest(root).skills;
     } catch {
-      return false; // a skilllib.json that can't be read: its own issue
+      // A skilllib.json that can't be read (a merge conflict, say) may still pin it: if it names it, it counts.
+      try {
+        return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
+      } catch {
+        return false;
+      }
     }
   };
-  // Only the repo's own folders: one that links out of the repo (.claude -> ~/.claude) reaches the global copy itself.
-  const seesHere = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => writableDir(root, d) && existsSync(join(root, d, name, "SKILL.md")));
+  // A copy really in the repo: not through a folder or a link that leads out of it (to the global copy itself, say).
+  const seesHere = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && inRepo(root, join(root, d, name)));
+  // Who runs it now from outside the repo: an agent reading the global copy, or one reaching it through such a link.
+  const runsIt = (root: string, id: HarnessId) => read.has(id) || harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")));
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  return unique.filter(holds).flatMap((root) => enabledHarnesses().flatMap((id) => (read.has(id) && !seesHere(root, id) ? [{ root, id }] : [])));
+  return unique.filter(holds).flatMap((root) => enabledHarnesses().flatMap((id) => (runsIt(root, id) && !seesHere(root, id) ? [{ root, id }] : [])));
 }
 
 /**
@@ -650,9 +668,15 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
   const stuck = firstStuck(root, [recorded.dir ?? PROJECT_SKILLS_DIR, ...(recorded.links ?? [])]);
-  if (stuck) return { name, action: "skipped", reason: `${blockerSaid(root, stuck)}, so skilllib leaves it alone` };
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
-  if (fileAt(dir)) return { name, action: "skipped", reason: `${recorded.dir ?? PROJECT_SKILLS_DIR}/${name} is a file, not a skill folder` };
+  if (stuck || fileAt(dir)) {
+    // Nothing there is skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
+    // skilllib.json stops asking for it. Every file stays as it is.
+    delete manifest.skills[name];
+    writeManifest(root, manifest);
+    const why = stuck ? blockerSaid(root, stuck) : `${recorded.dir ?? PROJECT_SKILLS_DIR}/${name} is a file, not a skill folder`;
+    return { name, action: "removed", reason: `${why}: only its pin was removed, nothing there was touched` };
+  }
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
   const inLibrary = local !== null && versionForHash(name, local) !== null;
@@ -697,10 +721,10 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   if (!dep) return [];
   const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
   const local = treeHash(copy);
-  if (syncDone(root, name, dep)) return [];
-  // Never half done: a copy put back whose links can't be.
+  // Blocked first (a pin under a folder that links out of the repo can look done through the link), never half done.
   const blocker = syncBlocker(root, name, dep);
-  if (blocker) return [{ name, action: "skipped", reason: `${blocker}: move it, then sync` }];
+  if (blocker) return [{ name, action: "skipped", reason: `${blocker.said}: ${blocker.outside ? "skilllib only installs inside the repo" : "move it, then sync"}` }];
+  if (syncDone(root, name, dep)) return [];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
   // What it would put back first: with no version to install, --force can't help, so it isn't suggested.
@@ -771,7 +795,7 @@ export function updateProject(root: string, names?: string[], { force = false, a
     .filter((name) => !names || names.includes(name))
     .flatMap((name): Change[] => {
       const latest = latestVersion(name);
-      if (!latest) return [{ name, action: "skipped", reason: "no longer in the library" }];
+      if (!latest) return [{ name, action: "skipped", reason: "not in your library" }];
       const dep = skills[name]!;
       const local = treeHash(join(root, dep.dir ?? PROJECT_SKILLS_DIR, name));
       if (dep.hash === latest.hash && local === latest.hash) return [];
