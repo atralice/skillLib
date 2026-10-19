@@ -372,8 +372,10 @@ export function linkAll(
 
 export type Change = {
   name: string;
-  /** reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`). */
-  /** relinked: the copy was as pinned; only the links skilllib.json records were put back. */
+  /**
+   * reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`).
+   * relinked: the copy was as pinned; only the links skilllib.json records were put back.
+   */
   action: "installed" | "updated" | "reset" | "relinked" | "removed" | "skipped";
   reason?: string;
   from?: number;
@@ -557,8 +559,7 @@ export function discardEdits(root: string, name: string): Change {
   if (!dep) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return { name, action: "skipped", reason: version };
-  const dir = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
-  if (existsSync(dir) && !isLink(dir)) stash(dir, "edit-backup");
+  // addSkill backs the edited copy up as it replaces it, and says so (backedUp).
   return addSkill(root, name, { force: true, version });
 }
 
@@ -644,8 +645,10 @@ export function stash(dir: string, bucket: string): string {
  * The folder goes to the trash, restorable from Settings like everything skilllib removes.
  */
 export function removeUntracked(root: string, name: string, path: string): string {
-  unlinkEverywhere(root, name, path);
-  return stash(path, "trash");
+  // The backup first: when the copy is itself a link, removing links first would take it away.
+  const to = stash(path, "trash");
+  unlinkEverywhere(root, name, to);
+  return to;
 }
 
 export function projectsUsing(name: string): string[] {
@@ -725,7 +728,8 @@ export function createSkill(name: string, description: string): { ok: true; dir:
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description || "Describe when an agent should use this skill."}\n---\n\n# ${name}\n\nInstructions for the agent go here.\n`,
+    // JSON strings are valid YAML: a description with ": " or "#" stays one value.
+    `---\nname: ${name}\ndescription: ${JSON.stringify(description || "Describe when an agent should use this skill.")}\n---\n\n# ${name}\n\nInstructions for the agent go here.\n`,
   );
   forgetLatest(name);
   return { ok: true, dir };
@@ -778,13 +782,7 @@ export function restoreBackup(backup: Backup): { ok: true; to: string } | { ok: 
   if (!to) return { ok: false, reason: `skilllib doesn't know where it came from; its files are in ${tildify(backup.path)}` };
   if (backup.kind === "tidy-backup" && isLink(to)) unlinkSync(to);
   if (backup.kind === "edit-backup" && !isLink(to) && versionForHash(backup.name, treeHash(to) ?? "") !== null) rmSync(to, { recursive: true, force: true });
-  let taken = existsSync(to);
-  try {
-    taken = taken || lstatSync(to) !== null;
-  } catch {
-    // nothing there
-  }
-  if (taken) return { ok: false, reason: `${backup.name} already exists there` };
+  if (entryExists(to)) return { ok: false, reason: `${backup.name} already exists there` };
   mkdirSync(join(to, ".."), { recursive: true });
   move(backup.path, to);
   forgetLatest(backup.name);

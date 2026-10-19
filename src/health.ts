@@ -3,8 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { visibilityOf } from "./library.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, realPath as realPathOf } from "./paths.js";
 import { skillDirsIn, treeHash } from "./skills.js";
@@ -690,7 +689,8 @@ export function findIssues(
             },
           ],
         });
-      } else if (s.state === "untracked copy of library skill") {
+      } else if (s.state === "untracked copy of library skill" && !committed(s)) {
+        // (A committed copy is the team's: never tracked from here, so update and remove never touch it.)
         issues.push({
           id: `adopt:${root}:${s.name}`,
           severity: "suggestion",

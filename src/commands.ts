@@ -108,10 +108,6 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   });
 }
 
-/**
- * Prints what changed. A skipped skill is a failure: the command exits 1, so
- * scripts and agents can tell (the other skills' changes still happened).
- */
 /** A change that didn't do all it was asked: skipped, or a link held back where git tracks the folder. */
 const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length;
 
@@ -122,6 +118,10 @@ function warnHeldLinks(c: Change, where = "here") {
     warn(`${c.name}: git tracks ${c.uncommitted.join(", ")} ${where} but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`);
 }
 
+/**
+ * Prints what changed. A skipped skill is a failure: the command exits 1, so
+ * scripts and agents can tell (the other skills' changes still happened).
+ */
 function printChanges(root: string, changes: Change[], args: Args) {
   if (changes.some(incomplete)) process.exitCode = 1;
   if (args.json) return json("changes", withDirs(root, changes));
@@ -163,11 +163,6 @@ async function usageBySkill(days: number, onlyProject?: string): Promise<Map<str
   return new Map(summarize(scoped, projectOf).map((s) => [s.skill, s]));
 }
 
-/**
- * The project you're in, for commands that change or report on it. Outside a
- * repo the folders around you aren't a project, and in your home folder
- * they're the global ones: installing there would load a skill in every repo.
- */
 /** The projects a command works on: this one, or every project with --all. */
 const projectsFor = (args: Args) => {
   if (!args.all) return [requireProject()];
@@ -183,6 +178,11 @@ const projectsFor = (args: Args) => {
 /** Your own global skills (not vendors'), the ones skilllib can move. */
 const yourGlobals = () => machineSkills().filter((m) => m.movable && !m.broken);
 
+/**
+ * The project you're in, for commands that change or report on it. Outside a
+ * repo the folders around you aren't a project, and in your home folder
+ * they're the global ones: installing there would load a skill in every repo.
+ */
 function requireProject(): string {
   const root = projectHere();
   if (root) return root;

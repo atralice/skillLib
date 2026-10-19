@@ -3,9 +3,9 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, discardEdits, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { addSkill, createSkill, discardEdits, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
-import { copySkill, treeHash } from "./skills.js";
+import { copySkill, readSkillInfo, treeHash } from "./skills.js";
 import { readManifest } from "./project.js";
 import { setHarnesses } from "./config.js";
 import { tildify } from "./output.js";
@@ -735,4 +735,28 @@ test("tracking an untracked copy adds only the links your agents need from where
   // Grok reads .claude/skills itself: no .agents/skills link.
   expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
   expect(readManifest(project).skills.alpha?.links).toBeUndefined();
+});
+
+describe("round 8", () => {
+  test("a new skill's description with a colon stays valid frontmatter", () => {
+    createSkill("deployer", "Use when: deploying");
+    expect(readSkillInfo(join(tmp, "home", "library", "deployer")).description).toBe("Use when: deploying");
+  });
+
+  test.skipIf(process.platform === "win32")("removing an untracked copy that's a link backs it up instead of failing", () => {
+    writeSkill(join(tmp, "dev", "bar"), "bar");
+    mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+    symlinkSync(join(tmp, "dev", "bar"), join(project, ".claude", "skills", "bar"));
+    const to = removeUntracked(project, "bar", join(project, ".claude", "skills", "bar"));
+    expect(lstatSync(join(project, ".claude", "skills", "bar"), { throwIfNoEntry: false })).toBeUndefined();
+    expect(lstatSync(to, { throwIfNoEntry: false })).toBeDefined();
+  });
+
+  test("discarding edits says where they went", () => {
+    addSkill(project, "alpha");
+    writeSkill(local("alpha"), "my edits");
+    const c = discardEdits(project, "alpha");
+    expect(c.action).toBe("reset");
+    expect(readFileSync(join(c.backedUp!, "SKILL.md"), "utf-8")).toContain("my edits");
+  });
 });

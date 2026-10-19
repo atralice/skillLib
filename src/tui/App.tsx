@@ -959,7 +959,6 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     setQuery("");
     setChip("all");
   }
-  /** Jumps to Global, filtered to one skill. */
   /** Opens a file in $EDITOR, handing it the terminal, then reads everything again (and runs `then`, if given). */
   function edit(file: string, then?: (w: W.World) => W.Result) {
     // (The sample world's skills have no files: what comes after editing still happens.)
@@ -990,6 +989,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     if (!initial.agentsChosen) setModal({ kind: "agents", selected: initial.agents, cursor: 0, then: folder });
     else folder();
   }, []);
+  /** Jumps to Global, filtered to one skill. */
   function openInGlobal(name: string) {
     goPlace("global");
     setQuery(name);

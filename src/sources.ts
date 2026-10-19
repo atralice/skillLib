@@ -5,7 +5,7 @@ import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
-import { tildify as homeRelative } from "./output.js";
+import { tildify } from "./output.js";
 
 /**
  * Where a skill Claude Code can load comes from.
@@ -148,10 +148,6 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
   return skills;
 }
 
-/** Home-relative path for labels, always with "/" so it reads the same on every OS. */
-function tildify(p: string): string {
-  return homeRelative(p).replace(/\\/g, "/");
-}
 
 /** Grok's bundled skills (~/.grok/bundled/skills). A same-named user or project skill overrides these. */
 function grokBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
@@ -329,7 +325,10 @@ export function originFor(dir: string): string {
   const under = (path: string, folder: string) => path.startsWith((realpathOrNull(folder) ?? folder) + sep);
   const real = realpathOrNull(dir) ?? dir;
   // The system's temp folders: os.tmpdir() (on macOS, /var/folders/…/T) and the classic /tmp and /var/tmp.
-  if ([tmpdir(), "/tmp", "/var/tmp"].some((t) => under(real, t)) && !under(real, userHome())) return "";
+  // Home is exempt only when it lives inside a temp folder itself (sandboxes, tests); on Windows temp is inside home.
+  const temps = [tmpdir(), "/tmp", "/var/tmp"];
+  const homeInTemp = temps.some((t) => under(realpathOrNull(userHome()) ?? userHome(), t));
+  if (temps.some((t) => under(real, t)) && !(homeInTemp && under(real, userHome()))) return "";
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
   const project = dir.split(/[\\/]\.(?:claude|agents|grok|cursor|codex)[\\/]skills[\\/]/)[0];

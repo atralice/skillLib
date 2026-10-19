@@ -57,12 +57,9 @@ import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type Sourc
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
 import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
-import { localStamp, tildify as homeRelative } from "../output.js";
+import { localStamp, tildify } from "../output.js";
+export { tildify };
 
-/** Home-relative path for labels. */
-export function tildify(p: string): string {
-  return homeRelative(p).replace(/\\/g, "/");
-}
 
 /** Folder names, with as many parent folders as it takes to tell repos apart (ops find repos by name). */
 export function uniqueNames(roots: string[]): Map<string, string> {
