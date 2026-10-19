@@ -1,6 +1,6 @@
 import { readdirSync } from "node:fs";
 import { basename } from "node:path";
-import { PROJECT_SKILLS_DIR } from "./paths.js";
+import { BUILD_DIRS, PROJECT_SKILLS_DIR } from "./paths.js";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
@@ -29,12 +29,10 @@ function globalFrom(kind: SourceKind, origin: string, path: string): string {
   return origin;
 }
 
-const SKIP = new Set(["node_modules", "dist", "build", "target", "vendor", "coverage"]);
-
 function topLevel(root: string): string[] {
   try {
     return readdirSync(root, { withFileTypes: true })
-      .filter((d) => !d.name.startsWith(".") && !SKIP.has(d.name))
+      .filter((d) => !d.name.startsWith(".") && !BUILD_DIRS.has(d.name))
       .map((d) => (d.isDirectory() ? `${d.name}/` : d.name))
       .sort()
       .slice(0, 60);
@@ -79,7 +77,16 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];
       }),
     );
-  const skills = group(inRepo ? projectStatus(root) : []);
+  // A skilllib.json that can't be read (a merge conflict) leaves the repo's own list empty; its issue says why, and the
+  // global skills are still listed.
+  const own = (() => {
+    try {
+      return inRepo ? projectStatus(root) : [];
+    } catch {
+      return [];
+    }
+  })();
+  const skills = group(own);
   const nested = group(nestedHere);
 
   const machine = machineSkills(agents);

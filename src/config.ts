@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readState, realPath, skilllibHome, MANIFEST_FILE, userHome, writeState } from "./paths.js";
+import { BUILD_DIRS, readState, realPath, skilllibHome, MANIFEST_FILE, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
@@ -61,7 +61,8 @@ export function setHidden(project: string, hidden: boolean): boolean {
   return true;
 }
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", "vendor", "target", "Library", "Applications", "Pictures", "Music", "Movies"]);
+/** Never searched for repos: build output, and your home's big media and app folders. */
+const SKIP_DIRS = new Set([...BUILD_DIRS, "Library", "Applications", "Pictures", "Music", "Movies"]);
 
 /** Git repos and folders with skills under `dir`. Doesn't descend into a repo once found. */
 function findProjects(dir: string, depth = 4): string[] {

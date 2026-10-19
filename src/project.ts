@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { MANIFEST_FILE, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
+import { claudeDir, codexHome, grokDir, MANIFEST_FILE, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
 import { ALL_PROJECT_DIRS } from "./harnesses.js";
 
@@ -138,8 +138,11 @@ function onePerFolder(paths: string[]): string[] {
  * like a project but isn't one; every session would otherwise count as "in" it.
  */
 export function isProjectCandidate(root: string): boolean {
-  // Real paths: the folder you're in comes back without symlinks, while $HOME may go through one (#51).
-  return realPath(root) !== realPath(userHome());
+  // Real paths: the folder you're in comes back without symlinks, while $HOME may go through one (#51). Nor is a
+  // folder of skilllib's or an agent's own (~/.skilllib, ~/.claude...), even when it's a git repo (a library you share).
+  const real = realPath(root);
+  const own = [userHome(), skilllibHome(), claudeDir(), codexHome(), grokDir(), join(userHome(), ".agents"), join(userHome(), ".cursor")];
+  return !own.some((d) => realPath(d) === real);
 }
 
 export function rememberProjects(roots: string[]) {

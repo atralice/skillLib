@@ -84,11 +84,16 @@ export async function scanUsage(days: number): Promise<SkillUse[]> {
   const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
   const seen = new Map<string, SkillUse>();
   for (const file of transcriptFiles(sinceMs)) {
-    const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
-    for await (const line of lines) {
-      for (const use of usesFromTranscriptLine(line)) {
-        if (Date.parse(use.at) >= sinceMs) seen.set(use.key, use);
+    // One transcript that can't be read (root-owned after sudo, deleted mid-scan) is skipped, not the whole count.
+    try {
+      const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+      for await (const line of lines) {
+        for (const use of usesFromTranscriptLine(line)) {
+          if (Date.parse(use.at) >= sinceMs) seen.set(use.key, use);
+        }
       }
+    } catch {
+      continue;
     }
   }
   return [...seen.values()];

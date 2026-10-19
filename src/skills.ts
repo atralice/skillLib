@@ -12,7 +12,8 @@ export function readSkillInfo(dir: string): SkillInfo {
   const skillMd = join(dir, "SKILL.md");
   const fallback = { name: basename(dir), description: "" };
   if (!existsSync(skillMd)) return fallback;
-  const match = readFileSync(skillMd, "utf-8").match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  // A byte-order mark (Notepad) before the frontmatter isn't content.
+  const match = readFileSync(skillMd, "utf-8").replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return fallback;
   try {
     const fm = parseYaml(match[1]!) as { name?: unknown; description?: unknown } | null;

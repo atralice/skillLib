@@ -243,11 +243,13 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
       const b = builder(u.name);
       for (const l of wrap(u.local?.description || w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
       b.line();
-      if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" || u.source === "skilllib" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
+      // A plugin this repo's settings turn on loads here only (w.machine is what loads everywhere).
+      const here = !!u.machine && !w.machine.some((m) => m.path === u.machine!.path && m.where === u.machine!.where);
+      if (repo && !u.local) b.line([here ? "Loads in this repo (its settings turn it on)" : "Loads in every repo", color.text], [u.source === "global" || u.source === "skilllib" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
       else b.issues(issues);
       b.actions(actions, width);
       b.line();
-      for (const segs of usageLines(w, u.name, width, repo)) b.line(...segs);
+      for (const segs of usageLines(w, u.machine ? W.usesKey(u.machine) : u.name, width, repo)) b.line(...segs);
       b.line();
       b.line(["Loaded from", color.accent]);
       for (const c of copies) {
@@ -436,7 +438,7 @@ function projectItems(w: W.World): Item[] {
 }
 
 function globalItems(w: W.World, nameW: number, ui: Ui): Item[] {
-  const copies = w.machine.map((m): W.Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: W.totalUses(w, m.name), machine: m }));
+  const copies = w.machine.map((m): W.Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: W.totalUses(w, W.usesKey(m)), machine: m }));
   return byName(copies).map((g) => skillItem(w, g, W.issuesAt(w, null, g[0]!.name), nameW, globalActions(w, g[0]!, ui), null));
 }
 
@@ -650,7 +652,10 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const world: W.World = { ...withUsage, issues: [...base.issues, ...usageIssues] };
   useEffect(() => {
     let live = true;
-    void loadUsage?.(base).then((u) => live && setUsed(u));
+    // Usage is a hint: if it can't be read, the app goes on without it.
+    void loadUsage?.(base)
+      .then((u) => live && setUsed(u))
+      .catch(() => live && setToast("✗ Couldn't read your Claude Code transcripts: usage isn't shown"));
     return () => {
       live = false;
     };

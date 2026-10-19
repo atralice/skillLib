@@ -2,7 +2,7 @@
 import { dirname } from "node:path";
 import { harness, installDirs, type HarnessId } from "../harnesses.js";
 import { buildReviewPrompt, type ReviewSkill } from "../review.js";
-import { totalUses, type LocalSkill, type World } from "./world.js";
+import { machineIn, totalUses, usesKey, type LocalSkill, type World } from "./world.js";
 
 const agentNames = (agents: HarnessId[]) => agents.map((a) => harness(a).name).join(", ") || "none of my agents";
 
@@ -17,9 +17,12 @@ const localInstalled = (s: LocalSkill) =>
  * is that repo's own copy when it has one; global and vendor copies are then its other copies.
  */
 export function reviewPrompt(w: World, names: string[], scope: string, repo?: string): string {
+  const project = repo ? w.projects.find((p) => p.name === repo) : undefined;
+  // As the repo loads them: its settings can turn a plugin on just there.
+  const machine = project ? machineIn(w, project) : w.machine;
   const skills = names.map((name): ReviewSkill => {
-    const copies = w.machine.filter((m) => m.name === name);
-    const here = repo ? w.projects.find((p) => p.name === repo)?.skills.find((s) => s.name === name) : undefined;
+    const copies = machine.filter((m) => m.name === name);
+    const here = project?.skills.find((s) => s.name === name);
     if (here) {
       const lib = w.library.find((l) => l.name === name);
       return {
@@ -51,11 +54,12 @@ export function reviewPrompt(w: World, names: string[], scope: string, repo?: st
       path: m?.path ?? (lib ? dirname(w.ops.libraryFile(name)) : (local?.path ?? "")),
       links: m?.links ?? [],
       loadedBy: m
-        ? `${agentNames(m.agents)} — in every repo`
+        ? `${agentNames(m.agents)} — ${w.machine.some((g) => g.path === m.path) ? "in every repo" : `in ${repo}`}`
         : repos.map((p) => `${agentNames(p.skills.find((s) => s.name === name)!.agents)} — in ${p.name}`).join("; ") || "none of my agents",
       vendor: m && m.source !== "global" ? "turn it off at its source (/plugin in Claude Code, claude.ai settings, or Cursor)" : null,
-      usesTotal: w.days ? totalUses(w, name) : null,
-      usesByProject: Object.entries(w.usage).flatMap(([p, u]): [string, number][] => (u[name] ? [[p, u[name]]] : [])),
+      // A plugin's copy is counted under plugin:skill.
+      usesTotal: w.days ? totalUses(w, m ? usesKey(m) : name) : null,
+      usesByProject: Object.entries(w.usage).flatMap(([p, u]): [string, number][] => ((n) => (n ? [[p, n]] : []))(u[m ? usesKey(m) : name])),
       installedIn: repos.map((p) => p.name),
       otherCopies: copies.filter((c) => c !== m).map((c) => `${c.source} ${c.where}`),
       inYourSkills: lib ? `yes, v${lib.latest}` : null,
