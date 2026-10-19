@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { addSkill, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
@@ -944,7 +944,7 @@ test("a file where a managed skill's folder goes is never deleted, and status do
   expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude/skills/alpha is a file, not a skill folder: move it, then sync" }]);
   expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "skipped" });
   // remove drops just the pin, touching no file.
-  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is a file, not a skill folder: only its pin was removed, nothing there was touched" });
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is a file, not a skill folder: only its pin was removed, and that copy was left as it is" });
   expect(readManifest(project).skills).toEqual({});
   expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
 });
@@ -1019,7 +1019,7 @@ test("global move never unloads a skill an agent in another repo only ever saw g
   rememberProjects([app1, project]);
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false, changes: [] });
-  expect(mv!.reason).toStartWith("Claude Code in app1 only sees the global copy; nothing moved");
+  expect(mv!.reason).toBe("nothing moved: Claude Code in app1 only sees the global copy: give that repo a copy of its own (skilllib add, sync or link there), or keep alpha global (skilllib global keep)");
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
   expect(readManifest(project).skills).toEqual({});
 });
@@ -1060,7 +1060,7 @@ test("global move counts a repo that reaches the global copy through a link as s
   rememberProjects([r, project]);
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false, changes: [] });
-  expect(mv!.reason).toStartWith("Claude Code in r only sees the global copy");
+  expect(mv!.reason).toStartWith("nothing moved: Claude Code in r only sees the global copy");
   expect(existsSync(join(r, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
 
@@ -1073,4 +1073,59 @@ test("a repo whose skilllib.json can't be read (a merge conflict) still counts w
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false });
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+});
+
+test("who'd lose a global skill: every case the reviews found, as one table", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const global = join(tmp, ".claude", "skills", "foo");
+  writeSkill(global, "global");
+  writeSkill(join(tmp, "dev", "foo"), "dev");
+  const repo = (name: string, setup: (r: string) => void) => {
+    const r = join(tmp, "repos", name);
+    mkdirSync(r, { recursive: true });
+    setup(r);
+    return r;
+  };
+  const pin = (r: string) => writeFileSync(join(r, "skilllib.json"), JSON.stringify({ skills: { foo: { version: 1, hash: "x" } } }));
+  const cases: [string, (r: string) => void, [string, string | null][]][] = [
+    ["own copy, Claude Code's folder", (r) => writeSkill(join(r, ".claude", "skills", "foo"), "own"), []],
+    ["link to a dev folder", (r) => (mkdirSync(join(r, ".claude", "skills"), { recursive: true }), symlinkSync(join(tmp, "dev", "foo"), join(r, ".claude", "skills", "foo"))), []],
+    ["link to the global copy itself", (r) => (mkdirSync(join(r, ".claude", "skills"), { recursive: true }), symlinkSync(global, join(r, ".claude", "skills", "foo"))), [["claude-code", null]]],
+    [".claude links to ~/.claude, no pin", (r) => symlinkSync(join(tmp, ".claude"), join(r, ".claude")), []],
+    [".claude links to ~/.claude, pinned", (r) => (symlinkSync(join(tmp, ".claude"), join(r, ".claude")), pin(r)), [["claude-code", ".claude"]]],
+    ["copy only where Codex reads", (r) => writeSkill(join(r, ".agents", "skills", "foo"), "own"), [["claude-code", null]]],
+    ["a stray file where Claude Code's copy goes", (r) => (writeSkill(join(r, ".agents", "skills", "foo"), "own"), mkdirSync(join(r, ".claude", "skills"), { recursive: true }), writeFileSync(join(r, ".claude", "skills", "foo"), "x")), [["claude-code", null]]],
+    ["pinned, folder missing", pin, [["claude-code", null]]],
+    ["nothing of it", () => {}, []],
+    ["skilllib.json in a merge conflict, naming it", (r) => writeFileSync(join(r, "skilllib.json"), '<<<<<<< HEAD\n"foo"\n'), [["claude-code", null]]],
+  ];
+  for (const [what, setup, expected] of cases) {
+    const r = repo(what.replace(/\W+/g, "-"), setup);
+    const got = blindWithoutGlobal("foo", [{ path: global, harnesses: ["claude-code"] }], [r]).map((b) => [b.id, b.folder]);
+    expect([what, got]).toEqual([what, expected]);
+  }
+});
+
+test("remove still removes skilllib's copy when only a link's folder links out of the repo, and says what it left", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha"); // copy in .agents/skills, link in .claude/skills
+  mkdirSync(join(tmp, "elsewhere"));
+  rmSync(join(project, ".claude"), { recursive: true });
+  symlinkSync(join(tmp, "elsewhere"), join(project, ".claude"));
+  const c = removeSkill(project, "alpha");
+  expect(c).toMatchObject({ action: "removed", reason: ".claude links out of the repo (to ~/elsewhere): its link there was left alone" });
+  expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+  expect(readManifest(project).skills).toEqual({});
+});
+
+test("global move refuses a repo that can't take the skill before writing anything, the library included", () => {
+  writeSkill(join(tmp, ".claude", "skills", "gm"), "v1");
+  const out = join(tmp, "out");
+  mkdirSync(out);
+  symlinkSync(join(tmp, ".claude"), join(out, ".claude"));
+  const [mv] = moveGlobalSkills([{ name: "gm", path: join(tmp, ".claude", "skills", "gm"), links: [], harnesses: ["claude-code"] }], [project, out]);
+  expect(mv).toMatchObject({ moved: false, changes: [] });
+  expect(mv!.reason).toStartWith("nothing moved: it can't be added to out (.claude links out of the repo");
+  expect(existsSync(lib("gm"))).toBe(false);
+  expect(readManifest(project).skills).toEqual({});
 });

@@ -4,7 +4,7 @@ import { basename, dirname, join, posix, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
-import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
+import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { localStamp, tildify } from "./output.js";
@@ -96,12 +96,6 @@ export function blockerSaid(root: string, path: string): string {
   return real === null ? `${path} is a link to nothing` : linksOut(root, path) ? `${path} links out of the repo (to ${tildify(real)})` : `${path} links to a file`;
 }
 
-/** Whether `path` (anything in a repo) really is in the repo: a link out of it isn't. */
-const inRepo = (root: string, path: string) => {
-  const real = realpathOrNull(path);
-  const top = realpathOrNull(root) ?? root;
-  return real !== null && (real === top || real.startsWith(top + sep));
-};
 
 /** What's in the way of links (LinkResult/Change `inTheWay`), as a person reads it. */
 export function inTheWaySaid(root: string, paths: string[]): string {
@@ -179,35 +173,43 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
   }));
 }
 
+/** An agent that would lose a skill in a repo: `folder` is its skills folder there when that's what stops a copy (notWritable). */
+export type Blind = { root: string; id: HarnessId; folder: string | null };
+
 /**
- * Where an agent would lose a skill if its global copy stopped loading: in each of `roots` that holds it, the agents
- * that read the global copy (`readers`) but no copy in the repo (a link git held back, something in the way). Codex
- * never reads ~/.claude/skills, so it loses nothing there. Nested copies load in their package: only the root counts.
+ * Who would lose a skill if `copies` (global copies of it) stopped loading: in each of `roots` that holds the skill,
+ * each agent that reaches it now (it reads one of those copies, or finds it in one of the repo's folders) but whose
+ * every copy there resolves to one of them, or that has none. A link to a dev folder survives; a link (or a skills
+ * folder linking out of the repo) to the global copy itself doesn't; a held-back link or a stray file is no copy.
  * doctor's "Stop loading it globally" and global move both ask this, of every repo they know.
  */
-export function blindWithoutGlobal(name: string, readers: Iterable<HarnessId>, roots: string[]): { root: string; id: HarnessId }[] {
-  const read = new Set(readers);
-  // A pin (even one whose folder is missing: its agents run the global copy until sync), or anything by that name in a skills folder.
+export function blindWithoutGlobal(name: string, copies: { path: string; harnesses: HarnessId[] }[], roots: string[]): Blind[] {
+  const doomed = new Set(copies.map((c) => realpathOrNull(c.path) ?? c.path));
+  const readers = new Set(copies.flatMap((c) => c.harnesses));
+  const enabled = enabledHarnesses();
+  // The repo wants it: pinned (even with its folder missing: its agents run the global copy until sync), or present in
+  // a folder that really is the repo's (one linking out to ~/.claude holds every global skill, and none of them).
   const holds = (root: string) => {
-    if (ALL_PROJECT_DIRS.some((d) => entryExists(join(root, d, name)))) return true;
-    try {
-      return name in readManifest(root).skills;
-    } catch {
-      // A skilllib.json that can't be read (a merge conflict, say) may still pin it: if it names it, it counts.
-      try {
-        return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
-      } catch {
-        return false;
-      }
-    }
+    return ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
   };
-  // A copy really in the repo: not through a folder or a link that leads out of it (to the global copy itself, say).
-  const seesHere = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && inRepo(root, join(root, d, name)));
-  // Who runs it now from outside the repo: an agent reading the global copy, or one reaching it through such a link.
-  const runsIt = (root: string, id: HarnessId) => read.has(id) || harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")));
+  const blindIn = (root: string) =>
+    enabled.flatMap((id): Blind[] => {
+      const reach = harness(id).projectDirs.filter((d) => existsSync(join(root, d, name, "SKILL.md"))).map((d) => realpathOrNull(join(root, d, name)));
+      const keeps = reach.some((r) => r !== null && !doomed.has(r));
+      if (keeps || (!readers.has(id) && !reach.length)) return [];
+      return [{ root, id, folder: harness(id).projectDirs.map((d) => notWritable(root, d)).find((f) => f !== null) ?? null }];
+    });
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  return unique.filter(holds).flatMap((root) => enabledHarnesses().flatMap((id) => (runsIt(root, id) && !seesHere(root, id) ? [{ root, id }] : [])));
+  return unique.filter(holds).flatMap(blindIn);
+}
+
+/** What blindWithoutGlobal found, and what to do about it: keeping the skill global always works. */
+export function blindSaid(name: string, blind: Blind[], label: (root: string) => string = basename): string {
+  const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
+  const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
+  const fix = folders.length ? `point ${folders.join(", ")} back into the repo` : `give ${blind.length === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there)`;
+  return `${who} only ${blind.length === 1 ? "sees" : "see"} the global copy: ${fix}, or keep ${name} global (skilllib global keep)`;
 }
 
 /**
@@ -223,6 +225,35 @@ function dependencyDirs(root: string, name: string, dep: Dependency | undefined)
   // The fewest folders, counted from where the real copy is: no link an agent doesn't need.
   const wanted = installDirs(enabledHarnesses(), primary);
   return [primary, ...new Set([...(dep?.links ?? []), ...wanted.filter((d) => d !== primary)])];
+}
+
+/**
+ * What stops skilllib adding (tracking) a skill in a repo, before anything is written: a skills folder add would
+ * use that isn't one in the repo (a file, a link out of it). doctor offers no Track or Import there, and global
+ * move refuses first.
+ */
+export function trackBlocker(root: string, name: string): string | null {
+  let recorded: Dependency | undefined;
+  try {
+    recorded = readManifest(root).skills[name];
+  } catch {
+    return `${MANIFEST_FILE} can't be read`;
+  }
+  const stuck = firstStuck(root, dependencyDirs(root, name, recorded));
+  return stuck ? blockerSaid(root, stuck) : null;
+}
+
+/** Whether a repo pins a skill, reading even a skilllib.json that can't be parsed (a merge conflict): if it names it, it counts. */
+export function pinsSkill(root: string, name: string): boolean {
+  try {
+    return name in readManifest(root).skills;
+  } catch {
+    try {
+      return readFileSync(join(root, MANIFEST_FILE), "utf-8").includes(JSON.stringify(name));
+    } catch {
+      return false;
+    }
+  }
 }
 
 /** True when git tracks files under `dir` in `root` (so writing there shows up in git status). */
@@ -667,15 +698,26 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const recorded = manifest.skills[name];
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
-  const stuck = firstStuck(root, [recorded.dir ?? PROJECT_SKILLS_DIR, ...(recorded.links ?? [])]);
-  const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
-  if (stuck || fileAt(dir)) {
-    // Nothing there is skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
-    // skilllib.json stops asking for it. Every file stays as it is.
+  const home = recorded.dir ?? PROJECT_SKILLS_DIR;
+  const dir = join(root, home, name);
+  // Its own links (or ones to nothing) in folders really the repo's: a link there now to another copy (the team's)
+  // isn't this skill's, and a folder that links out of the repo isn't skilllib's to change.
+  const unlinkOwn = () => {
+    for (const linkDir of (recorded.links ?? []).filter((d) => writableDir(root, d))) {
+      const link = join(root, linkDir, name);
+      if (isLink(link) && slotAt(link, dir) !== "taken") unlinkSync(link);
+    }
+  };
+  // Links left alone where their folder isn't the repo's: said, so nobody thinks they're gone.
+  const leftLinks = (recorded.links ?? []).flatMap((d) => ((b) => (b ? [`${blockerSaid(root, b)}: its link there was left alone`] : []))(notWritable(root, d)));
+  const ownStuck = notWritable(root, home);
+  if (ownStuck || fileAt(dir)) {
+    // Its copy isn't skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
+    // skilllib.json stops asking for it. Every file and link stays as it is.
     delete manifest.skills[name];
     writeManifest(root, manifest);
-    const why = stuck ? blockerSaid(root, stuck) : `${recorded.dir ?? PROJECT_SKILLS_DIR}/${name} is a file, not a skill folder`;
-    return { name, action: "removed", reason: `${why}: only its pin was removed, nothing there was touched` };
+    const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
+    return { name, action: "removed", reason: `${why}: only its pin was removed, and that copy was left as it is` };
   }
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
@@ -691,17 +733,13 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
           ? "doesn't match what skilllib.json pins, and your library has neither (use --force to remove it; it's backed up first)"
           : "has local edits (use --force to delete anyway; they're backed up first)",
     };
-  // Only its own links (or ones to nothing): a link there now to another copy (the team's) isn't this skill's.
-  for (const linkDir of recorded.links ?? []) {
-    const link = join(root, linkDir, name);
-    if (isLink(link) && slotAt(link, dir) !== "taken") unlinkSync(link);
-  }
+  unlinkOwn();
   // Forced over local edits, or pinned from another library: the copy goes to ~/.skilllib/edit-backup, as update and sync do.
   const backedUp = local !== null && !inLibrary ? stash(dir, "edit-backup") : undefined;
   if (!backedUp) rmSync(dir, { recursive: true, force: true });
   delete manifest.skills[name];
   writeManifest(root, manifest);
-  return { name, action: "removed", ...(backedUp ? { backedUp } : {}) };
+  return { name, action: "removed", ...(leftLinks.length ? { reason: leftLinks.join("; ") } : {}), ...(backedUp ? { backedUp } : {}) };
 }
 
 /**
@@ -879,8 +917,9 @@ export function removeUntracked(root: string, name: string, path: string): strin
   return to;
 }
 
+/** Repos that pin a skill, one whose skilllib.json can't be read included (deleting it from your library would strand that pin). */
 export function projectsUsing(name: string): string[] {
-  return knownProjects().filter((p) => name in pinsIn(p));
+  return knownProjects().filter((p) => pinsSkill(p, name));
 }
 
 /** Removes a skill from the library by moving it to ~/.skilllib/trash. Refuses while projects still use it. */

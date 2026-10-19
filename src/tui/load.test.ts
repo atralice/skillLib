@@ -11,7 +11,7 @@ import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
 import { usableHere } from "../here.js";
-import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, said, unlisted, usable, type World } from "./world.js";
+import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, repoIssues, said, unlisted, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -115,7 +115,7 @@ test("moving to a repo that commits Claude Code's folder keeps it global until y
   let w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
   if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks the folder its link goes in), so it still loads globally");
+  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks .claude/skills: the app asks to add those links), so it still loads globally");
   expect(r.then.label).toBe("Also link them in .claude/skills, then stop loading them globally");
   for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
 
@@ -146,7 +146,7 @@ test("moving to a repo where a link would break for teammates keeps it global, s
   const w = loadWorld();
   const r = w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-a"), ["app"]);
   expect(r).toMatchObject({ failed: true });
-  expect(said(r)).toContain("commit the skill's copy in the repo");
+  expect(said(r)).toContain("git tracks .claude/skills but not the skill's copy: commit it");
   expect(existsSync(join(tmp, ".claude", "skills", "tool-a", "SKILL.md"))).toBe(true);
 });
 
@@ -724,4 +724,38 @@ test("removing a pin from another library whose copy differs offers Remove it an
   writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { foo: { version: 1, hash: "deadbeefdeadbeef" } } }));
   const r = loadWorld().ops.remove("app", "foo");
   expect(typeof r !== "string" && "then" in r).toBe(true);
+});
+
+test("a global move another repo blocks names that repo; Delete from your library leaves a file of yours and refuses a conflicted skilllib.json", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, ".claude", "skills", "g1"));
+  const other = join(tmp, "other");
+  writeSkill(join(other, ".agents", "skills", "g1")); // Claude Code there runs the global copy
+  mkdirSync(join(other, ".git"));
+  rememberProjects([other]);
+  let w = loadWorld();
+  expect(said(w.ops.moveGlobal(w.machine.filter((m) => m.name === "g1"), ["app"]))).toContain("Claude Code in other only sees the global copy");
+
+  writeSkill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(repo, "foo");
+  rmSync(join(repo, ".agents", "skills", "foo"), { recursive: true });
+  writeFileSync(join(repo, ".agents", "skills", "foo"), "mine");
+  writeFileSync(join(other, "skilllib.json"), '<<<<<<< HEAD\n{"skills": {"foo": {"version": 1, "hash": "x"}}}\n');
+  w = loadWorld();
+  expect(w.ops.deleteLibrary("foo")).toMatchObject({ failed: true });
+  writeFileSync(join(other, "skilllib.json"), "{}\n");
+  w = loadWorld();
+  expect(said(w.ops.deleteLibrary("foo"))).toStartWith("Deleted foo from your library and from app");
+  expect(readFileSync(join(repo, ".agents", "skills", "foo"), "utf-8")).toBe("mine");
+  expect(isLink(join(repo, ".claude", "skills", "foo"))).toBe(true);
+});
+
+test("a repo whose skills folder is a file is marked in Places, not only in Health", () => {
+  rmSync(join(repo, ".claude"), { recursive: true, force: true });
+  mkdirSync(join(repo, ".claude"));
+  writeFileSync(join(repo, ".claude", "skills"), "x");
+  const w = loadWorld();
+  expect(repoIssues(w, "app").map((i) => i.title)).toContain("app: .claude/skills isn't a folder");
+  expect(unlisted(w, "app")).toEqual([]);
 });

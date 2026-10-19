@@ -881,3 +881,17 @@ test("a pin under a skills folder that links out of the repo isn't the repo's co
   const stuck = findIssues([r2], machineSkills(), new Set(["foo"])).find((i) => i.id === `stuck:${r2}:foo`)!;
   expect(stuck.detail).toContain("skilllib only installs inside the repo");
 });
+
+test("in a repo whose .agents/skills links out of it, an untracked skill is offered a copy into the library, never tracking", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "alink");
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  mkdirSync(join(project, ".agents"), { recursive: true });
+  symlinkSync(join(tmp, ".agents", "skills"), join(project, ".agents", "skills"));
+  skill(join(project, ".claude", "skills", "al-local"));
+  const local = findIssues([project], machineSkills(), new Set()).find((i) => i.id === `local:${project}:al-local`)!;
+  expect(local.choices!.map((c) => c.label)).toEqual(["Copy into the library"]);
+  expect(runFix(local.choices![0]!).ok).toBe(true);
+  // Now identical to the library copy: no Track it, which would fail there.
+  expect(findIssues([project], machineSkills(), new Set(["al-local"])).some((i) => i.id === `adopt:${project}:al-local`)).toBe(false);
+});
