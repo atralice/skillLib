@@ -69,10 +69,18 @@ export function usesFromTranscriptLine(line: string): SkillUse[] {
 function transcriptFiles(sinceMs: number): string[] {
   const base = join(claudeDir(), "projects");
   if (!existsSync(base)) return [];
-  return readdirSync(base).flatMap((project) => {
+  // A folder that can't be read (root-owned after sudo) is skipped, as an unreadable transcript is.
+  const list = (dir: string) => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  };
+  return list(base).flatMap((project) => {
     const dir = join(base, project);
     if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return []; // a link to nothing is skipped
-    return readdirSync(dir)
+    return list(dir)
       .filter((f) => f.endsWith(".jsonl"))
       .map((f) => join(dir, f))
       .filter((f) => (statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? 0) >= sinceMs);

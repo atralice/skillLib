@@ -571,6 +571,18 @@ test("a skill `npx skills add` put in the repo isn't a library skill; committed,
   expect(reviewPrompt(w, ["lint"], "Review the skills in app.", "app")).toContain("- Source: a repo's own skill (committed by the team)");
 });
 
+test("a plugin only this repo's settings turn on is reviewed as the repo loads it", () => {
+  writeSkill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "here", "skills", "beta"));
+  mkdirSync(join(repo, ".claude"), { recursive: true });
+  writeFileSync(join(repo, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "here@mk": true } }));
+  const w = loadWorld();
+  expect(w.machine.some((m) => m.name === "beta")).toBe(false);
+  const prompt = reviewPrompt(w, ["beta"], "Review the skill beta in app.", "app");
+  expect(prompt).toContain("- Source: vendor: plugin (here@mk)");
+  expect(prompt).toContain("— in app");
+  expect(prompt).not.toContain("a repo's own skill");
+});
+
 test("status --json calls a copy git tracks the repo's, as the TUI does, wherever it lives", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   writeSkill(join(repo, ".claude", "skills", "lint"));

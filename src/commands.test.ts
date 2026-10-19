@@ -74,6 +74,14 @@ describe("commands that need a project", () => {
     expect(existsSync(join(tmp, "skilllib.json"))).toBe(false);
   });
 
+  test("refuse in an agent's own folder, even a git repo, and say which", () => {
+    mkdirSync(join(tmp, ".claude", ".git"), { recursive: true });
+    const r = cli(join(tmp, ".claude"), "add", "alpha");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`~/.claude is skilllib's or an agent's own folder, not a project`);
+    expect(existsSync(join(tmp, ".claude", "skilllib.json"))).toBe(false);
+  });
+
   test("refuse in your home folder, where skills would load in every repo", () => {
     expect(projectHere(tmp)).toBeNull();
     for (const args of needProject) {
