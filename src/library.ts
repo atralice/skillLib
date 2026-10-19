@@ -326,10 +326,17 @@ export function blindWithoutGlobal(
   }
   // An agent in a package reads every enclosing folder up to the repo's top too: a surviving copy in one (an enclosing
   // package, the top) serves it there, whichever way the package was asked about.
-  // Only within the repos asked about: never above one.
+  // Up to the git repo's top (a package opened on its own is still in its repo), else within the repos asked about:
+  // never above a repo.
   const within = (d: string) => unique.some((r) => d === r || d.startsWith(r + sep));
+  const gitTop = (from: string) => {
+    for (let d = from; d !== dirname(d); d = dirname(d)) if (existsSync(join(d, ".git"))) return d;
+    return null;
+  };
   const servedAbove = (b: Blind) => {
-    for (let d = dirname(b.root); within(d) && d !== dirname(d); d = dirname(d)) if (keepsTop(d, b.id)) return true;
+    const top = gitTop(b.root);
+    const inside = (d: string) => (top ? d === top || d.startsWith(top + sep) : within(d));
+    for (let d = dirname(b.root); inside(d) && d !== dirname(d); d = dirname(d)) if (keepsTop(d, b.id)) return true;
     return false;
   };
   return [...byWho.values()].filter((b) => !servedAbove(b));
@@ -380,7 +387,10 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
     // A package's link to the global copy: add or link at the repo's top doesn't touch it.
     ...(links.length ? [`give ${links.join(", ")} a copy of its own instead of a link to the global one`] : []),
     ...shared,
-    ...(repos.length ? [`give ${new Set(repos.map((b) => b.root)).size === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there)`] : []),
+    // Named, so with other advice beside it, it's clear which repo (or package) this is about.
+    ...(repos.length
+      ? ((names) => [`give ${names.join(", ")} ${names.length === 1 ? "a copy of its own" : "their own copies"} (skilllib add, sync or link there)`])([...new Set(repos.map((b) => label(b.root)))])
+      : []),
   ];
   return `${who} only ${blind.length === 1 ? "sees" : "see"} the global copy: ${fixes.join("; ")}, or keep ${name} global (skilllib global keep)`;
 }

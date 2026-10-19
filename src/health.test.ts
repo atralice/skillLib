@@ -850,7 +850,7 @@ test("stopping a global copy waits for every repo holding the skill, not only th
   const twice = findIssues([app1, app2], machineSkills(), new Set(["alpha"])).find((i) => i.id === "twice:alpha")!;
   expect(twice.title).toBe("alpha: in app2 and also loaded globally");
   expect(twice.choices).toBeUndefined();
-  expect(twice.detail).toContain("Claude Code in app1 only sees the global copy: give that repo a copy of its own");
+  expect(twice.detail).toContain("Claude Code in app1 only sees the global copy: give app1 a copy of its own");
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
 
