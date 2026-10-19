@@ -1003,7 +1003,9 @@ export function findIssues(
   const everyRepo = [...projects, ...knownProjects()];
   // Each repo's packages walked once, however many skills are asked about.
   const nestedMemo = new Map<string, NestedEntry[]>();
-  const packagesOf = (root: string) => nestedMemo.get(root) ?? (nestedMemo.set(root, nestedEntries(root)), nestedMemo.get(root)!);
+  const entriesOf = (root: string) => nestedMemo.get(root) ?? (nestedMemo.set(root, nestedEntries(root)), nestedMemo.get(root)!);
+  const foldersMemo = new Map<string, { sub: string }[]>();
+  const foldersOf = (root: string) => foldersMemo.get(root) ?? (foldersMemo.set(root, packageSkillFolders(root)), foldersMemo.get(root)!);
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
   for (const [name, copies] of alsoGlobal) {
@@ -1058,7 +1060,7 @@ export function findIssues(
     // Global copies that differ need a winner first (conflict:global:), as global move says: unloading them all would
     // leave one only in the backups.
     const differ = copiesDiffer(doomed.map((m) => m.path));
-    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, packagesOf) : [];
+    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, entriesOf, foldersOf) : [];
     issues.push({
       at,
       id: `twice:${name}`,

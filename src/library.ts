@@ -111,8 +111,9 @@ const writableDir = (root: string, dir: string) => notWritable(root, dir) === nu
  */
 function reposChoice(root: string, dir: string): boolean {
   if (writableDir(root, dir)) return true;
-  const real = isDir(join(root, dir)) ? realpathOrNull(join(root, dir)) : null;
-  return real !== null && !globalSkillDirs().some((g) => realpathOrNull(g) === real);
+  // As the disk spells them: ~/.CLAUDE/SKILLS is the global folder too on a case-insensitive disk.
+  const real = isDir(join(root, dir)) ? realNative(join(root, dir)) : null;
+  return real !== null && !globalSkillDirs().some((g) => realNative(g) === real);
 }
 /** The first of these repo skill folders skilllib can't write into, named as notWritable names it. */
 const firstStuck = (root: string, dirs: string[]) => dirs.map((d) => notWritable(root, d)).find((p) => p !== null) ?? null;
@@ -266,6 +267,7 @@ export function blindWithoutGlobal(
   copies: { path: string; harnesses: HarnessId[]; links?: string[] }[],
   roots: string[],
   nestedOf: (root: string) => NestedEntry[] = (root) => nestedEntries(root),
+  packagesOf: (root: string) => { sub: string }[] = (root) => packageSkillFolders(root),
 ): Blind[] {
   const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const readers = new Set(copies.flatMap((c) => c.harnesses));
@@ -305,7 +307,9 @@ export function blindWithoutGlobal(
       );
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
+  // A package with its own skilllib.json pinning it (a project inside the repo) holds it in its own folders.
+  const pinnedPackages = (root: string) => [...new Set(packagesOf(root).map((f) => f.sub))].filter((sub) => pinsSkill(sub, name));
+  return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root), ...pinnedPackages(root).flatMap(blindIn)]);
 }
 
 /**
@@ -337,7 +341,14 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
   const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link] : [])))];
-  const shared = [...new Set(blind.flatMap((b) => (b.shared ? [`put a copy of ${name} in ${b.shared.to} (${b.shared.dir} in ${label(b.root)} links there), or point ${b.shared.dir} back into the repo`] : [])))];
+  // One piece of advice per shared folder, naming every repo that links there.
+  const sharedBy = new Map<string, { dir: string; to: string; repos: Set<string> }>();
+  for (const b of blind.filter((x) => x.shared)) {
+    const k = `${b.shared!.to}\0${b.shared!.dir}`;
+    if (!sharedBy.has(k)) sharedBy.set(k, { ...b.shared!, repos: new Set() });
+    sharedBy.get(k)!.repos.add(label(b.root));
+  }
+  const shared = [...sharedBy.values()].map((g) => `put a copy of ${name} in ${g.to} (${g.dir} in ${[...g.repos].join(", ")} link${g.repos.size === 1 ? "s" : ""} there), or point ${g.dir} back into the repo`);
   const repos = blind.filter((b) => !b.folder && !b.link && !b.shared);
   const fixes = [
     ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),

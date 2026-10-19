@@ -444,7 +444,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "allow links there, then move it again" });
       const said = (results: ReturnType<typeof attempt>) => {
         const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
-        const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
+        // Named (a few) so a group's result says which went, not only how many.
+        const which = moved.length <= 4 ? moved.join(", ") : `${moved.length} skills`;
+        const summary = moved.length ? `${which} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
         // Package links now pointing at nothing (the repo's own copy serves them): said, to remove.
         const left = results.flatMap((mv) => mv.left ?? []);
         return {

@@ -94,7 +94,7 @@ test("keeping a global skill on purpose clears its warning", () => {
 test("a group moved together stays grouped in your library", () => {
   for (const name of ["cf-one", "cf-two"]) writeSkill(join(tmp, ".claude", "skills", name));
   let w = loadWorld();
-  expect(w.ops.moveGlobal(w.machine, ["app"], "cloudflare set")).toBe("2 skills now load only in app");
+  expect(w.ops.moveGlobal(w.machine, ["app"], "cloudflare set")).toBe("cf-one, cf-two now load only in app");
   w = loadWorld();
   expect(w.machine).toEqual([]);
   expect(w.library.map((l) => l.origin)).toEqual(["group: cloudflare set", "group: cloudflare set"]);
@@ -120,7 +120,7 @@ test("moving to a repo that commits Claude Code's folder keeps it global until y
   for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
 
   w = loadWorld();
-  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app; 2 skills now load only in app");
+  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app; tool-a, tool-b now load only in app");
   for (const name of ["tool-a", "tool-b"]) {
     expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
     expect(existsSync(join(tmp, ".claude", "skills", name))).toBe(false);
