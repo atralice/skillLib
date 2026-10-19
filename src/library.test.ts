@@ -1223,3 +1223,16 @@ test("remove's pin-only reason names the repo's own links it left", () => {
   symlinkSync(join(tmp, "devA", "skills"), join(project, ".agents", "skills"));
   expect(removeSkill(project, "alpha").reason).toBe(".agents/skills links out of the repo (to ~/devA/skills): only its pin was removed, and that copy was left as it is; its link .claude/skills/alpha was left too");
 });
+
+test("advice for a skills folder linked to a shared folder without the skill: put a copy there, or point it back", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  mkdirSync(join(tmp, "devskills"));
+  const r1 = join(tmp, "r1");
+  mkdirSync(join(r1, ".claude"), { recursive: true });
+  symlinkSync(join(tmp, "devskills"), join(r1, ".claude", "skills"));
+  writeFileSync(join(r1, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const blind = blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [r1]);
+  expect(blindSaid("g1", blind)).toBe("Claude Code in r1 only sees the global copy: put a copy of g1 in ~/devskills (.claude/skills in r1 links there), or point .claude/skills back into the repo, or keep g1 global (skilllib global keep)");
+});

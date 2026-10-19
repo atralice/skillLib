@@ -585,18 +585,24 @@ export function findIssues(
     // A copy that's another library version than the pin (after a pull, say): sync installs the pinned one. It
     // replaces a copy your library keeps, so nothing is lost; when the copy is committed, git sees it: a choice.
     // Where skilllib can't re-pin (add would refuse), a copy of another version may be edits you copied into your
-    // library on purpose: never put the pinned one back automatically there.
-    const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s) && !untrackable(s));
+    // library on purpose: still said, but putting the pinned one back is your call there, never automatic.
+    const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s));
     if (drifted.length) {
       const seen = drifted.some((s) => ["committed", "changed"].includes(gitInfo(root)?.of(relativeTo(root, s.path)) ?? ""));
-      const install: Choice = { label: "Install the pinned versions", hint: seen ? "git will see the copies change" : "your library keeps every version", run: () => summarize(where, "synced", syncProject(root)) };
+      const yours = drifted.some((s) => untrackable(s));
+      // Only these skills: the rest of the repo is other issues' business.
+      const install: Choice = {
+        label: "Install the pinned versions",
+        hint: seen ? "git will see the copies change" : "your library keeps every version",
+        run: () => summarize(where, "synced", syncProject(root, { names: drifted.map((s) => s.name) })),
+      };
       issues.push({
         id: `out-of-sync:${root}`,
         severity: "suggestion",
         title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
         detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.`,
         at: rows(root, drifted.map((s) => s.name)),
-        ...(seen ? { choices: [install] } : { fix: install }),
+        ...(seen || yours ? { choices: [install] } : { fix: install }),
       });
     }
     for (const s of unstuck.filter((s) => s.state === "folder missing" && s.latest === null))
@@ -945,7 +951,7 @@ export function findIssues(
             ? [
                 {
                   label: "Copy the edits into Your skills",
-                  hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : "a new version there"}; ${where}'s copy and pin stay as they are`,
+                  hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : "a new version there"}; ${where}'s copy and pin stay as they are (skilllib sync there would put the pinned version back)`,
                   run: () => {
                     intoLibrary(s.path, true);
                     return `${s.name}: the edits are in Your skills as v${latestVersion(s.name)?.version}; ${where} stays as it is`;

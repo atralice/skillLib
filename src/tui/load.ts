@@ -404,8 +404,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
-      // Deleting a group: an earlier copy took this link along already.
-      if (!entryExists(m.path)) return `${tildify(m.path)} was already removed, with the copy it went through`;
+      // Gone already: an earlier copy in a group took this link along, or it went outside skilllib.
+      if (!entryExists(m.path)) return `${tildify(m.path)} is already gone`;
       // Other global entries by that name that go through this one (a link to it, or to its link) would break with it:
       // they go too, and their agents count. A plugin's skill is its own (/plugin:name); a broken link loads nothing.
       const others = machine.filter((o) => o.name === m.name && o.path !== m.path && o.kind !== "plugin" && !o.broken);
