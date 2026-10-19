@@ -297,6 +297,25 @@ export function blindWithoutGlobal(
   return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
 }
 
+/**
+ * Package links (a monorepo) that would point at nothing once `copies` go, though the repo's top copy still serves
+ * those agents (else blindWithoutGlobal stops it): left as they are, but said, as "<link> in <repo>".
+ */
+export function strandedLinks(
+  name: string,
+  copies: { path: string; links?: string[] }[],
+  roots: string[],
+  label: (root: string) => string = basename,
+): string[] {
+  const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
+  const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
+  return unique.flatMap((root) =>
+    nestedEntries(root)
+      .filter((n) => n.name === name && isLink(n.path) && !survives(n.path, gone))
+      .map((n) => `${relative(root, n.path).split(sep).join("/")} in ${label(root)}`),
+  );
+}
+
 /** Whether these copies of one skill differ in content: what's there, a broken link (no content) left out. */
 export function copiesDiffer(paths: string[]): boolean {
   return new Set(paths.map((p) => treeHash(p)).filter((h) => h !== null)).size > 1;

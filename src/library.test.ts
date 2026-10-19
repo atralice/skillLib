@@ -1236,3 +1236,16 @@ test("advice for a skills folder linked to a shared folder without the skill: pu
   const blind = blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [r1]);
   expect(blindSaid("g1", blind)).toBe("Claude Code in r1 only sees the global copy: put a copy of g1 in ~/devskills (.claude/skills in r1 links there), or point .claude/skills back into the repo, or keep g1 global (skilllib global keep)");
 });
+
+test("a move a repo's top copy allows says which package links it leaves pointing at nothing", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "foo");
+  writeSkill(entry, "v1");
+  const mono = join(tmp, "mono");
+  writeSkill(join(mono, ".claude", "skills", "foo"), "v1");
+  mkdirSync(join(mono, "packages", "web", ".claude", "skills"), { recursive: true });
+  symlinkSync(entry, join(mono, "packages", "web", ".claude", "skills", "foo"));
+  rememberProjects([mono, project]);
+  const [mv] = moveGlobalSkills([{ name: "foo", path: entry, links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: true, left: ["packages/web/.claude/skills/foo in mono"] });
+});

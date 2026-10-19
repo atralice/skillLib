@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -1080,11 +1080,13 @@ export function findIssues(
                   const now = blindWithoutGlobal(name, doomed, everyRepo);
                   if (now.length) throw new Error(`${name}: ${blindSaid(name, now)}`);
                   if (!libraryNames.has(name)) importSkill(movable.path);
+                  // Package links that will point at nothing (the repo's own copy serves them): found before, said after.
+                  const left = strandedLinks(name, doomed, everyRepo);
                   for (const m of machine.filter((x) => x.name === name && x.movable)) {
                     const r = unloadGlobal(m.path, m.links);
                     if (!r.ok) throw new Error(`${name}: ${r.reason}`);
                   }
-                  return `${name} no longer loads globally`;
+                  return `${name} no longer loads globally${left.length ? `; ${left.join(", ")} now point${left.length === 1 ? "s" : ""} at nothing: remove ${left.length === 1 ? "it" : "them"}` : ""}`;
                 },
               },
             ]
