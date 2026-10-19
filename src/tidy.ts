@@ -289,11 +289,6 @@ export function describeStep(step: TidyStep, root: string | null): string {
   }
 }
 
-/** Folder label for a conflict copy: ".claude/skills" in a repo, "~/.agents/skills" globally. */
-export function copyLabel(conflict: Conflict, dir: string): string {
-  return folderLabel(conflict.root, dir);
-}
-
 /** ".claude/skills" in a repo, "~/.agents/skills" for a global folder. */
 export function folderLabel(root: string | null, dir: string): string {
   return root ? relativeTo(root, dir) : tildify(dir);

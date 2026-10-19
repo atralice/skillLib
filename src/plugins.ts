@@ -92,13 +92,13 @@ function newer(a: string, b: string): boolean {
   return false;
 }
 
+type Listed = { name?: string; version?: string; source?: string | { sha?: string } };
+
 /**
  * What the marketplace (as Claude Code last fetched it) offers that's newer than `entry`:
  * a declared version, the version in a plugin it holds itself, or a different pinned commit.
  * Undefined when it can't tell: no guessing.
  */
-type Listed = { name?: string; version?: string; source?: string | { sha?: string } };
-
 function updateOf(name: string, marketplace: string, entry: InstallEntry, catalogs: Map<string, Listed[]>): string | undefined {
   const dir = join(claudeDir(), "plugins", "marketplaces", marketplace);
   // Read once per marketplace: one catalog lists all of its plugins.
@@ -330,7 +330,10 @@ export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: 
   const r = setPluginIn(settingsFileOf(p)!, p.id, on);
   if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}` };
   // A local install's switch is in .claude/settings.local.json: keep it out of git, as Claude Code does.
-  return p.scope === "local" && p.projectPath ? { ...done, message: done.message + ignoreLocalSettings(p.projectPath) } : done;
+  if (p.scope === "local" && p.projectPath) return { ...done, message: done.message + ignoreLocalSettings(p.projectPath) };
+  // A project install's switch is the repo's .claude/settings.json, which the team shares.
+  if (p.scope === "project" && p.projectPath) return { ...done, message: `${done.message}; it's in .claude/settings.json, which git tracks, so commit it if the team should get it` };
+  return done;
 }
 
 /**

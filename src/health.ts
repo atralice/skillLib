@@ -12,7 +12,7 @@ import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setP
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
-import { applyTidy, copyLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
+import { applyTidy, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
 export type Choice = { label: string; hint?: string; run: () => string };
@@ -99,20 +99,20 @@ function conflictIssue(c: Conflict): Issue {
     const plan = planFor(dir);
     const r = plan ? applyTidy(plan, { git }) : null;
     if (!r?.applied.length) throw new Error(`${c.name}: nothing changed${r?.held.length ? " (git would see every change)" : ""}`);
-    return `${c.name}: kept the ${copyLabel(c, dir)} copy${r.held.length ? `; held back ${plural(r.held.length, "change")} git would see` : ""}`;
+    return `${c.name}: kept the ${folderLabel(c.root, dir)} copy${r.held.length ? `; held back ${plural(r.held.length, "change")} git would see` : ""}`;
   };
   return {
     id: `conflict:${c.root ?? "global"}:${c.name}`,
     severity: "problem",
     title: `${c.name} in ${where}: the copies differ`,
     detail: `Your agents run different versions: ${c.copies
-      .map((x) => `${copyLabel(c, x.dir)}${x.runs.length ? ` (${agentNames(x.runs)})` : ""}`)
+      .map((x) => `${folderLabel(c.root, x.dir)}${x.runs.length ? ` (${agentNames(x.runs)})` : ""}`)
       .join(" vs ")}. Keep one; the others become links to it and are restorable with skilllib restore (Settings › Backups in the app).`,
     at: rows(c.root, [c.name]),
     choices: winners.flatMap((x): Choice[] => {
       const plan = planFor(x.dir);
       const visible = plan ? gitVisibleSteps(plan).map((s) => describeStep(s, c.root!)) : [];
-      const label = `Keep the ${copyLabel(c, x.dir)} copy`;
+      const label = `Keep the ${folderLabel(c.root, x.dir)} copy`;
       if (!visible.length) return [{ label, hint: x.dir === c.managed ? "skilllib's version" : "the others become links to it", run: keep(x.dir, "go") }];
       return [
         { label: `${label}, but keep git as it is`, hint: `skips what git would see: ${visible.join(", ")}`, run: keep(x.dir, "keep") },

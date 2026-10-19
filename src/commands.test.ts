@@ -467,6 +467,26 @@ describe("round 4", () => {
     expect(readFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("the team's");
   });
 
+  test("add never takes over a committed team copy, even one identical to the library's", () => {
+    const web = repo("web2");
+    mkdirSync(join(web, ".claude", "skills", "alpha"), { recursive: true });
+    writeFileSync(join(web, ".claude", "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nbody\n"); // = library alpha
+    const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: web });
+    git("init", "-q");
+    git("add", ".");
+    git("commit", "-qm", "team");
+    const r = cli(web, "add", "alpha", "--json");
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)[0].reason).toContain("the repo's own (committed)");
+    expect(existsSync(join(web, "skilllib.json"))).toBe(false);
+  });
+
+  test("global lists only global skills one of your agents loads", () => {
+    mkdirSync(join(tmp, ".grok", "skills", "grok-only"), { recursive: true }); // claude-code + codex don't read ~/.grok
+    writeFileSync(join(tmp, ".grok", "skills", "grok-only", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    expect(cli(tmp, "global").out).not.toContain("grok-only");
+  });
+
   test("list takes --days", () => {
     expect(cli(repo("web"), "list", "--days", "7", "--json").code).toBe(0);
   });

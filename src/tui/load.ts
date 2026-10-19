@@ -58,7 +58,6 @@ import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
 import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { localStamp, tildify } from "../output.js";
-export { tildify };
 
 
 /** Folder names, with as many parent folders as it takes to tell repos apart (ops find repos by name). */
@@ -196,7 +195,8 @@ export function loadWorld(): World {
   const kept = keptGlobal();
   // Cursor plugins: reported only (Cursor's plugin state can't be read).
   const cursorList = agents.includes("cursor") ? cursorPlugins() : [];
-  const sourced = machineSkills(agents);
+  // What your agents load everywhere: a skill in a folder none of them reads isn't (a broken link still shows, to fix).
+  const sourced = machineSkills(agents).filter((s) => s.harnesses.length || s.broken);
   const machine = sourced.map((s) => {
     descriptions[s.name] ??= s.description;
     return machineSkill(s, kept);

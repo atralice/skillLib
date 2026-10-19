@@ -26,7 +26,7 @@ export type SourcedSkill = {
   origin: string;
   path: string;
   description: string;
-  /** Only ~/.claude/skills entries can be moved out by skilllib; vendors manage the rest. */
+  /** Your skills in a global folder can be moved out by skilllib; vendors (plugins, claude.ai, built-ins) manage theirs. */
   movable: boolean;
   broken: boolean;
   /** Your harnesses that load it in every project. */
