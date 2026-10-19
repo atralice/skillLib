@@ -56,6 +56,11 @@ function entriesOf(dirs: string[], name: string): Entry[] {
   });
 }
 
+/** The real copies, each real folder once: one reached two ways (a skills folder that's a link to another) is one copy (#54). */
+function uniqueReals(entries: Entry[]): Entry[] {
+  return entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && o.real === e.real) === i);
+}
+
 /** Hashes real copies only when there's more than one to compare: hashing reads every file. */
 function hashReals(reals: Entry[]) {
   if (reals.length > 1) for (const r of reals) r.hash = treeHash(r.path);
@@ -120,16 +125,17 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
   const skillsLock = projectSkillsLock(root);
 
   const dirs = repoTidyDirs(root).map(abs);
+  const realRoot = realpathOrNull(root) ?? root;
   for (const name of namesIn(dirs)) {
     const entries = entriesOf(dirs, name);
-    const external = entries.find((e) => e.link && e.real && !(e.real + sep).startsWith(realpathOrNull(root)! + sep));
+    const external = entries.find((e) => e.link && e.real && !(e.real + sep).startsWith(realRoot + sep));
     if (external) {
       const differs = entries.some((e) => e !== external && e.real && existsSync(join(e.real, "SKILL.md")) && treeHash(e.real) !== treeHash(external.real!));
       report.skipped.push({ name, reason: `${rel(external.path)} links outside the repo`, ...(differs ? { differs } : {}) });
       continue;
     }
     // One real folder reached two ways (a skills folder that's a link to another) is one copy, as in planGlobalTidy (#54).
-    const reals = entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && realpathOrNull(o.path) === realpathOrNull(e.path)) === i);
+    const reals = uniqueReals(entries);
     if (reals.length === 0) continue;
     hashReals(reals);
 
@@ -219,7 +225,7 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
       continue;
     }
     // Never two "copies" of one real folder: tidying those would replace a skill with a link to itself (#54).
-    const reals = entries.filter((e, i, all) => !e.link && all.findIndex((o) => !o.link && realpathOrNull(o.path) === realpathOrNull(e.path)) === i);
+    const reals = uniqueReals(entries);
     if (reals.length < 2) continue;
     hashReals(reals);
     // A `keep` folder with no copy picks nothing: differing copies stay a conflict.

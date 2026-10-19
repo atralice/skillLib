@@ -1281,8 +1281,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   }
 
   // ── Layout ──
-  // A result gets up to three lines (a move or a delete can say why several skills stayed); a question's keys share one.
-  const toastLines = toast && modal?.kind !== "confirm" ? wrap(toast, termCols - 2, 3).map((l) => " " + l) : [];
+  // A result gets up to a quarter of the screen, three lines at least (a group move or delete says why each skill stayed);
+  // a question's keys share one.
+  const toastLines = toast && modal?.kind !== "confirm" ? wrap(toast, termCols - 2, Math.max(3, Math.floor(termRows / 4))).map((l) => " " + l) : [];
   const bottomH = Math.max(1, toastLines.length);
   // Tall enough to say everything a change does (e.g. every repo a deletion reaches).
   const confirmLines = modal?.kind === "confirm" ? wrap(modal.fix.preview, columns - 6, 6) : [];
@@ -1330,15 +1331,20 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   ];
   const sideAt = sideRows.findIndex((r) => r.here);
 
+  // Narrow terminals drop the name, then shorten "Your skills": the tabs and Health's count always fit whole.
+  const brand = " ◆ skilllib  ";
+  const tabsWidth = (short: boolean) => PLACES.reduce((n, [p, label]) => n + (short && p === "library" ? 6 : label.length) + 2 + (p === "health" && healthCount ? ` ${healthCount}`.length : 0), 0);
+  const showBrand = brand.length + tabsWidth(false) <= columns;
+  const shortTabs = !showBrand && tabsWidth(false) > columns;
   const topBar = (
     <Box height={1} width={columns} justifyContent="space-between">
       <Box>
         <Text color={color.accent} bold>
-          {" ◆ skilllib  "}
+          {showBrand ? brand : ""}
         </Text>
         {PLACES.map(([p, label]) => (
           <Text key={p} backgroundColor={place === p ? color.accent : undefined} color={place === p ? "#0B1020" : color.muted} bold={place === p}>
-            {` ${label}`}
+            {` ${shortTabs && p === "library" ? "Skills" : label}`}
             <Text color={place === p ? "#0B1020" : healthWorst ? SEV[healthWorst.severity].color : color.green}>{p === "health" && healthCount ? ` ${healthCount}` : ""}</Text>
             {" "}
           </Text>
