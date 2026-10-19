@@ -1141,7 +1141,7 @@ test("who'd lose a global skill when its global entry is a link, or a package ho
     mkdirSync(join(r, ".claude", "skills"), { recursive: true });
     return r;
   };
-  const blind = (entryPath: string, r: string, links: string[] = []) => blindWithoutGlobal("foo", [{ path: entryPath, harnesses: ["claude-code"], links }], [r]).map((b) => [relative(tmp, b.root), b.id]);
+  const blind = (entryPath: string, r: string, links: string[] = []) => blindWithoutGlobal("foo", [{ path: entryPath, harnesses: ["claude-code"], links }], [r]).map((b) => [relative(tmp, b.root).replaceAll("\\", "/"), b.id]);
 
   // The global entry is a link to a dev folder: moving it leaves the dev folder, and a repo link to it.
   symlinkSync(join(tmp, "dev", "foo"), entry);
