@@ -21,4 +21,4 @@
 │     pr-review        global ✓          4                                   │
 │     release-notes    repo              2                                   │
 ╰────────────────────────────────────────────────────────────────────────────╯
-type to filter · space ★ fix · enter actions · tab tabs · esc all projects · ?
+  type to filter · space ★ fix · enter actions · tab tabs · esc all projects ·

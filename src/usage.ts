@@ -71,11 +71,11 @@ function transcriptFiles(sinceMs: number): string[] {
   if (!existsSync(base)) return [];
   return readdirSync(base).flatMap((project) => {
     const dir = join(base, project);
-    if (!statSync(dir).isDirectory()) return [];
+    if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return []; // a link to nothing is skipped
     return readdirSync(dir)
       .filter((f) => f.endsWith(".jsonl"))
       .map((f) => join(dir, f))
-      .filter((f) => statSync(f).mtimeMs >= sinceMs);
+      .filter((f) => (statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? 0) >= sinceMs);
   });
 }
 
@@ -96,12 +96,15 @@ export async function scanUsage(days: number): Promise<SkillUse[]> {
 
 export type UsageSummary = { skill: string; uses: number; lastUsed: string; projects: Set<string> };
 
+/** The skill a use counts for: a plugin's copy (/plugin:name) counts for its name. */
+export const skillOf = (key: string) => key.split(":").pop()!;
+
 /** Uses grouped by skill. `projectOf` maps a session's cwd to a project root (or null). */
 export function summarize(uses: SkillUse[], projectOf: (cwd: string) => string | null = () => null): UsageSummary[] {
   const bySkill = new Map<string, UsageSummary>();
   for (const use of uses) {
     // A plugin's copy (/plugin:name) counts for the skill, so moving it out of the plugin keeps its history.
-    const skill = use.skill.split(":").pop()!;
+    const skill = skillOf(use.skill);
     const summary = bySkill.get(skill) ?? { skill, uses: 0, lastUsed: "", projects: new Set<string>() };
     summary.uses += 1;
     if (use.at > summary.lastUsed) summary.lastUsed = use.at;
@@ -120,7 +123,7 @@ export function usesByProject(uses: SkillUse[], projectOf: (cwd: string) => stri
     if (!root) continue;
     const counts = byProject.get(root) ?? new Map<string, number>();
     // As summarize: a plugin's copy (/plugin:name) counts for the skill, so status and doctor agree.
-    const skill = use.skill.split(":").pop()!;
+    const skill = skillOf(use.skill);
     counts.set(skill, (counts.get(skill) ?? 0) + 1);
     byProject.set(root, counts);
   }

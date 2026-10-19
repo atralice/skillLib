@@ -33,7 +33,7 @@ import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
-import { findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
+import { detailWithGit, findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import type { AllChangesJson, ApplyJson, ChangeJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
@@ -105,7 +105,7 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
   return changes.map((c): ChangeJson => {
     const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" || c.action === "relinked" ? skills[c.name] : undefined;
-    return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
+    return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])] } : c;
   });
 }
 
@@ -653,7 +653,7 @@ export async function doctor(args: Args) {
           id,
           severity,
           title,
-          detail,
+          detail: detailWithGit({ detail, fix, choices }),
           fix: fix?.label,
           choices: choices?.map((c) => c.label),
           fixed: args.fix && fix ? fixed(fix) : undefined,

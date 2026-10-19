@@ -60,7 +60,6 @@ export type ProjectSkill = {
   source?: string;
 };
 
-
 export function isLink(path: string): boolean {
   try {
     return lstatSync(path).isSymbolicLink();
@@ -133,7 +132,9 @@ export function projectStatus(root: string): ProjectSkill[] {
     // Edits are content your library has no version of; another known version is just out of sync.
     const known = local !== null && local !== dep.hash && versionForHash(name, local) !== null;
     const edited = local !== dep.hash && !known;
-    const behind = latest !== null && latest.hash !== dep.hash && latest.version > dep.version;
+    // The pin's version in your library, found by its hash: the number in skilllib.json may be another library's.
+    const pinned = versionForHash(name, dep.hash)?.version ?? dep.version;
+    const behind = latest !== null && latest.hash !== dep.hash && latest.version > pinned;
     const state: SkillState =
       local === null
         ? "folder missing"
@@ -154,7 +155,7 @@ export function projectStatus(root: string): ProjectSkill[] {
       name,
       managed: true,
       state,
-      version: dep.version || null,
+      version: pinned || null,
       latest: latest?.version ?? null,
       location,
       path,
@@ -358,13 +359,13 @@ export function relinkDependency(root: string, name: string, { allowTracked = fa
  */
 export function linkAll(
   root: string,
-  { allowTracked = false } = {},
+  { allowTracked = false, names }: { allowTracked?: boolean; names?: string[] } = {},
 ): { linked: { name: string; into: string[] }[]; blocked: string[]; uncommitted: string[] } {
   const linked: { name: string; into: string[] }[] = [];
   const blocked = new Set<string>();
   const uncommitted: string[] = [];
   for (const skill of projectStatus(root)) {
-    if (!skill.visibility.some((v) => v.paths === 0) || skill.state === "folder missing") continue;
+    if ((names && !names.includes(skill.name)) || !skill.visibility.some((v) => v.paths === 0) || skill.state === "folder missing") continue;
     const res = skill.managed ? relinkDependency(root, skill.name, { allowTracked }) : linkEverywhere(root, skill.name, skill.location, { allowTracked });
     if (res.created.length) linked.push({ name: skill.name, into: res.created });
     for (const dir of res.blocked) blocked.add(dir);
@@ -515,8 +516,10 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * restores missing folders and reverts nothing that was edited (forced, it
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
-export function syncProject(root: string, { force = false, allowTracked = false } = {}): Change[] {
-  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force, allowTracked }));
+export function syncProject(root: string, { force = false, allowTracked = false, names }: { force?: boolean; allowTracked?: boolean; names?: string[] } = {}): Change[] {
+  return Object.keys(readManifest(root).skills)
+    .filter((name) => !names || names.includes(name))
+    .flatMap((name) => syncSkill(root, name, { force, allowTracked }));
 }
 
 /** `syncProject` for one skill: nothing when it's already as pinned. */

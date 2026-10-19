@@ -249,10 +249,9 @@ test("a pinned skill whose folder is missing: sync restores it from the library;
   expect(ghost.fix).toBeUndefined();
   expect(issues.some((i) => i.title.includes("out of date"))).toBe(false);
 
-  // Sync restores alpha and says ghost-skill was skipped.
+  // Sync restores alpha only: ghost-skill is its own issue (unavailable:), so the fix doesn't try it.
   const r = runFix(sync.fix!);
-  expect(r.ok).toBe(true);
-  expect(r.message).toStartWith("web: restored 1 skill; skipped ghost-skill: not in your library");
+  expect(r).toEqual({ ok: true, message: "web: restored 1 skill" });
   expect(existsSync(join(project, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
   // Nothing left it can restore: no sync fix to report ✓ for.
   expect(findIssues([project], machineSkills(), new Set(["alpha"])).some((i) => i.id === `sync:${project}`)).toBe(false);

@@ -1613,7 +1613,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           {" " + toast}
         </Text>
         {/* A confirm (a follow-up after a result too) always shows its keys; the toast gives way. */}
-        {toast && modal?.kind !== "confirm" ? null : <Text color={color.faint}>{hints + " "}</Text>}
+        {toast && modal?.kind !== "confirm" ? null : <Text color={color.faint}>{"  " + hints + " "}</Text>}
       </Box>
     </Box>
   );
@@ -1692,7 +1692,7 @@ function Help({ width, height }: { width: number; height: number }) {
   const notes = [
     "✕ problem · ⚠ suggestion · ★ recommended fix · \"your call\" = a decision, never auto-fixed",
     "Source: lib = from your library · repo = committed by the team · untracked = only on this machine",
-    "Usage counts Claude Code sessions only: other agents don't record skill use.",
+    "Usage counts Claude Code sessions only: skilllib reads no other agent's transcripts.",
   ];
   // Wrapped to the pane, a key's description indented under itself; what doesn't fit is cut, not squeezed.
   const lines: Seg[][] = [

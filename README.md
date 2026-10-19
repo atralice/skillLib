@@ -361,7 +361,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
   It also reads claude.ai skills under `~/.claude/skills/synced`. It does **not** read `.codex/skills`, and it ignores `CLAUDE_CONFIG_DIR`. Turn a compat folder off with `[compat.claude] skills` or `[compat.cursor] skills` in `~/.grok/config.toml` (`GROK_CLAUDE_SKILLS_ENABLED` / `GROK_CURSOR_SKILLS_ENABLED`). The order above was checked with `grok inspect` on Grok 1.0.41 (October 2026).
 - **How it uses them.** The description decides relevance; `/name` runs one, and Grok can pick one itself. `disable-model-invocation: true` keeps it manual. Project skills in an untrusted folder are skipped.
-- **Installs.** skilllib does not write `.grok/skills` or `~/.grok/skills`. Grok already reads `.agents/skills`, and `.claude/skills` while Claude compatibility is on, so the fewest-folder install reaches it. A skill your team committed in `.grok/skills` stays the repo's own: skilllib can copy it into your library and leaves that folder in place. Adding that library skill back writes a second copy in the usual install folder for your agents (see [Adding and removing skills](#adding-and-removing-skills)). Grok still runs the team's `.grok/skills` copy. Claude Code runs the library copy. With `[compat.claude] skills = false`, Grok stops reading `.claude/skills`; skilllib still counts that folder as visible to Grok.
+- **Installs.** skilllib does not install into `.grok/skills` or `~/.grok/skills` (the one change it makes there is removing a broken link, when you choose to). Grok already reads `.agents/skills`, and `.claude/skills` while Claude compatibility is on, so the fewest-folder install reaches it. A skill your team committed in `.grok/skills` stays the repo's own: skilllib can copy it into your library and leaves that folder in place. Adding that library skill back writes a second copy in the usual install folder for your agents (see [Adding and removing skills](#adding-and-removing-skills)). Grok still runs the team's `.grok/skills` copy. Claude Code runs the library copy. With `[compat.claude] skills = false`, Grok stops reading `.claude/skills`; skilllib still counts that folder as visible to Grok.
 - **Limits.** No per-repo switch for a global skill. Plugins (`~/.grok/plugins`) stay off until named in `~/.grok/config.toml`, and skilllib doesn't list them yet.
 
 ---
@@ -380,7 +380,7 @@ skilllib status                 this repo's skills, which agents load them, and 
 skilllib add | remove <name>    change this repo's skills
 skilllib sync [--all]           install exactly the pinned versions
 skilllib outdated [--all]       skills with a newer version
-skilllib update [name...]       move to the newest versions
+skilllib update [name...|--all] move to the newest versions (--all: every project)
 skilllib link [--all]           make every skill here usable by all your agents
 skilllib tidy [--all|--global]  one real copy per skill, plus only the links your agents need
 

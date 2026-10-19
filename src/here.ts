@@ -1,12 +1,13 @@
 import { readdirSync } from "node:fs";
 import { basename } from "node:path";
+import { PROJECT_SKILLS_DIR } from "./paths.js";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { pinsIn, projectHere } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
-import { findIssues, type Issue } from "./health.js";
+import { detailWithGit, findIssues, type Issue } from "./health.js";
 import type { ListJson, StatusGlobalGroup, StatusIssue, StatusJson, StatusSkillGroup } from "./json.js";
 
 /** Groups items by a key, collecting names. */
@@ -68,7 +69,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         // Left out at their usual value: JSON.stringify drops undefined (as a spread would), and tsc checks each name.
         const attrs: Omit<StatusSkillGroup, "skills"> = {
           source: s.managed ? "library" : repo ? "repo" : "local",
-          dir: s.location !== ".claude/skills" ? s.location : undefined,
+          dir: s.location !== PROJECT_SKILLS_DIR ? s.location : undefined,
           version: s.version ?? undefined,
           state: usual ? undefined : s.state,
           latest: behind ? s.latest! : undefined,
@@ -97,7 +98,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   for (const i of statusIssues(root, machine)) {
     const choices = i.choices?.map((c) => c.label);
     const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
-    const issue = issues.get(key) ?? { problems: [], ids: [], detail: i.detail, fix: i.fix?.label, choices };
+    const issue = issues.get(key) ?? { problems: [], ids: [], detail: detailWithGit(i), fix: i.fix?.label, choices };
     issue.problems.push(i.title);
     issue.ids.push(i.id);
     issues.set(key, issue);
