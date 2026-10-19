@@ -68,7 +68,7 @@ export function moveGlobalSkills(
         const next = c.inTheWay?.length
           ? `${inTheWaySaid(root, c.inTheWay)}: clear the way, then run skilllib link there`
           : c.uncommitted?.length
-            ? `git tracks ${c.uncommitted.join(", ")} but not the skill's copy: commit it, then run skilllib link --allow-tracked there`
+            ? `git tracks ${c.uncommitted.join(", ")} but not the skill's copy: commit it first, then allow the link there`
             : c.blocked?.length
               ? `git tracks ${c.blocked.join(", ")}: ${allowTrackedHint}`
               : blindSaid(name, b, label);

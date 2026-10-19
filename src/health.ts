@@ -525,6 +525,13 @@ export function findIssues(
     // sync restores a missing folder from your library: the pinned content, found by its hash. A skill the
     // library doesn't have, or a pin from another library, can't come back that way.
     const pins = readManifest(root).skills;
+    // Where add would refuse (a skills folder it'd use isn't one in the repo), skilllib can't track, update, save or
+    // discard a skill here: no choice that would fail (or write first) is offered. Once per skill.
+    const blockedFor = new Map<string, string | null>();
+    const untrackable = (s: ProjectSkill) => {
+      if (!blockedFor.has(s.name)) blockedFor.set(s.name, trackBlocker(root, s.name));
+      return blockedFor.get(s.name)!;
+    };
     // Something in sync's way (a file where the folder goes, a skills folder that isn't one in the repo): only you
     // can move it, so it's reported, and no fix is offered that can't succeed.
     const blockers = new Map(status.filter((s) => s.managed).flatMap((s) => ((b) => (b ? [[s.name, b] as const] : []))(syncBlocker(root, s.name, pins[s.name]))));
@@ -537,7 +544,7 @@ export function findIssues(
         // your library has no version of can't come back by sync anyway.
         detail: `${blocker.said}, so sync can't put it back there.${
           blocker.outside
-            ? " skilllib only installs inside the repo: remove the pin (skilllib remove drops just the pin, touching no files), or point that folder back into the repo."
+            ? " skilllib only installs inside the repo: point that folder back into the repo, or remove the skill here (skilllib remove)."
             : versionForHash(name, pins[name]?.hash ?? "") !== null
               ? " Move it out of the way, then run skilllib sync."
               : " Move it out of the way; your library has no copy of the pinned version either."
@@ -554,10 +561,12 @@ export function findIssues(
         id: `pin:${root}:${s.name}`,
         severity: "problem",
         title: `${s.name}: the version ${where}'s skilllib.json pins isn't in your library`,
-        detail: `${s.state === "folder missing" ? "The folder is missing, and no" : "The copy is another version, and no"} version in Your skills has the content it pins (pinned from another library?). Install your newest v${s.latest}; ${where}'s skilllib.json then pins it.`,
+        detail: `${s.state === "folder missing" ? "The folder is missing, and no" : "The copy is another version, and no"} version in Your skills has the content it pins (pinned from another library?). ${
+          untrackable(s) ? `${untrackable(s)}, so skilllib can't install it here.` : `Install your newest v${s.latest}; ${where}'s skilllib.json then pins it.`
+        }`,
         at: rows(root, [s.name]),
         // It changes what the shared skilllib.json pins: a choice, never run by `doctor --fix`.
-        choices: [{ label: `Install your newest (v${s.latest})`, hint: `${where}'s skilllib.json pins it`, run: () => `${s.name}: installed v${track(root, s.name).to}` }],
+        ...(untrackable(s) ? {} : { choices: [{ label: `Install your newest (v${s.latest})`, hint: `${where}'s skilllib.json pins it`, run: () => `${s.name}: installed v${track(root, s.name).to}` }] }),
       });
     if (restorable.length > 0) {
       issues.push({
@@ -609,7 +618,7 @@ export function findIssues(
         ],
       });
     // A newer library version: moving to it is a fix, as in the TUI ("Update to vN"). Local edits are never overwritten.
-    const behind = unstuck.filter((s) => s.state === "update available");
+    const behind = unstuck.filter((s) => s.state === "update available" && !untrackable(s));
     if (behind.length > 0)
       issues.push({
         id: `update:${root}`,
@@ -779,8 +788,6 @@ export function findIssues(
     // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
     const git = gitInfo(root);
     const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
-    // Where add would refuse (a skills folder it'd use isn't one in the repo), it can't be tracked here: copy, never track.
-    const untrackable = (s: ProjectSkill) => trackBlocker(root, s.name);
     for (const s of unstuck) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
       // and copies that differ need a winner first (the conflict issue above).
@@ -838,12 +845,14 @@ export function findIssues(
       } else if (s.state === "untracked, differs from library" || s.state === "repo skill, differs from library") {
         // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
         const teams = s.state.startsWith("repo skill") || committed(s) || !!untrackable(s);
+        // Why the repo's copy stays: the team's, or skilllib can't track it here.
+        const whose = s.state.startsWith("repo skill") || committed(s) ? "It's the team's copy (committed, or in the repo's own .agents/skills)" : `${untrackable(s)}, so skilllib can't track it here`;
         issues.push({
           id: `differs:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name} in ${where} differs from your library`,
           detail: teams
-            ? `It's the team's copy (committed, or in the repo's own .agents/skills), and no version in Your skills matches it. Update your library from it if it's the one to keep; ${where}'s copy stays as it is.`
+            ? `${whose}, and no version in Your skills matches it. Update your library from it if it's the one to keep; ${where}'s copy stays as it is.`
             : `No version in Your skills matches it. Update your library from it (${where} then tracks it), or replace it with your library's.`,
           at: rows(root, [s.name]),
           choices: [
@@ -881,7 +890,7 @@ export function findIssues(
           id: `npx:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name} in ${where} came from npx skills, not your library`,
-          detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (committed)` : `; ${where} then tracks it in skilllib.json`}.`,
+          detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (${committed(s) ? "committed" : `${untrackable(s)}, so skilllib can't track it here`})` : `; ${where} then tracks it in skilllib.json`}.`,
           at: rows(root, [s.name]),
           choices: [
             {
@@ -924,9 +933,13 @@ export function findIssues(
           id: `edited:${root}:${s.name}`,
           severity: "suggestion",
           title: `${s.name} in ${where} has local edits`,
-          detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits.`,
+          detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. ${
+            untrackable(s)
+              ? `${untrackable(s)}, so skilllib can't save or discard them here; they stay as they are.`
+              : "Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits."
+          }`,
           at: rows(root, [s.name]),
-          choices: [
+          choices: untrackable(s) ? undefined : [
             {
               label: "Save as a new version in Your skills",
               hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`}${gitNote(root, [join(root, MANIFEST_FILE)])}`,
@@ -1013,7 +1026,10 @@ export function findIssues(
     // Stopping it globally only when no agent in any repo you have would lose it (see blindWithoutGlobal), not only
     // the repos listed here: status --json scans just the one you're in. Otherwise no choice that can't succeed: why.
     const doomed = machine.filter((x) => x.name === name && x.movable);
-    const blind = movable ? blindWithoutGlobal(name, doomed, everyRepo) : [];
+    // Global copies that differ need a winner first (conflict:global:), as global move says: unloading them all would
+    // leave one only in the backups.
+    const differ = new Set(doomed.map((m) => treeHash(m.path))).size > 1;
+    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo) : [];
     issues.push({
       at,
       id: `twice:${name}`,
@@ -1024,12 +1040,14 @@ export function findIssues(
       } ${
         !movable
           ? `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`
-          : blind.length
-            ? `${blindSaid(name, blind)}.`
+          : differ
+            ? `Your global copies of ${name} differ: keep one first (skilllib tidy --global), then stop loading it globally.`
+            : blind.length
+              ? `${blindSaid(name, blind)}.`
             : "Stop loading it globally, or keep it global on purpose (skilllib global keep)."
       }`,
       choices:
-        movable && !blind.length
+        movable && !differ && !blind.length
           ? [
               {
                 label: "Stop loading it globally",

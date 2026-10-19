@@ -895,3 +895,36 @@ test("in a repo whose .agents/skills links out of it, an untracked skill is offe
   // Now identical to the library copy: no Track it, which would fail there.
   expect(findIssues([project], machineSkills(), new Set(["al-local"])).some((i) => i.id === `adopt:${project}:al-local`)).toBe(false);
 });
+
+test("where add would refuse, edited and update offer nothing that would fail or write first", () => {
+  setHarnesses(["claude-code"]);
+  const project = join(tmp, "app");
+  for (const name of ["foo", "bar"]) {
+    skill(join(tmp, "src", name));
+    importSkill(join(tmp, "src", name));
+    addSkill(project, name);
+  }
+  writeFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "edited\n");
+  skill(join(tmp, "src", "bar"), "v2");
+  importSkill(join(tmp, "src", "bar"));
+  mkdirSync(join(tmp, "ext"));
+  symlinkSync(join(tmp, "ext"), join(project, ".agents"));
+  setHarnesses(["claude-code", "codex"]); // Codex would need .agents/skills, which links out of the repo
+  const issues = findIssues([project], machineSkills(), new Set(["foo", "bar"]));
+  const edited = issues.find((i) => i.id === `edited:${project}:foo`)!;
+  expect(edited.choices).toBeUndefined();
+  expect(edited.detail).toContain(".agents links out of the repo");
+  expect(issues.some((i) => i.id === `update:${project}`)).toBe(false);
+});
+
+test("Stop loading it globally isn't offered while your global copies differ", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(project, ".claude", "skills", "foo"));
+  skill(join(project, ".agents", "skills", "foo"));
+  skill(join(tmp, ".claude", "skills", "foo"), "a");
+  skill(join(tmp, ".agents", "skills", "foo"), "b");
+  const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
+  expect(twice.choices).toBeUndefined();
+  expect(twice.detail).toContain("Your global copies of foo differ");
+});

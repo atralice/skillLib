@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { addSkill, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
@@ -1106,14 +1106,15 @@ test("who'd lose a global skill: every case the reviews found, as one table", ()
   }
 });
 
-test("remove still removes skilllib's copy when only a link's folder links out of the repo, and says what it left", () => {
+test("remove still removes skilllib's copy when only a link's folder links out of the repo", () => {
   setHarnesses(["claude-code", "codex"]);
   addSkill(project, "alpha"); // copy in .agents/skills, link in .claude/skills
   mkdirSync(join(tmp, "elsewhere"));
   rmSync(join(project, ".claude"), { recursive: true });
   symlinkSync(join(tmp, "elsewhere"), join(project, ".claude"));
   const c = removeSkill(project, "alpha");
-  expect(c).toMatchObject({ action: "removed", reason: ".claude links out of the repo (to ~/elsewhere): its link there was left alone" });
+  // Nothing of it in the folder outside the repo: nothing said left there.
+  expect(c).toEqual({ name: "alpha", action: "removed" });
   expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
   expect(readManifest(project).skills).toEqual({});
 });
@@ -1128,4 +1129,60 @@ test("global move refuses a repo that can't take the skill before writing anythi
   expect(mv!.reason).toStartWith("nothing moved: it can't be added to out (.claude links out of the repo");
   expect(existsSync(lib("gm"))).toBe(false);
   expect(readManifest(project).skills).toEqual({});
+});
+
+test("who'd lose a global skill when its global entry is a link, or a package holds it: only what passes through what's moved", () => {
+  setHarnesses(["claude-code"]);
+  writeSkill(join(tmp, "dev", "foo"), "dev");
+  const entry = join(tmp, ".claude", "skills", "foo");
+  mkdirSync(dirname(entry), { recursive: true });
+  const at = (name: string) => {
+    const r = join(tmp, "repos", name);
+    mkdirSync(join(r, ".claude", "skills"), { recursive: true });
+    return r;
+  };
+  const blind = (entryPath: string, r: string, links: string[] = []) => blindWithoutGlobal("foo", [{ path: entryPath, harnesses: ["claude-code"], links }], [r]).map((b) => [relative(tmp, b.root).replaceAll("\\", "/"), b.id]);
+
+  // The global entry is a link to a dev folder: moving it leaves the dev folder, and a repo link to it.
+  symlinkSync(join(tmp, "dev", "foo"), entry);
+  const viaDev = at("via-dev");
+  symlinkSync(join(tmp, "dev", "foo"), join(viaDev, ".claude", "skills", "foo"));
+  expect(blind(entry, viaDev)).toEqual([]);
+  // ...but not a repo link to the entry itself.
+  const viaEntry = at("via-entry");
+  symlinkSync(entry, join(viaEntry, ".claude", "skills", "foo"));
+  expect(blind(entry, viaEntry)).toEqual([["repos/via-entry", "claude-code"]]);
+  rmSync(entry);
+
+  // The global entry links to the repo's own real copy: the repo keeps it.
+  const own = at("own");
+  writeSkill(join(own, ".claude", "skills", "foo"), "own");
+  symlinkSync(join(own, ".claude", "skills", "foo"), entry);
+  expect(blind(entry, own)).toEqual([]);
+  rmSync(entry);
+
+  // A real global copy in ~/.agents/skills with a ~/.claude/skills link to it: a repo link to that link is lost too.
+  const real = join(tmp, ".agents", "skills", "foo");
+  writeSkill(real, "global");
+  symlinkSync(real, entry);
+  const viaLink = at("via-link");
+  symlinkSync(entry, join(viaLink, ".claude", "skills", "foo"));
+  expect(blind(real, viaLink, [entry])).toEqual([["repos/via-link", "claude-code"]]);
+
+  // A monorepo package whose own folder links to the global entry loses it there; one linking to a dev folder doesn't.
+  const mono = at("mono");
+  mkdirSync(join(mono, "packages", "web", ".claude", "skills"), { recursive: true });
+  symlinkSync(entry, join(mono, "packages", "web", ".claude", "skills", "foo"));
+  mkdirSync(join(mono, "packages", "api", ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "dev", "foo"), join(mono, "packages", "api", ".claude", "skills", "foo"));
+  expect(blind(real, mono, [entry])).toEqual([["repos/mono/packages/web", "claude-code"]]);
+});
+
+test("remove says when something else sits where its link was", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha");
+  rmSync(local("alpha"));
+  writeFileSync(local("alpha"), "mine");
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is something else (another copy, or a file): left as it is" });
+  expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
 });

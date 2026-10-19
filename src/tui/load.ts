@@ -13,6 +13,8 @@ import { gitInfo, relativeTo } from "../git.js";
 import { findIssues, usageIssues } from "../health.js";
 import {
   addSkill,
+  blindSaid,
+  blindWithoutGlobal,
   createSkill,
   deleteGlobal,
   deleteLibrarySkill,
@@ -38,7 +40,7 @@ import {
 } from "../library.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
-import { projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
+import { knownProjects, projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
 import { isDir, readSkillInfo, treeHash } from "../skills.js";
 import { foldersOf } from "../tidy.js";
 import {
@@ -400,6 +402,14 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
+      // As global move and Stop loading it globally: never while an agent in a repo you have would then lack it. Only
+      // agents that read no other global copy of it lose anything.
+      if (!m.broken) {
+        const others = machine.filter((o) => o.name === m.name && o.path !== m.path);
+        const readers = m.agents.filter((id) => !others.some((o) => o.harnesses.includes(id)));
+        const blind = blindWithoutGlobal(m.name, [{ path: m.path, harnesses: readers, links: m.links }], [...roots.values(), ...knownProjects()]);
+        if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
+      }
       const r = deleteGlobal(m.path, m.links);
       return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : failed(`${m.name}: ${r.reason}`);
     },
@@ -411,7 +421,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const sourced = skills.map((m) => ({ ...m, harnesses: m.agents }));
       // A skill an agent in some repo would only have seen globally never moves (see moveGlobalSkills): it stays global, said.
       const attempt = (names?: string[]) =>
-        moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "the app asks to add those links" });
+        moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "allow links there, then move it again" });
       const said = (results: ReturnType<typeof attempt>) => {
         const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
         const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
@@ -432,7 +442,13 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
           then: {
             ...ask,
             label: `${ask.label}, then stop loading ${names.length === 1 ? "it" : "them"} globally`,
-            run: (w) => [resultSaid(ask.run(w)), said(attempt(names)).text].filter(Boolean).join("; "),
+            // The retry is what says whether it's done: a skill still global after it is a failure, said as one.
+            run: (w) => {
+              const linked = resultSaid(ask.run(w));
+              const retry = said(attempt(names));
+              const text = [linked, retry.text].filter(Boolean).join("; ");
+              return retry.moved.length === names.length ? text : failed(text);
+            },
           },
         };
       }
@@ -495,17 +511,12 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     deleteLibrary: (name) => {
       // The preview names the repos the app shows: a hidden one that tracks it isn't changed behind your back.
       const using = projectsUsing(name);
+      // A repo whose skilllib.json can't be read (a merge conflict) may pin it: deleting it would strand that pin.
+      // Checked first: such a repo isn't among the app's repos either, but it isn't hidden.
+      const unreadable = readableRoots(using).unreadable.map((u) => u.root);
+      if (unreadable.length) return failed(`${name} is pinned in ${unreadable.map((r) => basename(r)).join(", ")}, whose skilllib.json can't be read: fix it first, then delete`);
       const hidden = using.filter((root) => ![...roots.values()].includes(root));
       if (hidden.length) return failed(`${name} is also in ${hidden.map((r) => basename(r)).join(", ")}, which ${hidden.length === 1 ? "is" : "are"} hidden: unhide ${hidden.length === 1 ? "it" : "them"} (Settings) to delete it everywhere`);
-      // A repo whose skilllib.json can't be read (a merge conflict) may pin it: deleting it would strand that pin.
-      const unreadable = using.filter((root) => {
-        try {
-          return void readManifest(root), false;
-        } catch {
-          return true;
-        }
-      });
-      if (unreadable.length) return failed(`${name} is pinned in ${unreadable.map((r) => basename(r)).join(", ")}, whose skilllib.json can't be read: fix it first, then delete`);
       // Each copy (edits included) goes to the backups first. One behind a folder that links out of the repo isn't
       // the repo's: remove drops just its pin, touching nothing outside.
       const from: string[] = [];
