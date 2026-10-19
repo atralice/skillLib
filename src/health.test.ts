@@ -771,7 +771,8 @@ test("a repo whose .claude/skills links to your global skills never offers to un
   skill(join(tmp, ".claude", "skills", "gstripe"));
   symlinkSync(join(tmp, ".claude", "skills"), join(project, ".claude", "skills"));
   const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
-  expect(ids.filter((id) => id.includes("gstripe") || id.includes(project))).toEqual([]);
+  // Only why skilllib leaves it alone (so a refused add has its reason): nothing to unload, track or link.
+  expect(ids.filter((id) => id.includes("gstripe") || id.includes(project))).toEqual([`notdir:${project}:.claude/skills`]);
 });
 
 test("stopping a global copy only waits for agents that load it: Codex never read ~/.claude/skills", () => {
@@ -785,4 +786,67 @@ test("stopping a global copy only waits for agents that load it: Codex never rea
   const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:team-skill")!;
   expect(runFix(twice.choices![0]!)).toEqual({ ok: true, message: "team-skill no longer loads globally" });
   expect(existsSync(join(tmp, ".claude", "skills", "team-skill"))).toBe(false);
+});
+
+/** doctor --fix: every issue's fix, in order, until none is left (each pass must fix something or stop). */
+const fixAll = (project: string) =>
+  findIssues([project], machineSkills(), new Set(["foo"])).flatMap((i) => (i.fix ? [[i.id, runFix(i.fix)] as const] : []));
+
+test("doctor --fix converges: a file where a managed copy goes, or a foreign pin, gets no fix that can't succeed", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  const copy = join(project, ".agents", "skills", "foo");
+  rmSync(copy, { recursive: true });
+  writeFileSync(copy, "mine");
+  let issues = findIssues([project], machineSkills(), new Set(["foo"]));
+  expect(issues.find((i) => i.id === `stuck:${project}:foo`)?.detail).toBe(".agents/skills/foo is a file, not a skill folder. Move it out of the way, then run skilllib sync.");
+  // The only fix is the link that now reaches a file (restorable); after it, nothing is left to retry.
+  expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([`broken:${project}:.claude/skills/foo`]);
+  expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
+  expect(fixAll(project)).toEqual([]);
+  expect(readFileSync(copy, "utf-8")).toBe("mine");
+
+  // A copy that's a version your library has, pinned by a hash it doesn't: a choice to pin your newest, not a sync fix.
+  rmSync(copy);
+  skill(copy);
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { foo: { ...readManifest(project).skills.foo, hash: "0000000000000000" } } }));
+  importSkill(copy);
+  issues = findIssues([project], machineSkills(), new Set(["foo"]));
+  expect(issues.some((i) => i.id === `out-of-sync:${project}`)).toBe(false);
+  expect(issues.find((i) => i.id === `pin:${project}:foo`)?.choices?.length).toBe(1);
+});
+
+test("tidy and the link fix both mending one broken link: the second says it's already done", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  rmSync(join(project, ".claude", "skills", "foo"));
+  symlinkSync(join(tmp, "nowhere"), join(project, ".claude", "skills", "foo"));
+  expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
+  expect(fixAll(project)).toEqual([]);
+});
+
+test("stopping a global copy waits for every repo holding the skill, not only the ones it's listed in", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  skill(join(tmp, ".claude", "skills", "alpha"));
+  // app1 commits .claude/skills, so add's link there is held back (the copy isn't committed): Claude Code runs the global copy in app1.
+  const app1 = join(tmp, "app1");
+  skill(join(app1, ".claude", "skills", "team"));
+  execFileSync("git", ["init", "-q"], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });
+  expect(addSkill(app1, "alpha").uncommitted).toEqual([".claude/skills"]);
+  const app2 = join(tmp, "app2");
+  addSkill(app2, "alpha");
+  const twice = findIssues([app1, app2], machineSkills(), new Set(["alpha"])).find((i) => i.id === "twice:alpha")!;
+  expect(twice.title).toBe("alpha: in app2 and also loaded globally");
+  expect(runFix(twice.choices![0]!)).toEqual({ ok: false, message: "alpha: Claude Code in app1 only sees the global copy; link the repo copies first (skilllib link)" });
+  expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });

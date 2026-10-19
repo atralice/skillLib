@@ -18,6 +18,8 @@ export type LocalSkill = {
   /** Project folder holding the real copy, e.g. ".claude/skills". */
   dir: string;
   path: string;
+  /** Its own description, when it isn't the one `descriptions` has for the name (the team's copy, say). */
+  description?: string;
   /** Your agents that load it here. */
   agents: HarnessId[];
   /** Installed version, for tracked skills. */

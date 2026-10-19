@@ -18,6 +18,7 @@ import {
   deleteLibrarySkill,
   importSkill,
   librarySkills,
+  inTheWaySaid,
   linkEverywhere,
   listBackups,
   movedTogether,
@@ -214,7 +215,12 @@ export function loadWorld(): World {
       name: names.get(root)!,
       path: root,
       manifest: hasManifest ? (git ? git.of("skilllib.json") : "no git") : "none",
-      skills: status.map((s) => localSkill(root, s, git)),
+      skills: status.map((s) => {
+        const local = localSkill(root, s, git);
+        // A repo's own copy can say something else than your library's or the global one by that name.
+        const own = s.state.includes("missing") ? "" : readSkillInfo(s.path).description;
+        return own && own !== descriptions[s.name] ? { ...local, description: own } : local;
+      }),
       ...loadedHere(root),
     };
   });
@@ -292,11 +298,12 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
    */
   const withLinks = (c: Change, repo: string, name: string): Result => {
     const it = (dirs: string[]) => (dirs.length === 1 ? "it" : "them");
-    if (c.inTheWay?.length) return `${said(c, repo)}; not linked: ${c.inTheWay.join(", ")} ${c.inTheWay.length === 1 ? "is" : "are"} in the way (move ${it(c.inTheWay)}, then link again)`;
+    // Something in a link's way is said, and still leaves the git-tracked folders' question to ask.
+    const way = c.inTheWay?.length ? `; not linked everywhere: ${inTheWaySaid(rootOf(repo), c.inTheWay)} (clear the way, then link again)` : "";
     if (c.uncommitted?.length)
-      return `${said(c, repo)}; not linked in ${c.uncommitted.join(", ")}: git tracks ${it(c.uncommitted)} and ${copyDir(repo, name)}/${name} isn't committed, so teammates would get broken links`;
-    if (!c.blocked?.length) return result(c, repo);
-    return { message: `${said(c, repo)}; not linked in ${c.blocked.join(", ")}: git tracks ${it(c.blocked)}`, then: allowTracked([{ repo, name, blocked: c.blocked }]) };
+      return `${said(c, repo)}${way}; not linked in ${c.uncommitted.join(", ")}: git tracks ${it(c.uncommitted)} and ${copyDir(repo, name)}/${name} isn't committed, so teammates would get broken links`;
+    if (!c.blocked?.length) return way ? failed(`${said(c, repo)}${way}`) : result(c, repo);
+    return { message: `${said(c, repo)}${way}; not linked in ${c.blocked.join(", ")}: git tracks ${it(c.blocked)}`, then: allowTracked([{ repo, name, blocked: c.blocked }]) };
   };
   /** Library skills into repos; links git-tracked folders held back are asked about once, for all of them. */
   const addTo = (repos: string[], names: string[]): Result => {
@@ -321,10 +328,11 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         const why = kind === "blocked" ? `git tracks ${dirs.length === 1 ? "it" : "them"}` : `${copies.join(", ")} ${copies.length === 1 ? "isn't" : "aren't"} committed, so a link would break for teammates`;
         notes.push(`${who}not linked in ${dirs.join(", ")} in ${repo}: ${why}`);
       }
+    for (const x of done.filter((d) => d.c.inTheWay?.length)) notes.push(`${x.name} not linked everywhere in ${x.repo}: ${inTheWaySaid(rootOf(x.repo), x.c.inTheWay!)}`);
     const skipped = changes.filter((x) => x.c.action === "skipped").map((x) => `${x.name} not added to ${x.repo}: ${x.c.reason}`);
     const text = [summary, ...notes, ...skipped].filter(Boolean).join("; ");
     const held = done.flatMap((x) => (x.c.blocked?.length ? [{ repo: x.repo, name: x.name, blocked: x.c.blocked }] : []));
-    const result: Result = !done.length ? failed(text) : held.length ? { message: text, then: allowTracked(held) } : skipped.length ? failed(text) : text;
+    const result: Result = !done.length ? failed(text) : held.length ? { message: text, then: allowTracked(held) } : skipped.length || done.some((x) => x.c.inTheWay?.length) ? failed(text) : text;
     return { result, skipped, notes };
   };
   /** Asks to add the links git-tracked folders held back: skills by repo, with the folders each one missed. */
@@ -342,7 +350,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         const summary = linked.length
           ? `Linked ${names.length === 1 ? names[0] : `${names.length} skills`} in ${[...new Set(linked.flatMap((x) => x.r.created))].join(", ")} in ${[...new Set(linked.map((x) => x.repo))].join(", ")}`
           : "";
-        const others = results.filter((x) => !x.r.created.length || x.r.uncommitted.length || x.r.inTheWay.length).map((x) => `${x.repo}: ${linkSaid(x.name, x.r)}`);
+        const others = results.filter((x) => !x.r.created.length || x.r.uncommitted.length || x.r.inTheWay.length).map((x) => `${x.repo}: ${linkSaid(x.repo, x.name, x.r)}`);
         return [summary, ...others].join("; ");
       },
     };
@@ -351,12 +359,12 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     const s = find(repo, name)!;
     return s.managed ? relinkDependency(rootOf(repo), name, { allowTracked: allow }) : linkEverywhere(rootOf(repo), name, s.location, { allowTracked: allow });
   };
-  const linkSaid = (name: string, r: LinkResult): string => {
+  const linkSaid = (repo: string, name: string, r: LinkResult): string => {
     const linked = r.created.length ? `linked in ${r.created.join(", ")}` : "";
     const notLinked = r.uncommitted.length
       ? `not linked in ${r.uncommitted.join(", ")}: git tracks ${r.uncommitted.length === 1 ? "it" : "them"} and ${name} isn't committed, so teammates would get broken links`
       : "";
-    const inTheWay = r.inTheWay.length ? `${r.inTheWay.join(", ")} in the way` : "";
+    const inTheWay = r.inTheWay.length ? inTheWaySaid(rootOf(repo), r.inTheWay) : "";
     return `${name}: ${[linked, notLinked, inTheWay].filter(Boolean).join("; ") || "nothing to link"}`;
   };
   /** Local edits in the way: offer to go ahead anyway (`lost`: the edits aren't backed up). */
@@ -405,7 +413,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
        */
       const held: { repo: string; name: string; blocked: string[]; blind: HarnessId[]; copy: string; shared: boolean }[] = [];
       const repoRoots = repos.map(rootOf);
-      for (const mv of moveGlobalSkills(skills, repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]!, allowBlind: true })) {
+      for (const mv of moveGlobalSkills(skills.map((m) => ({ ...m, harnesses: m.agents })), repoRoots, { group, label: (root) => repos[repoRoots.indexOf(root)]!, allowBlind: true })) {
         if (!mv.moved) {
           notes.push(`${mv.name}: ${mv.reason}`);
           continue;

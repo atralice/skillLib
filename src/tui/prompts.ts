@@ -24,7 +24,7 @@ export function reviewPrompt(w: World, names: string[], scope: string, repo?: st
       const lib = w.library.find((l) => l.name === name);
       return {
         name,
-        description: w.descriptions[name] ?? "",
+        description: here.description ?? w.descriptions[name] ?? "",
         source: localSource(here),
         installedHow: localInstalled(here),
         path: here.path,
