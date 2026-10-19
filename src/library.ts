@@ -96,7 +96,6 @@ export function blockerSaid(root: string, path: string): string {
   return real === null ? `${path} is a link to nothing` : linksOut(root, path) ? `${path} links out of the repo (to ${tildify(real)})` : `${path} links to a file`;
 }
 
-
 /** What's in the way of links (LinkResult/Change `inTheWay`), as a person reads it. */
 export function inTheWaySaid(root: string, paths: string[]): string {
   // A skill's own place (.claude/skills/foo) holds something else; otherwise it's a skills folder notWritable named.
@@ -104,6 +103,17 @@ export function inTheWaySaid(root: string, paths: string[]): string {
 }
 
 const writableDir = (root: string, dir: string) => notWritable(root, dir) === null;
+
+/**
+ * A skills folder whose skills are the repo's choice: one inside it, or one linked to a folder of yours that isn't a
+ * global skills folder (a shared ~/devskills, say). One linked to a global folder (~/.claude/skills) just shows the
+ * global skills: nothing in it is the repo's. skilllib writes only in the first kind (notWritable).
+ */
+function reposChoice(root: string, dir: string): boolean {
+  if (writableDir(root, dir)) return true;
+  const real = isDir(join(root, dir)) ? realpathOrNull(join(root, dir)) : null;
+  return real !== null && !globalSkillDirs().some((g) => realpathOrNull(g) === real);
+}
 /** The first of these repo skill folders skilllib can't write into, named as notWritable names it. */
 const firstStuck = (root: string, dirs: string[]) => dirs.map((d) => notWritable(root, d)).find((p) => p !== null) ?? null;
 /** A file (not a folder or a link) where a skill's folder goes: never replaced, it may be yours. */
@@ -179,59 +189,88 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  * a moved entry is lost; a real folder anywhere else survives. So a link to a dev folder survives even when the
  * global entry links there too, and a link to the global entry itself doesn't.
  */
-function survives(path: string, gone: string[]): boolean {
-  // Its parent's real path plus its own name: folder links resolved, the entry itself not followed.
-  const canon = (p: string) => join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+export function survives(path: string, gone: string[]): boolean {
+  // Its parent's real path plus its own name: folder links resolved, the entry itself not followed. On Windows a link
+  // can read back as \\?\C:\... and paths don't care about case: both are evened out before comparing.
+  const win = process.platform === "win32";
+  const canon = (p: string) => {
+    const c = join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+    return win ? c.toLowerCase() : c;
+  };
   const moved = gone.map(canon);
   let at = path;
   for (let hop = 0; hop < 40; hop++) {
     const here = canon(at);
     if (moved.some((m) => here === m || here.startsWith(m + sep))) return false;
     if (!isLink(here)) return existsSync(join(here, "SKILL.md"));
-    at = resolve(dirname(here), readlinkSync(here));
+    at = resolve(dirname(here), readlinkSync(here).replace(/^\\\\\?\\(UNC\\)?/, (_m, unc: string | undefined) => (unc ? "\\\\" : "")));
   }
   return false; // a loop of links reaches nothing
 }
 
-/** An agent that would lose a skill in a repo (or one of its packages): `folder` is its skills folder there when that's what stops a copy. */
-export type Blind = { root: string; id: HarnessId; folder: string | null };
+/**
+ * An agent that would lose a skill in a repo (or one of its packages): `folder` is its skills folder there when
+ * that's what stops a copy; `link` is a package's own link to the global copy, when that's what would break.
+ */
+export type Blind = { root: string; id: HarnessId; folder: string | null; link?: string };
 
 /**
  * Who would lose a skill if `copies` (global copies of it, with the global links to each) stopped loading: in each
  * of `roots`, each agent that reaches it now (it reads one of those copies, or finds it in the repo's folders) but
  * none of whose copies there would survive (see survives); a held-back link or a stray file is no copy. A repo that
  * doesn't hold the skill (no pin, nothing in a folder really its own) loses nothing it asked for. A package's own
- * skills folder (a monorepo) counts on its own. doctor's "Stop loading it globally" and global move both ask this.
+ * copy (a monorepo) counts in its package, unless the agent also has a surviving copy at the repo's top, which it
+ * reads there too. doctor's "Stop loading it globally", global move and the app's Delete all ask this; `nestedOf`
+ * lets a caller asking about many skills walk each repo's packages once.
  */
-export function blindWithoutGlobal(name: string, copies: { path: string; harnesses: HarnessId[]; links?: string[] }[], roots: string[]): Blind[] {
+export function blindWithoutGlobal(
+  name: string,
+  copies: { path: string; harnesses: HarnessId[]; links?: string[] }[],
+  roots: string[],
+  nestedOf: (root: string) => NestedEntry[] = (root) => nestedEntries(root),
+): Blind[] {
   const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const readers = new Set(copies.flatMap((c) => c.harnesses));
   const enabled = enabledHarnesses();
   // The repo wants it: pinned (even with its folder missing: its agents run the global copy until sync), or present in
   // a folder that really is the repo's (one linking out to ~/.claude holds every global skill, and none of them).
-  const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
+  const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => reposChoice(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
+  // Agents with a copy at the repo's top that survives.
+  const keepsTop = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")) && survives(join(root, d, name), gone));
   const blindIn = (root: string) =>
     enabled.flatMap((id): Blind[] => {
-      const reach = harness(id).projectDirs.map((d) => join(root, d, name)).filter((p) => existsSync(join(p, "SKILL.md")));
-      if (reach.some((p) => survives(p, gone)) || (!readers.has(id) && !reach.length)) return [];
+      const reach = harness(id).projectDirs.some((d) => existsSync(join(root, d, name, "SKILL.md")));
+      if (keepsTop(root, id) || (!readers.has(id) && !reach)) return [];
       return [{ root, id, folder: harness(id).projectDirs.map((d) => notWritable(root, d)).find((f) => f !== null) ?? null }];
     });
   // A package's copy loads in its package: one that wouldn't survive leaves the agents reading it there without it.
   const nestedBlind = (root: string) =>
-    nestedSkills(root, { enabled })
+    nestedOf(root)
       .filter((n) => n.name === name && !survives(n.path, gone))
-      .flatMap((n) => n.visibility.filter((v) => v.paths > 0).map((v): Blind => ({ root: join(root, n.location, "..", ".."), id: v.id, folder: null })));
+      .flatMap((n) => n.readers.filter((id) => !keepsTop(root, id)).map((id): Blind => ({ root: join(root, n.location, "..", ".."), id, folder: null, link: relative(root, n.path).split(sep).join("/") })));
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
   return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
+}
+
+/** Whether these copies of one skill differ in content: what's there, a broken link (no content) left out. */
+export function copiesDiffer(paths: string[]): boolean {
+  return new Set(paths.map((p) => treeHash(p)).filter((h) => h !== null)).size > 1;
 }
 
 /** What blindWithoutGlobal found, and what to do about it: keeping the skill global always works. */
 export function blindSaid(name: string, blind: Blind[], label: (root: string) => string = basename): string {
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
-  const fix = folders.length ? `point ${folders.join(", ")} back into the repo` : `give ${blind.length === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there)`;
-  return `${who} only ${blind.length === 1 ? "sees" : "see"} the global copy: ${fix}, or keep ${name} global (skilllib global keep)`;
+  const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link] : [])))];
+  const repos = blind.filter((b) => !b.folder && !b.link);
+  const fixes = [
+    ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),
+    // A package's link to the global copy: add or link at the repo's top doesn't touch it.
+    ...(links.length ? [`give ${links.join(", ")} a copy of its own instead of a link to the global one`] : []),
+    ...(repos.length ? [`give ${new Set(repos.map((b) => b.root)).size === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there)`] : []),
+  ];
+  return `${who} only ${blind.length === 1 ? "sees" : "see"} the global copy: ${fixes.join("; ")}, or keep ${name} global (skilllib global keep)`;
 }
 
 /**
@@ -266,7 +305,7 @@ export function trackBlocker(root: string, name: string): string | null {
 }
 
 /** Whether a repo pins a skill, reading even a skilllib.json that can't be parsed (a merge conflict): if it names it, it counts. */
-export function pinsSkill(root: string, name: string): boolean {
+function pinsSkill(root: string, name: string): boolean {
   try {
     return name in readManifest(root).skills;
   } catch {
@@ -404,7 +443,25 @@ const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "
  * A nested git repo is a project of its own and isn't searched.
  */
 export function nestedSkills(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): ProjectSkill[] {
-  const found: ProjectSkill[] = [];
+  return nestedEntries(root, { depth, enabled }).map((n) => ({
+    name: n.name,
+    managed: false,
+    state: unmanagedState(n.name, n.path, isRepoSkillLocation(n.skillsDir), undefined),
+    version: null,
+    latest: latestVersion(n.name)?.version ?? null,
+    location: n.location,
+    path: n.path,
+    visibility: enabled.map((id) => ({ id, paths: n.readers.includes(id) ? 1 : 0 })),
+  }));
+}
+
+/** A skill in a package's own skills folder (a monorepo), as found: who reads it there, nothing hashed. */
+export type NestedEntry = { name: string; path: string; location: string; skillsDir: string; readers: HarnessId[] };
+
+/** nestedSkills' walk, without comparing anything to the library: what blindWithoutGlobal needs, cheaply. */
+export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): NestedEntry[] {
+  const found: NestedEntry[] = [];
+  const top = realpathOrNull(root) ?? root;
   const walk = (dir: string, left: number) => {
     let subs: string[] = [];
     try {
@@ -417,26 +474,17 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
     for (const sub of subs) {
       if (existsSync(join(sub, ".git"))) continue;
       for (const [skillsDir] of NESTED_READERS) {
+        if (!existsSync(join(sub, skillsDir))) continue;
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
-        // A package's skills folder that links out of the repo (to ~/.claude, say) isn't the repo's, as at the top.
-        if (!writableDir(root, location)) continue;
+        // A package's skills folder that links to a global one (~/.claude, say) just shows the global skills.
+        if (!reposChoice(root, location)) continue;
         for (const path of skillDirsIn(join(sub, skillsDir))) {
           // A link to a skill elsewhere in the repo is that skill, already reported.
-          if (isLink(path) && (realpathOrNull(path) ?? "").startsWith((realpathOrNull(root) ?? root) + sep)) continue;
+          if (isLink(path) && (realpathOrNull(path) ?? "").startsWith(top + sep)) continue;
           const name = basename(path);
-          found.push({
-            name,
-            managed: false,
-            state: unmanagedState(name, path, isRepoSkillLocation(skillsDir), undefined),
-            version: null,
-            latest: latestVersion(name)?.version ?? null,
-            location,
-            path,
-            // Its own folder's readers, plus any that reach it through a link in another of the package's folders.
-            visibility: ((all) => enabled.map((id) => ({ id, paths: all.includes(id) ? 1 : 0 })))(
-              NESTED_READERS.filter(([dir]) => realpathOrNull(join(sub, dir, name)) === realpathOrNull(path)).flatMap(([, r]) => r),
-            ),
-          });
+          // Its own folder's readers, plus any that reach it through a link in another of the package's folders.
+          const readers = NESTED_READERS.filter(([d]) => realpathOrNull(join(sub, d, name)) === realpathOrNull(path)).flatMap(([, r]) => r);
+          found.push({ name, path, location, skillsDir, readers: enabled.filter((id) => readers.includes(id)) });
         }
       }
       if (left > 1) walk(sub, left - 1);
@@ -744,7 +792,7 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
     delete manifest.skills[name];
     writeManifest(root, manifest);
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
-    return { name, action: "removed", reason: `${why}: only its pin was removed, and that copy was left as it is` };
+    return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...leftLinks].join("; ") };
   }
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
@@ -1009,7 +1057,9 @@ export function linkGlobal(path: string, agents: HarnessId[]): { linked: string[
       continue;
     }
     mkdirSync(dir, { recursive: true });
-    linkDir(path, link);
+    // To the real folder: a link to a link breaks when the first one goes (deleting that copy alone, say). Both ends
+    // as real paths, so the relative link is right even when a folder on the way is itself a link.
+    linkDir(realpathOrNull(path) ?? path, join(realpathOrNull(dir) ?? dir, name));
     linked.push(link);
   }
   return { linked, skipped };

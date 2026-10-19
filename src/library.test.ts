@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { addSkill, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
@@ -1185,4 +1185,19 @@ test("remove says when something else sits where its link was", () => {
   writeFileSync(local("alpha"), "mine");
   expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is something else (another copy, or a file): left as it is" });
   expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
+});
+
+test("a package's link to the global copy doesn't block when the repo's top has its own copy, which the package reads too", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "foo");
+  writeSkill(entry, "global");
+  const mono = join(tmp, "mono");
+  writeSkill(join(mono, ".claude", "skills", "foo"), "own");
+  mkdirSync(join(mono, "packages", "web", ".claude", "skills"), { recursive: true });
+  symlinkSync(entry, join(mono, "packages", "web", ".claude", "skills", "foo"));
+  expect(blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [mono])).toEqual([]);
+  // Without the top copy, the package's link is what to fix, and the advice says so.
+  rmSync(join(mono, ".claude", "skills", "foo"), { recursive: true });
+  const blind = blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [mono]);
+  expect(blindSaid("foo", blind)).toBe("Claude Code in web only sees the global copy: give packages/web/.claude/skills/foo a copy of its own instead of a link to the global one, or keep foo global (skilllib global keep)");
 });

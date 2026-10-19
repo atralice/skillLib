@@ -3,14 +3,14 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
 import { knownProjects, pinsIn, readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
-import { versionForHash, versionHistory } from "./versions.js";
+import { latestVersion, versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, repoTidyDirs, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
@@ -935,11 +935,22 @@ export function findIssues(
           title: `${s.name} in ${where} has local edits`,
           detail: `It no longer matches ${pinned} from Your skills${newer ? `, and v${s.latest} is out` : ""}. ${
             untrackable(s)
-              ? `${untrackable(s)}, so skilllib can't save or discard them here; they stay as they are.`
+              ? `${untrackable(s)}, so skilllib can't re-pin or discard them here; copy them into Your skills to keep them for your other repos.`
               : "Save the edits as a new version so your other repos can get them, or discard them. Keeping them is fine too: skilllib never overwrites edits."
           }`,
           at: rows(root, [s.name]),
-          choices: untrackable(s) ? undefined : [
+          choices: untrackable(s)
+            ? [
+                {
+                  label: "Copy the edits into Your skills",
+                  hint: `a new version there; ${where}'s copy and pin stay as they are`,
+                  run: () => {
+                    intoLibrary(s.path, true);
+                    return `${s.name}: the edits are in Your skills as v${latestVersion(s.name)?.version}; ${where} stays as it is`;
+                  },
+                },
+              ]
+            : [
             {
               label: "Save as a new version in Your skills",
               hint: `${newer ? `becomes v${s.latest! + 1}; v${s.latest}'s changes aren't merged in` : `becomes v${(s.latest ?? 0) + 1}; ${where} uses it`}${gitNote(root, [join(root, MANIFEST_FILE)])}`,
@@ -976,6 +987,9 @@ export function findIssues(
 
   // Every repo you have, not only this scan's (status --json scans just the one you're in): who'd lose a global skill.
   const everyRepo = [...projects, ...knownProjects()];
+  // Each repo's packages walked once, however many skills are asked about.
+  const nestedMemo = new Map<string, NestedEntry[]>();
+  const packagesOf = (root: string) => nestedMemo.get(root) ?? (nestedMemo.set(root, nestedEntries(root)), nestedMemo.get(root)!);
   // Project copies of skills that also load globally: one issue per skill. Where a skill lives is your
   // decision, so these are choices, never run by `doctor --fix`.
   for (const [name, copies] of alsoGlobal) {
@@ -1022,14 +1036,15 @@ export function findIssues(
       });
       continue;
     }
-    const movable = machine.find((m) => m.name === name && m.movable);
+    // A broken link loads nothing: it's moved away with the rest, but it's no copy to import or compare.
+    const movable = machine.find((m) => m.name === name && m.movable && !m.broken);
     // Stopping it globally only when no agent in any repo you have would lose it (see blindWithoutGlobal), not only
     // the repos listed here: status --json scans just the one you're in. Otherwise no choice that can't succeed: why.
     const doomed = machine.filter((x) => x.name === name && x.movable);
     // Global copies that differ need a winner first (conflict:global:), as global move says: unloading them all would
     // leave one only in the backups.
-    const differ = new Set(doomed.map((m) => treeHash(m.path))).size > 1;
-    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo) : [];
+    const differ = copiesDiffer(doomed.map((m) => m.path));
+    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, packagesOf) : [];
     issues.push({
       at,
       id: `twice:${name}`,
@@ -1054,7 +1069,7 @@ export function findIssues(
                 hint: "restorable with skilllib restore",
                 run: () => {
                   // Checked again: a repo may have changed since.
-                  const now = blindWithoutGlobal(name, doomed, everyRepo);
+                  const now = blindWithoutGlobal(name, doomed, everyRepo, packagesOf);
                   if (now.length) throw new Error(`${name}: ${blindSaid(name, now)}`);
                   if (!libraryNames.has(name)) importSkill(movable.path);
                   for (const m of machine.filter((x) => x.name === name && x.movable)) {

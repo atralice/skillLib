@@ -1271,7 +1271,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   }
 
   // ── Layout ──
-  const bottomH = 1;
+  // A result gets up to three lines (a move or a delete can say why several skills stayed); a question's keys share one.
+  const toastLines = toast && modal?.kind !== "confirm" ? wrap(" " + toast, termCols - 1, 3) : [];
+  const bottomH = Math.max(1, toastLines.length);
   // Tall enough to say everything a change does (e.g. every repo a deletion reaches).
   const confirmLines = modal?.kind === "confirm" ? wrap(modal.fix.preview, columns - 6, 6) : [];
   const confirmH = modal?.kind === "confirm" ? confirmLines.length + 2 : 0;
@@ -1624,10 +1626,20 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           ) : null}
         </Box>
       </Box>
-      <Box height={1} width={termCols} justifyContent="space-between">
-        <Text color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
-          {" " + toast}
-        </Text>
+      <Box height={bottomH} width={termCols} justifyContent="space-between">
+        {toastLines.length ? (
+          <Box flexDirection="column">
+            {toastLines.map((l, i) => (
+              <Text key={i} color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted}>
+                {l}
+              </Text>
+            ))}
+          </Box>
+        ) : (
+          <Text color={toast.startsWith("✓") ? color.green : toast.startsWith("✗") ? color.red : toast.startsWith("!") ? color.yellow : color.muted} wrap="truncate-end">
+            {" " + toast}
+          </Text>
+        )}
         {/* A confirm (a follow-up after a result too) always shows its keys; the toast gives way. */}
         {toast && modal?.kind !== "confirm" ? null : <Text color={color.faint}>{"  " + hints + " "}</Text>}
       </Box>
