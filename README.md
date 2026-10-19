@@ -298,7 +298,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 | Where | Examples | Who sees it |
 |---|---|---|
 | **The repo** | `.claude/skills`, `.agents/skills`, `.grok/skills`, `.cursor/skills`, `.codex/skills` | Agents working in that repo |
-| **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide. A subfolder with its own `skilllib.json` is a project of its own: run skilllib there (scan finds repos, not subfolders) |
+| **Subfolders** (monorepos) | `packages/web/.claude/skills`, `packages/api/.agents/skills` | Agents working in that folder. `skilllib status` lists them; skilllib never links, tracks or tidies them, since that would make them load repo-wide. A subfolder with its own `skilllib.json` is a project of its own: run skilllib there (scan finds repos, not subfolders). skilllib looks for subfolders up to five folders deep (`apps/web/packages/ui` is four) |
 | **Global folders** | `~/.claude/skills`, `~/.agents/skills` (`npx skills add` installs here), `~/.codex/skills`, `~/.cursor/skills`, `~/.grok/skills` | **Every repo** |
 | **Vendors** | Claude Code plugins (`/plugin`), claude.ai skills, Claude Code's bundled commands, Cursor built-ins and marketplace, Codex system skills and `/etc/codex/skills` (admin), Grok's bundled skills | Every repo (a repo's `.claude/settings.json` can turn a plugin on or off just there); only the vendor can remove them |
 | **Your skills** | `~/.skilllib/library` | Nobody, until you add a skill to a repo |
