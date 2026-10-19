@@ -188,7 +188,9 @@ export function projectStatus(root: string): ProjectSkill[] {
   const lock = projectSkillsLock(root);
   const unmanaged: ProjectSkill[] = [];
   const byName = new Map<string, string[]>();
-  for (const dir of ALL_PROJECT_DIRS) {
+  // A skills folder that links out of the repo (.claude/skills -> ~/.claude/skills) isn't the repo's: what's in it
+  // is someone else's (your global skills, say), so it's never listed, tracked, linked or removed as the repo's.
+  for (const dir of ALL_PROJECT_DIRS.filter((d) => writableDir(root, d))) {
     for (const path of skillDirsIn(join(root, dir))) {
       const name = basename(path);
       if (seen.has(name)) continue;
@@ -415,8 +417,9 @@ export type Change = {
   /**
    * reset: back to the version it had; its local edits were overwritten (and backed up, see `backedUp`).
    * relinked: the copy was as pinned; only the links skilllib.json records were put back.
+   * unchanged: it was already as asked (same version, same links): nothing was written.
    */
-  action: "installed" | "updated" | "reset" | "relinked" | "removed" | "skipped";
+  action: "installed" | "updated" | "reset" | "relinked" | "unchanged" | "removed" | "skipped";
   reason?: string;
   from?: number;
   to?: number;
@@ -478,7 +481,8 @@ export function addSkill(
   }
 
   let backedUp: string | undefined;
-  if (local !== target.hash || isLink(to)) {
+  const copied = local !== target.hash || isLink(to);
+  if (copied) {
     mkdirSync(join(root, primary), { recursive: true });
     if (isLink(to)) unlinkSync(to);
     // Content your library has no version of (edits, or a pin from another library) goes to a backup first.
@@ -531,7 +535,15 @@ export function addSkill(
   const from = recorded ? (versionForHash(name, recorded.hash)?.version ?? recorded.version) : undefined;
   return {
     name,
-    action: !recorded && local === null ? "installed" : backedUp && from === target.version ? "reset" : "updated",
+    action:
+      !recorded && local === null
+        ? "installed"
+        : backedUp && from === target.version
+          ? "reset"
+          : recorded && !copied && from === target.version
+            ? // The same version, already there: only links (if any) were added.
+              links.some((d) => !recorded.links?.includes(d)) ? "relinked" : "unchanged"
+            : "updated",
     ...(from !== undefined ? { from } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),

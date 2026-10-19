@@ -310,7 +310,7 @@ describe("harnesses", () => {
 
     expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", blocked: [".claude/skills"] });
     expect(existsSync(local("alpha"))).toBe(false);
-    expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "updated" });
+    expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "relinked" });
     expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
   });
 
@@ -938,4 +938,12 @@ test("a file where a managed skill's folder goes is never deleted, and status do
   expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "skipped" });
   expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
   expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
+});
+
+test("adding what's already there says unchanged; a description with an unquoted colon still reads", () => {
+  addSkill(project, "alpha");
+  expect(addSkill(project, "alpha")).toEqual({ name: "alpha", action: "unchanged", from: 1, to: 1 });
+  mkdirSync(join(tmp, "colon"));
+  writeFileSync(join(tmp, "colon", "SKILL.md"), "---\nname: colon\ndescription: Use it when: the user asks\n---\nbody\n");
+  expect(readSkillInfo(join(tmp, "colon"))).toEqual({ name: "colon", description: "Use it when: the user asks" });
 });

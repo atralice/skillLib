@@ -21,7 +21,9 @@ export function readSkillInfo(dir: string): SkillInfo {
       description: typeof fm?.description === "string" ? fm.description.trim() : "",
     };
   } catch {
-    return fallback;
+    // Not valid YAML (an unquoted ": " in a description, often): read the two lines the way agents do.
+    const line = (key: string) => match[1]!.match(new RegExp(`^${key}:[ \t]*(.*)$`, "m"))?.[1]?.trim().replace(/^(["'])(.*)\1$/, "$2") ?? "";
+    return { name: line("name") || fallback.name, description: line("description") };
   }
 }
 

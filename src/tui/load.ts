@@ -127,7 +127,7 @@ function machineSkill(s: SourcedSkill, kept: Set<string>): MachineSkill {
   const global = s.kind === "global" || s.kind === "skills.sh";
   return {
     name: s.name,
-    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" ? "system" : s.kind === "skilllib" ? "skilllib" : s.kind === "built-in" && s.harnesses[0] === "grok" ? "grok" : "cursor",
+    source: global ? "global" : s.kind === "plugin" ? "plugin" : s.kind === "claude.ai" ? "claude.ai" : s.kind === "system" || (s.kind === "built-in" && s.harnesses[0] === "codex") ? "system" : s.kind === "skilllib" ? "skilllib" : s.kind === "built-in" && s.harnesses[0] === "grok" ? "grok" : "cursor",
     where: global || s.kind === "skilllib" ? tildify(dirname(s.path)) : s.kind === "claude.ai" ? "claude.ai account" : s.kind === "built-in" ? `${s.origin} built-in` : s.origin,
     ...(s.kind === "skills.sh" ? { origin: `npx skills: ${s.origin}` } : {}),
     path: s.path,
@@ -268,6 +268,8 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" 
 function said(c: Change, repo: string): string {
   if (c.action === "skipped") return `${c.name}: ${c.reason ?? "skipped"}`;
   if (c.action === "removed") return `Removed ${c.name} from ${repo}`;
+  if (c.action === "unchanged") return `${c.name}${c.to ? ` v${c.to}` : ""} is already in ${repo}`;
+  if (c.action === "relinked") return `Linked ${c.name}${c.to ? ` v${c.to}` : ""} for your other agents in ${repo}`;
   // An older version picked from Other versions… isn't an update.
   const back = c.action === "updated" && c.from !== undefined && c.to !== undefined && c.to < c.from;
   const done = back

@@ -3,7 +3,7 @@ import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
-import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
+import { claudeDir, codexHome, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { isDir, readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify } from "./output.js";
 
@@ -13,7 +13,7 @@ import { tildify } from "./output.js";
  * - skills.sh: a symlink into ~/.agents/skills, installed by `npx skills`
  * - claude.ai: synced from your claude.ai account
  * - plugin: shipped inside an enabled Claude Code plugin
- * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor, Grok's ~/.grok/bundled/skills)
+ * - built-in: bundled with an agent (Cursor's ~/.cursor/skills-cursor, Codex's ~/.codex/skills/.system, Grok's ~/.grok/bundled/skills)
  * - system: a machine-wide folder an admin manages (/etc/codex/skills)
  * - skilllib: skilllib's own skill, which `skilllib agent-skill install` puts in your global folders
  */
@@ -154,6 +154,12 @@ function grokBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   return skillDirsIn(join(grokDir(), "bundled", "skills")).map((path) => vendorSkill(path, "built-in", "Grok", ["grok"]));
 }
 
+/** OpenAI's skills bundled with Codex ($CODEX_HOME/skills/.system): the global scan skips dot folders. */
+function codexBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
+  if (!enabled.includes("codex")) return [];
+  return skillDirsIn(join(codexHome(), "skills", ".system")).map((path) => vendorSkill(path, "built-in", "Codex", ["codex"]));
+}
+
 /** Cursor's own bundled skills (~/.cursor/skills-cursor). */
 function cursorBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   if (!enabled.includes("cursor")) return [];
@@ -288,6 +294,7 @@ export function machineSkills(enabled: HarnessId[] = enabledHarnesses()): Source
     ...claudeAiSkills(enabled),
     ...pluginSkills(enabled),
     ...cursorBuiltInSkills(enabled),
+    ...codexBuiltInSkills(enabled),
     ...grokBuiltInSkills(enabled),
     ...systemSkills(enabled),
   ].sort(byKindAndName);

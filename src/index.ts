@@ -95,6 +95,9 @@ const FLAGS_OF: Record<string, string[]> = {
   help: [],
 };
 
+/** Commands that take no names or paths: run them in the repo they're about (or with --all). */
+const NO_ARGS = new Set(["", "ui", "status", "outdated", "list", "projects", "link", "doctor", "usage", "version"]);
+
 async function main() {
   const argv = process.argv.slice(2);
   // Before parsing, so a bad flag is reported as JSON too.
@@ -110,6 +113,8 @@ async function main() {
   const flagOf = (a: string) => a.slice(2).split("=")[0]!; // --days 30 or --days=30
   const wrong = takes ? rest.filter((a) => a.startsWith("--") && flagOf(a) !== "json" && !takes.includes(flagOf(a))) : [];
   if (wrong.length) throw new Error(`skilllib${command ? ` ${command}` : ""} doesn't take ${wrong.join(", ")}`);
+  // Nor is a stray word: `status app2` must not quietly show the repo you're in.
+  if (NO_ARGS.has(command ?? "") && args.positional.length) throw new Error(`skilllib${command ? ` ${command}` : ""} doesn't take ${args.positional.join(" ")}`);
   // After an upgrade, an installed skilllib skill should describe the CLI that's now installed.
   if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
   switch (command) {

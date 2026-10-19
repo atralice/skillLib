@@ -655,7 +655,23 @@ export function findIssues(
       .map((s) => ({ s, would: linkEverywhere(root, s.name, s.location, { dryRun: true }) }));
     // Something where a link goes (a file, another copy, a skills folder that's a file or links out of the repo):
     // only you can say what it is, so this is reported, never fixed, and doctor --fix has nothing to retry.
-    for (const { s, would } of blindHere.filter(({ would: w }) => w.inTheWay.length))
+    // A file (or a link to nothing) where an agent's skills folder goes: reported once for the repo, skills or not.
+    // A folder that links out of the repo is a setup of yours, not a problem: its skills just aren't the repo's.
+    const enabledIds = enabledHarnesses();
+    const notFolders = new Set<string>();
+    for (const dir of new Set(enabledIds.map((id) => harness(id).projectDirs[0]!))) {
+      const blocker = notWritable(root, dir);
+      if (!blocker || isDir(join(root, blocker)) || notFolders.has(blocker)) continue;
+      notFolders.add(blocker);
+      issues.push({
+        id: `notdir:${root}:${blocker}`,
+        severity: "problem",
+        title: `${where}: ${blocker} isn't a folder`,
+        detail: `${agentNames(enabledIds.filter((id) => notWritable(root, harness(id).projectDirs[0]!) === blocker))} can't load skills from ${where}, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
+        at: rows(root, []),
+      });
+    }
+    for (const { s, would } of blindHere.filter(({ would: w }) => w.inTheWay.some((p) => !notFolders.has(p))))
       issues.push({
         id: `intheway:${root}:${s.name}`,
         severity: "problem",
@@ -957,10 +973,14 @@ export function findIssues(
               label: "Stop loading it globally",
               hint: "restorable with skilllib restore",
               run: () => {
-                // Only when every agent you use still has it in each repo: one that sees just the global copy would lose it.
+                // Only when every agent that loads the global copy still has it in each repo: one that sees just the global
+                // copy would lose it. An agent that never read the global copy (Codex and ~/.claude/skills) loses nothing.
                 // (A nested copy loads where it lives, in its package: no link at the repo root is needed there.)
-                const blind = copies.filter((c) => !c.nested).flatMap((c) => visibilityOf(c.root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${basename(c.root)}`] : [])));
-                if (blind.length) throw new Error(`${name}: ${blind.join(", ")} only see the global copy; link the repo copies first (skilllib link)`);
+                const readers = new Set(machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses));
+                const blind = copies
+                  .filter((c) => !c.nested)
+                  .flatMap((c) => visibilityOf(c.root, name).flatMap((v) => (v.paths === 0 && readers.has(v.id) ? [`${harness(v.id).name} in ${basename(c.root)}`] : [])));
+                if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; link the repo copies first (skilllib link)`);
                 if (!libraryNames.has(name)) importSkill(movable.path);
                 for (const m of machine.filter((x) => x.name === name && x.movable)) {
                   const r = unloadGlobal(m.path, m.links);
@@ -1038,7 +1058,8 @@ export function usageIssues(
     const where = basename(root);
     const unused = statusOf(root).filter((s) => s.state !== "folder missing" && uses.inProject(root, s.name) === 0 && addedAt(s.path) <= since);
     if (!unused.length) continue;
-    const removable = unused.filter((s) => s.managed);
+    // Edited copies stay (removing them is remove --force's call): offering them would be a choice that can't succeed.
+    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited"));
     issues.push({
       id: `unused:${root}`,
       severity: "suggestion",
@@ -1056,8 +1077,9 @@ export function usageIssues(
                 const changes = removable.map((s) => removeSkill(root, s.name));
                 const removed = changes.filter((c) => c.action === "removed").map((c) => c.name);
                 const kept = changes.filter((c) => c.action !== "removed").map((c) => c.name);
-                if (!removed.length) throw new Error(`${where}: removed nothing; kept ${kept.join(", ")} (local edits)`);
-                return `${where}: removed ${removed.join(", ")}${kept.length ? `; kept ${kept.join(", ")} (local edits)` : ""}`;
+                // Not all it said: a failure, so apply and the app say so (what was removed stays removed).
+                if (kept.length) throw new Error(`${where}: ${removed.length ? `removed ${removed.join(", ")}; ` : "removed nothing; "}kept ${kept.join(", ")} (${changes.find((c) => c.action !== "removed")?.reason ?? "skipped"})`);
+                return `${where}: removed ${removed.join(", ")}`;
               },
             },
           ]
