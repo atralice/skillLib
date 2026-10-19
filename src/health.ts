@@ -152,6 +152,9 @@ function brokenLinksIn(root: string): Issue[] {
   // tidy works in every repo skill folder except .grok/skills (the team's, for Grok): there a broken link is always ours to report.
   const tidyDirs = repoTidyDirs(root);
   const hasCopy = (name: string) => tidyDirs.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
+  // A link skilllib.json records for a pinned skill whose folder is gone: sync puts the folder back and the link works again.
+  const pins = readManifest(root).skills;
+  const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
   let git: ReturnType<typeof gitInfo> | undefined;
   return ALL_PROJECT_DIRS.flatMap((dir) => {
     const folder = join(root, dir);
@@ -160,7 +163,7 @@ function brokenLinksIn(root: string): Issue[] {
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
       // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
-      if (!isLink(path) || isDir(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
+      if (!isLink(path) || isDir(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name)) || syncMends(dir, name)) return [];
       const remove: Choice = {
         label: "Remove the link",
         hint: "restorable with skilllib restore",
@@ -530,7 +533,15 @@ export function findIssues(
         id: `stuck:${root}:${name}`,
         severity: "problem",
         title: `${name} in ${where}: sync can't put it back as skilllib.json pins it`,
-        detail: `${blocker}. Move it out of the way, then run skilllib sync.`,
+        // What to do depends on what's there: a folder that links out of the repo is a setup of yours, and a pin
+        // your library has no version of can't come back by sync anyway.
+        detail: `${blocker}, so sync can't put it back there.${
+          blocker.includes("links out of the repo")
+            ? " skilllib only installs inside the repo: remove the pin (skilllib remove), or point that folder back into the repo."
+            : versionForHash(name, pins[name]?.hash ?? "") !== null
+              ? " Move it out of the way, then run skilllib sync."
+              : " Move it out of the way; your library has no copy of the pinned version either."
+        }`,
         at: rows(root, [name]),
       });
     const unstuck = status.filter((s) => !blockers.has(s.name));
@@ -577,7 +588,7 @@ export function findIssues(
         ...(seen ? { choices: [install] } : { fix: install }),
       });
     }
-    for (const s of status.filter((s) => s.state === "folder missing" && s.latest === null))
+    for (const s of unstuck.filter((s) => s.state === "folder missing" && s.latest === null))
       issues.push({
         id: `unavailable:${root}:${s.name}`,
         severity: "problem",
@@ -598,7 +609,7 @@ export function findIssues(
         ],
       });
     // A newer library version: moving to it is a fix, as in the TUI ("Update to vN"). Local edits are never overwritten.
-    const behind = status.filter((s) => s.state === "update available");
+    const behind = unstuck.filter((s) => s.state === "update available");
     if (behind.length > 0)
       issues.push({
         id: `update:${root}`,
@@ -768,7 +779,7 @@ export function findIssues(
     // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
     const git = gitInfo(root);
     const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
-    for (const s of status) {
+    for (const s of unstuck) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
       // and copies that differ need a winner first (the conflict issue above).
       if (isLink(s.path) || differing.has(s.name)) continue;
@@ -1012,7 +1023,8 @@ export function findIssues(
                 // Every repo that holds it, not only those listed here: where an agent couldn't see the repo's copy (a link git
                 // held back, a file in the way), the global copy was what it ran, so the repo isn't "also" loading it.
                 const readers = machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses);
-                const blind = blindWithoutGlobal(name, readers, projects).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
+                // Every repo you have, not only this scan's (status --json scans just the one you're in).
+                const blind = blindWithoutGlobal(name, readers, [...projects, ...knownProjects()]).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
                 if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; make the repo's copy reach ${blind.length === 1 ? "it" : "them"} first (skilllib doctor says what's in the way)`);
                 if (!libraryNames.has(name)) importSkill(movable.path);
                 for (const m of machine.filter((x) => x.name === name && x.movable)) {
@@ -1093,7 +1105,7 @@ export function usageIssues(
     if (!unused.length) continue;
     // Edited copies stay (removing them is remove --force's call): offering them would be a choice that can't succeed.
     // A pin from another library ("not in library") may differ from its copy too: remove refuses that without --force.
-    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library");
+    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library" && !syncBlocker(root, s.name));
     issues.push({
       id: `unused:${root}`,
       severity: "suggestion",

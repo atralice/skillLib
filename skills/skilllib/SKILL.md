@@ -29,7 +29,7 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 - `skipped` + `reason`: nothing changed for that skill, and the command exits 1; tell the user. `--force` overwrites local edits (`backedUp` says where they went; `skilllib restore <name>` brings them back), but only use it with their OK.
 - `action`: `installed`, `updated`, `reset` (edits overwritten), `relinked` (only links were written), `unchanged` (it was already there as asked), `removed`, `skipped`.
-- `inTheWay`: something is where a link goes (a file or another copy, or a skills folder that's a file or links out of the repo), so an agent can't use the skill there, and the command exits 1. Tell the user what's there; once they move it, `skilllib link` adds the link.
+- `inTheWay`: something else is where a link goes (a file, or another copy), so that agent may not run this copy there, and the command exits 1. Tell the user what's there; once they move it, `skilllib link` adds the link. (A skills folder that's a file or links out of the repo makes the skill `skipped` instead, with the reason.)
 - `blocked`: git tracks that folder. Re-run with `--allow-tracked` (for that command only) only with their OK.
 - `uncommitted`: git tracks that folder but not the skill's real copy, so a link there would break for teammates; `--allow-tracked` doesn't change that. Once the copy is committed, `link --allow-tracked` adds it.
 - Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and the folders in `dirs`.

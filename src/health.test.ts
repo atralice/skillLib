@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
 import { addSkill, createSkill, deleteGlobal, deleteLibrarySkill, importSkill, linkAll, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
-import { readManifest } from "./project.js";
+import { readManifest, rememberProjects } from "./project.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 
 let tmp: string;
@@ -802,7 +802,7 @@ test("doctor --fix converges: a file where a managed copy goes, or a foreign pin
   rmSync(copy, { recursive: true });
   writeFileSync(copy, "mine");
   let issues = findIssues([project], machineSkills(), new Set(["foo"]));
-  expect(issues.find((i) => i.id === `stuck:${project}:foo`)?.detail).toBe(".agents/skills/foo is a file, not a skill folder. Move it out of the way, then run skilllib sync.");
+  expect(issues.find((i) => i.id === `stuck:${project}:foo`)?.detail).toBe(".agents/skills/foo is a file, not a skill folder, so sync can't put it back there. Move it out of the way, then run skilllib sync.");
   // The only fix is the link that now reaches a file (restorable); after it, nothing is left to retry.
   expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([`broken:${project}:.claude/skills/foo`]);
   expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
@@ -849,4 +849,31 @@ test("stopping a global copy waits for every repo holding the skill, not only th
   expect(twice.title).toBe("alpha: in app2 and also loaded globally");
   expect(runFix(twice.choices![0]!)).toEqual({ ok: false, message: "alpha: Claude Code in app1 only sees the global copy; make the repo's copy reach it first (skilllib doctor says what's in the way)" });
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+});
+
+test("Stop loading it globally, applied from one repo's scan, still waits for your other repos", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, ".claude", "skills", "foo"));
+  const a = join(tmp, "a");
+  skill(join(a, ".claude", "skills", "foo"));
+  const b = join(tmp, "b");
+  skill(join(b, ".agents", "skills", "foo")); // Claude Code in b runs the global copy
+  rememberProjects([a, b]);
+  const twice = findIssues([a], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
+  expect(runFix(twice.choices![0]!).message).toStartWith("foo: Claude Code in b only sees the global copy");
+  expect(existsSync(join(tmp, ".claude", "skills", "foo", "SKILL.md"))).toBe(true);
+});
+
+test("a pin under a skills folder that links out of the repo isn't the repo's copy: no twice, no update, just why", () => {
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  skill(join(tmp, ".claude", "skills", "foo"));
+  const r2 = join(tmp, "r2");
+  mkdirSync(r2);
+  symlinkSync(join(tmp, ".claude"), join(r2, ".claude"));
+  writeFileSync(join(r2, "skilllib.json"), JSON.stringify({ skills: { foo: { version: 1, hash: readManifest(join(tmp, "nowhere")).skills.foo?.hash ?? "x" } } }));
+  const ids = findIssues([r2], machineSkills(), new Set(["foo"])).map((i) => i.id);
+  expect(ids.filter((id) => id.includes("foo"))).toEqual([`stuck:${r2}:foo`]);
+  const stuck = findIssues([r2], machineSkills(), new Set(["foo"])).find((i) => i.id === `stuck:${r2}:foo`)!;
+  expect(stuck.detail).toContain("skilllib only installs inside the repo");
 });

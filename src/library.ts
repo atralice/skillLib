@@ -113,7 +113,8 @@ function syncDone(root: string, name: string, dep: Dependency): boolean {
 
 /** A link's place: "ok" (it reaches `to`), "free" (nothing there, or a link to nothing), or "taken" (anything else). */
 function slotAt(link: string, to: string): "ok" | "free" | "taken" {
-  if (isLink(link) && realpathOrNull(link) === null) return "free";
+  // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
+  if (isLink(link) && !isDir(link)) return "free";
   if (!entryExists(link)) return "free";
   return isLink(link) && realpathOrNull(link) === realpathOrNull(to) ? "ok" : "taken";
 }
@@ -124,10 +125,12 @@ function slotAt(link: string, to: string): "ok" | "free" | "taken" {
  * recorded link goes. doctor reports these instead of offering a sync that can't succeed.
  */
 export function syncBlocker(root: string, name: string, dep: Dependency | undefined = readManifest(root).skills[name]): string | null {
-  if (!dep || syncDone(root, name, dep)) return null;
+  if (!dep) return null;
   const dir = dep.dir ?? PROJECT_SKILLS_DIR;
+  // Before "already as pinned": through a folder that links out of the repo, what looks pinned isn't the repo's.
   const stuck = firstStuck(root, [dir, ...(dep.links ?? [])]);
   if (stuck) return blockerSaid(root, stuck);
+  if (syncDone(root, name, dep)) return null;
   const copy = join(root, dir, name);
   if (fileAt(copy)) return `${dir}/${name} is a file, not a skill folder`;
   // What's at each recorded link's place: a link to nothing (or a file) is put back; a link to a version your
@@ -176,12 +179,17 @@ export function blindWithoutGlobal(name: string, readers: Iterable<HarnessId>, r
   const read = new Set(readers);
   const holds = (root: string) => {
     try {
-      return projectStatus(root).some((s) => s.name === name && s.state !== "folder missing");
+      // A pin whose folder is missing counts: its agents run the global copy until sync puts it back.
+      return projectStatus(root).some((s) => s.name === name);
     } catch {
       return false; // a skilllib.json that can't be read: its own issue
     }
   };
-  return roots.filter(holds).flatMap((root) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 && read.has(v.id) ? [{ root, id: v.id }] : [])));
+  // Only the repo's own folders: one that links out of the repo (.claude -> ~/.claude) reaches the global copy itself.
+  const seesHere = (root: string, id: HarnessId) => harness(id).projectDirs.some((d) => writableDir(root, d) && existsSync(join(root, d, name, "SKILL.md")));
+  // One per real folder: a repo named two ways (a link, ~) is still one repo.
+  const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
+  return unique.filter(holds).flatMap((root) => enabledHarnesses().flatMap((id) => (read.has(id) && !seesHere(root, id) ? [{ root, id }] : [])));
 }
 
 /**
@@ -221,7 +229,9 @@ export function projectStatus(root: string): ProjectSkill[] {
   const managed = Object.entries(skills).map(([name, dep]): ProjectSkill => {
     const location = dep.dir ?? PROJECT_SKILLS_DIR;
     const path = join(root, location, name);
-    const local = treeHash(path);
+    // A pinned folder outside the repo (.claude -> ~/.claude) holds someone else's copy (your global one, say), not the
+    // repo's: the repo's is missing, and sync can't put it there (syncBlocker says why).
+    const local = notWritable(root, location) ? null : treeHash(path);
     const latest = latestVersion(name);
     // Edits are content your library has no version of; another known version is just out of sync.
     const known = local !== null && local !== dep.hash && versionForHash(name, local) !== null;
@@ -412,7 +422,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
       continue;
     }
     // This agent can't see the skill, so whatever is there isn't it: a link to nothing is replaced, anything else stays.
-    const broken = isLink(link) && realpathOrNull(link) === null;
+    const broken = isLink(link) && !isDir(link);
     if (entryExists(link) && !broken) {
       stuck(`${dir}/${name}`);
       continue;
@@ -616,7 +626,8 @@ export function addSkill(
   return {
     name,
     action:
-      !recorded && local === null
+      // Nothing of it was there (or only an identical untracked copy, now tracked): installed, not updated.
+      !recorded || local === null
         ? "installed"
         : backedUp && from === target.version
           ? "reset"

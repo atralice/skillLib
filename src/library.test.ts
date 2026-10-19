@@ -121,7 +121,8 @@ describe("library", () => {
   test("won't overwrite an unmanaged folder or delete edits without --force", () => {
     writeSkill(local("alpha"), "handwritten");
     expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped" });
-    expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "updated" });
+    // Not skilllib's before: installed (over a backup of what was there), not updated.
+    expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "installed" });
 
     writeSkill(local("alpha"), "edited");
     expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
@@ -401,7 +402,7 @@ describe("harnesses", () => {
     writeSkill(local("alpha"), "v1");
     expect(stateOf("alpha")).toBe("untracked copy of library skill");
 
-    expect(addSkill(project, "alpha")).toMatchObject({ action: "updated", to: 1 });
+    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", to: 1 });
     expect(lstatSync(local("alpha")).isDirectory()).toBe(true);
     expect(lstatSync(join(project, ".agents", "skills", "alpha")).isSymbolicLink()).toBe(true);
     expect(readManifest(project).skills.alpha).toMatchObject({ links: [".agents/skills"] });
@@ -1027,4 +1028,13 @@ test("a pin from another library whose copy differs: sync and remove say what it
   writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 3, hash: "0000000000000000" } } }));
   expect(syncProject(project)[0]!.reason).not.toContain("--force");
   expect(removeSkill(project, "alpha").reason).toBe("doesn't match what skilllib.json pins, and your library has neither (use --force to remove it; it's backed up first)");
+});
+
+test("a link to a file where a skill's link goes is broken, so add replaces it on every platform", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeFileSync(join(project, "README"), "readme");
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(project, "README"), local("alpha"));
+  expect(addSkill(project, "alpha").inTheWay).toBeUndefined();
+  expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v1");
 });
