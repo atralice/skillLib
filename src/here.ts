@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { BUILD_DIRS, PROJECT_SKILLS_DIR } from "./paths.js";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
-import { gitInfo, relativeTo } from "./git.js";
+import { gitInfo, isShared, relativeTo } from "./git.js";
 import { pinsIn, projectHere } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
@@ -62,7 +62,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         const behind = s.state.endsWith("update available");
         const gitState = git?.of(relativeTo(root, s.path));
         // A copy git tracks is the team's wherever it lives (.claude/skills too), as the TUI shows it.
-        const repo = !s.managed && (s.state.startsWith("repo skill") || gitState === "committed" || gitState === "changed");
+        const repo = !s.managed && (s.state.startsWith("repo skill") || isShared(gitState));
         const usual = s.state === "ok" || s.state === "local only" || (repo && s.state !== "from npx skills");
         // Left out at their usual value: JSON.stringify drops undefined (as a spread would), and tsc checks each name.
         const attrs: Omit<StatusSkillGroup, "skills"> = {

@@ -24,11 +24,11 @@ import {
   type ProjectSkill,
   type SkillState,
 } from "./library.js";
-import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
+import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, skilllibHome, userHome } from "./paths.js";
 import { findProjectRoot, isProjectCandidate, knownProjects, pinsIn, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
-import { gitInfo, relativeTo } from "./git.js";
+import { gitInfo, isShared, relativeTo } from "./git.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { libraryFor, statusIssues, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
@@ -75,6 +75,9 @@ const FLAGS = {
   keep: { type: "string" },
   to: { type: "string", multiple: true },
 } as const;
+
+/** The flags that take a value ("--days 30"): what follows them isn't the command. */
+export const VALUE_FLAGS = Object.entries(FLAGS).flatMap(([name, f]) => (f.type === "string" ? [`--${name}`] : []));
 
 export function parseArgs(argv: string[]): Args {
   const { values: v, positionals } = parseFlags({ args: argv, options: FLAGS, allowPositionals: true, strict: true });
@@ -348,7 +351,7 @@ export async function list(args: Args) {
 /** A skill's state, with a copy git tracks shown as the repo's own (the team's) wherever it lives, as `skilllib` and `status --json` show it. */
 function teamStateIn(root: string, extraDirs: string[] = []): (s: { state: SkillState; path: string }) => SkillState {
   const git = gitInfo(root, [...new Set(extraDirs)]);
-  const committed = (path: string) => ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
+  const committed = (path: string) => isShared(git?.of(relativeTo(root, path)));
   const asRepo: Partial<Record<SkillState, SkillState>> = {
     "local only": "repo skill",
     "untracked copy of library skill": "repo skill, in library",
@@ -969,7 +972,7 @@ export function tidy(args: Args) {
     for (const s of report.skipped.filter((x) => !names.length || names.includes(x.name))) info(dim(`- ${label} · ${s.name}: skipped, ${s.reason}`));
   }
   if (args.dryRun) info(dim("\nNothing changed (--dry-run)."));
-  else if (changed) info(dim("\nReplaced copies are in ~/.skilllib/tidy-backup; `skilllib restore` puts them back."));
+  else if (changed) info(dim(`\nReplaced copies are in ${tildify(join(skilllibHome(), "tidy-backup"))}; \`skilllib restore\` puts them back.`));
   if (held) {
     // Not everything asked was done: exit 1, as link does when git blocks a link.
     process.exitCode = 1;

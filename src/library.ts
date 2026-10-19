@@ -76,7 +76,8 @@ export function isLink(path: string): boolean {
 export function notWritable(root: string, dir: string): string | null {
   const top = realpathOrNull(root) ?? root;
   let p = root;
-  for (const part of dir.split("/")) {
+  // Either separator: a caller may pass a Windows relative() as it comes.
+  for (const part of dir.split(/[\\/]/)) {
     p = join(p, part);
     if (!entryExists(p)) return null; // the rest can be made
     const real = realpathOrNull(p);
@@ -838,6 +839,11 @@ function addPlan(
     };
   }
   return { manifest, recorded, primary, wantedLinks, to, local };
+}
+
+/** A change's reason without its CLI hint ("(use --force …)"), for a caller that offers its own way on. */
+export function withoutForceHint(reason: string): string {
+  return reason.replace(/ \(use --force[^)]*\)$/, "");
 }
 
 /** Why add would refuse to install content `hash` as `name` in a repo (null when it wouldn't), writing nothing: global move asks every repo first. */

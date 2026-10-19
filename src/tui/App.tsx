@@ -11,6 +11,7 @@ import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
 import * as W from "./world.js";
+import { isShared } from "../git.js";
 import { tildify } from "../output.js";
 
 
@@ -314,7 +315,7 @@ const reviewOption = (w: W.World, name: string, ui: Ui, repo?: string): Option =
 });
 
 /** " Git will see it." for a copy the repo commits: an action that changes it says so up front. */
-const gitSees = (s?: W.LocalSkill) => (s?.git === "committed" || s?.git === "changed" ? " Git will see it." : "");
+const gitSees = (s?: W.LocalSkill) => (isShared(s?.git) ? " Git will see it." : "");
 
 /** Pick a library version to install in a repo (older ones too). */
 function versionsOption(w: W.World, repo: string, name: string, installed: number | undefined, ui: Ui): Option {

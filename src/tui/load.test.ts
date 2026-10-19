@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -884,3 +884,20 @@ test("deleting a group where one copy links through another: the second says it 
   expect(said(w.ops.deleteGlobal(rows[0]!))).toStartWith("Deleted ~/.agents/skills/foo");
   expect(said(w.ops.deleteGlobal(rows[1]!))).toBe("~/.claude/skills/foo is already gone");
 });
+
+test("the app's unused hint counts a plugin's copy (plugin:skill) for the skill, as doctor does", () => {
+  writeSkill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  addSkill(repo, "alpha");
+  const w = loadWorld();
+  // Added long enough ago to count.
+  setSystemTime(new Date(Date.now() + 40 * 86_400_000));
+  try {
+    const unused = (usage: World["usage"]) => w.ops.usageIssues({ usage, totals: {} }).filter((i) => i.id === `unused:${repo}`);
+    expect(unused({})).toHaveLength(1);
+    expect(unused({ app: { "tools:alpha": 2 } })).toEqual([]);
+  } finally {
+    setSystemTime();
+  }
+});
+

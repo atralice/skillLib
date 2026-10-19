@@ -9,10 +9,11 @@ import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSk
 import { projectOfFactory } from "../commands.js";
 import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, harnessesChosen, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "../config.js";
 import { copyText } from "../review.js";
-import { gitInfo, relativeTo } from "../git.js";
+import { gitInfo, isShared, relativeTo } from "../git.js";
 import { findIssues, usageIssues } from "../health.js";
 import {
   addRefusal,
+  withoutForceHint,
   addSkill,
   blindSaid,
   blindWithoutGlobal,
@@ -98,7 +99,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
   const state = git ? git.of(relativeTo(root, s.path)) : null;
   const others = otherCopies(root, s.name, s.location);
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
-  const own = other[s.state]?.source === "untracked" && (state === "committed" || state === "changed") ? { source: "repo" as const } : {};
+  const own = other[s.state]?.source === "untracked" && isShared(state) ? { source: "repo" as const } : {};
   return {
     name: s.name,
     source: "lib",
@@ -294,6 +295,8 @@ function said(c: Change, repo: string): string {
 
 function realOps(roots: Map<string, string>, backups: Backup[], machine: SourcedSkill[], libraryNames: Set<string>): Ops {
   const rootOf = (repo: string) => roots.get(repo)!;
+  /** A repo's name in the app, or its folder's for one the app doesn't show. */
+  const nameOf = (root: string) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
   const find = (repo: string, name: string) => projectStatus(rootOf(repo)).find((s) => s.name === name);
 
   /** A change; failed if it was skipped. */
@@ -364,7 +367,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     };
   };
   const linkIn = (repo: string, name: string, allow: boolean): LinkResult => {
-    const s = find(repo, name)!;
+    // The world can be stale (removed outside the app since it loaded): say so, not "undefined".
+    const s = find(repo, name);
+    if (!s) throw new Error(`${name} isn't in ${repo} any more`);
     return s.managed ? relinkDependency(rootOf(repo), name, { allowTracked: allow }) : linkEverywhere(rootOf(repo), name, s.location, { allowTracked: allow });
   };
   const linkSaid = (repo: string, name: string, r: LinkResult): string => {
@@ -380,7 +385,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     // Whatever --force would get past (edits, a pin from another library, another copy in the way): offer it here.
     c.action === "skipped" && !!c.reason?.includes("--force")
       ? {
-          message: `${c.name} in ${repo}: ${c.reason!.replace(/ \(use --force[^)]*\)$/, "")}`,
+          message: `${c.name} in ${repo}: ${withoutForceHint(c.reason!)}`,
           then: { label, preview: `What's there now in ${repo} goes to Settings › Backups first.`, run: () => result(force(), repo) },
         }
       : result(c, repo);
@@ -395,7 +400,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     remove: (repo, name) => {
       const s = find(repo, name);
       if (!s) return failed(`${name} isn't in ${repo}`);
-      const committed = !s.managed && ["committed", "changed"].includes(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)) ?? "");
+      const committed = !s.managed && isShared(gitInfo(rootOf(repo))?.of(relativeTo(rootOf(repo), s.path)));
       if (s.state.startsWith("repo skill") || committed) return failed(`${name} is the repo's own (committed by your team): skilllib doesn't delete it`);
       // This copy goes; a real copy in another folder (one that differs) stays, and the result says so.
       const others = otherCopies(rootOf(repo), name, s.location);
@@ -407,7 +412,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const c = updateProject(rootOf(repo), [name])[0];
       return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!) : `${name} is up to date`;
     },
-    copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
+    copyToLibrary: (repo, name) => ((s) => (s ? toLibrary(s.path) : failed(`${name} isn't in ${repo} any more`)))(find(repo, name)),
     deleteGlobal: (m) => {
       // Gone already: an earlier copy in a group took this link along, or it went outside skilllib.
       if (!entryExists(m.path)) return `${tildify(m.path)} is already gone`;
@@ -421,10 +426,10 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         // agents that read no other global copy of it (one that stays) lose anything.
         const readers = [...new Set([...m.agents, ...dependents.flatMap((o) => o.harnesses)])].filter((id) => !stays.some((o) => o.harnesses.includes(id)));
         const blind = blindWithoutGlobal(m.name, [{ path: m.path, harnesses: readers, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
-        if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
+        if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, nameOf)}`);
       }
       // Package links that will point at nothing (the repo's own copy serves them): found before, said after.
-      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()], (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
+      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()], nameOf);
       const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
       if (!r.ok) return failed(`${m.name}: ${r.reason}`);
       if (m.broken) return `Removed the broken link ${m.name}`;
@@ -438,7 +443,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     moveGlobal: (skills, repos, group) => {
       const repoRoots = repos.map(rootOf);
       // A repo you picked by its name in the app, any other (one that blocks the move) by its own.
-      const label = (root: string) => repos[repoRoots.indexOf(root)] ?? [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
+      const label = (root: string) => repos[repoRoots.indexOf(root)] ?? nameOf(root);
       // Every global copy of a skill you picked moves, as global move does: a row is one copy, and another (or a link
       // through it) left loading would make "now loads only in" false, or break.
       const picked = new Set(skills.map((m) => m.name));
@@ -506,7 +511,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       // A repo that can't take one of them (its own different copy, the team's committed one, a folder that isn't
       // the repo's) stops it too, before anything is copied in: never half done.
       const cant = repos.flatMap((repo) =>
-        p.skills.flatMap((s) => ((why) => (why ? [`${s.name} in ${repo}: ${why.replace(/ \(use --force[^)]*\)$/, "")}`] : []))(trackBlocker(rootOf(repo), s.name) ?? addRefusal(rootOf(repo), s.name, treeHash(s.path) ?? ""))),
+        p.skills.flatMap((s) => ((why) => (why ? [`${s.name} in ${repo}: ${withoutForceHint(why)}`] : []))(trackBlocker(rootOf(repo), s.name) ?? addRefusal(rootOf(repo), s.name, treeHash(s.path) ?? ""))),
       );
       if (cant.length) return failed(`${id} kept, nothing changed: ${cant.join("; ")}`);
       // Copies in, recording the plugin as their origin.
@@ -571,7 +576,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         if (s && isDir(s.path) && !notWritable(root, relative(root, dirname(s.path)).split(sep).join("/"))) removeUntracked(root, name, s.path);
         const c = removeSkill(root, name, { force: true });
         if (c.action === "skipped") return failed(`${name}: ${c.reason}${from.length ? `; removed from ${from.join(", ")} so far` : ""}`);
-        const repo = [...roots].find(([, r]) => r === root)?.[0] ?? basename(root);
+        const repo = nameOf(root);
         from.push(repo);
         // What was left there (a file of yours, a copy outside the repo): said, as remove says it.
         if (c.reason) left.push(`in ${repo}, ${c.reason}`);
@@ -621,7 +626,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     usageIssues: ({ usage, totals = {} }) => {
       const repoOf = new Map([...roots].map(([name, root]) => [root, name]));
       return usageIssues([...roots.values()], machine, libraryNames, {
-        inProject: (root, skill) => usage[repoOf.get(root)!]?.[skill] ?? 0,
+        // As doctor counts them: a plugin's copy (plugin:name, kept apart for the Plugins rows) counts for the skill.
+        inProject: (root, skill) => Object.entries(usage[repoOf.get(root)!] ?? {}).reduce((n, [key, count]) => n + (skillOf(key) === skill ? count : 0), 0),
         total: (skill) => totals[skill] ?? 0,
         asUsed: (key) => totals[key] ?? 0,
         days: 30,

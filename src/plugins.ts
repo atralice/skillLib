@@ -21,6 +21,11 @@ export type PluginRef = {
   settingsOnly?: true;
 };
 
+/** A plugin's name without its marketplace ("ponytail@ponytail" → "ponytail"). */
+export function pluginNameOf(id: string): string {
+  return id.split("@")[0]!;
+}
+
 /** A Claude Code plugin that ships skills. */
 export type ClaudePlugin = PluginRef & {
   /** Skill folders it ships. */
@@ -303,6 +308,12 @@ export function turnOffIn(plugin: ClaudePlugin, root: string): { ok: boolean; me
   return r.ok ? { ok: true, message: done } : { ok: false, message: `${plugin.id}: ${r.reason}` };
 }
 
+/** A project or local install whose project skilllib doesn't know: `claude plugin` must run there, so it says how. */
+function unplaced(p: PluginRef, verb: string): { ok: false; message: string } | null {
+  if (!p.scope || p.scope === "user" || p.projectPath) return null;
+  return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin ${verb} ${p.id} --scope ${p.scope}\` there` };
+}
+
 /** The settings file a scope's enabledPlugins lives in (what `claude plugin enable|disable --scope` writes). */
 function settingsFileOf(p: PluginRef): string | null {
   if (p.synced || !p.scope || p.scope === "user") return join(claudeDir(), "settings.json");
@@ -324,7 +335,8 @@ export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: 
   // A project install's switch is the repo's .claude/settings.json, which the team shares: say git sees it.
   const shared = p.scope === "project" && p.projectPath ? "; it's in .claude/settings.json, which git tracks, so commit it if the team should get it" : "";
   const done = { ok: true, message: `${p.id} is ${on ? "on" : "off"}${whereOf(p)}${p.synced ? "" : "; Claude Code picks it up in its next session"}${shared}` };
-  if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}\` there` };
+  const lost = unplaced(p, on ? "enable" : "disable");
+  if (lost) return lost;
   // Synced plugins aren't installed, and neither is one only turned on in your settings: `claude plugin` can't switch them.
   const bin = p.synced || p.settingsOnly ? null : claudeBinary();
   if (bin) {
@@ -345,7 +357,8 @@ export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: 
 export function uninstallPlugin(p: PluginRef): { ok: boolean; message: string } {
   if (p.synced) return { ok: false, message: `${p.id} is synced from your claude.ai account: remove it there, or turn it off here` };
   if (p.settingsOnly) return { ok: false, message: `${p.id} isn't installed, only turned on in your settings: turn it off instead` };
-  if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin uninstall ${p.id} --scope ${p.scope}\` there` };
+  const lost = unplaced(p, "uninstall");
+  if (lost) return lost;
   // Whether it was on, so restoring it puts it back as it was (installing turns a plugin on).
   const wasOn = enabledPlugins(p.projectPath)[p.id] === true;
   const r = claude(["plugin", "uninstall", p.id, "--keep-data", "--scope", p.scope ?? "user"], p.projectPath);
@@ -389,9 +402,8 @@ type Removed = { id: string; scope: string; projectPath?: string; on?: boolean; 
  */
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
   if (plugin.settingsOnly && how === "delete") return { ok: false, message: `${plugin.id} isn't installed, only turned on in your settings: turn it off instead` };
-  if (plugin.scope && plugin.scope !== "user" && !plugin.projectPath) {
-    return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
-  }
+  const lost = unplaced(plugin, how === "delete" ? "uninstall" : "disable");
+  if (lost) return lost;
   // Check the CLI works before changing anything. Without it, a user install can still be turned off
   // in ~/.claude/settings.json (as a synced plugin is); uninstalling needs the CLI.
   const viaSettings = plugin.synced || plugin.settingsOnly || (!claudeBinary() && how === "off" && !plugin.projectPath);
@@ -457,5 +469,5 @@ export function restorePlugin(backup: Backup): { ok: true; to: string } | { ok: 
  * Cursor doesn't record which plugins are on in a file skilllib can read, so these are reported, never changed.
  */
 export function cursorPluginSkills(plugins = cursorPlugins()): { name: string; plugin: string; path: string }[] {
-  return plugins.flatMap((p) => p.skills.map((path) => ({ name: basename(path), plugin: p.id.split("@")[0]!, path })));
+  return plugins.flatMap((p) => p.skills.map((path) => ({ name: basename(path), plugin: pluginNameOf(p.id), path })));
 }
