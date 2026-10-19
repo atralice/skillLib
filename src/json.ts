@@ -167,6 +167,8 @@ export type GlobalMoveJson = {
   /** Added to every repo and no longer global. When false, it still loads globally and `reason` says why. */
   moved: boolean;
   reason?: string;
+  /** Links in a repo's packages now pointing at nothing (the repo's own copy serves them): remove them. */
+  left?: string[];
   projects: { project: string; path: string; change: ChangeJson }[];
 }[];
 

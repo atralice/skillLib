@@ -389,7 +389,7 @@ function globalFixes(m: MachineSkill): Fix[] {
   return [
     {
       label: "Move it to the repos that need it…",
-      preview: `Pick repos. ${m.name} goes into your library and those repos, and stops loading globally (original backed up).`,
+      preview: `Pick repos. ${m.name} goes into your library and those repos, and stops loading globally (every global copy backed up).`,
       run: () => "",
       pickRepos: (w, repos) => w.ops.moveGlobal([m], repos),
     },

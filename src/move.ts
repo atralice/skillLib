@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, strandedLinks, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
 import { realPath } from "./paths.js";
 import { knownProjects } from "./project.js";
 import { harness } from "./harnesses.js";
@@ -7,8 +7,8 @@ import { recordOrigin, type SourcedSkill } from "./sources.js";
 
 type GlobalSkill = Pick<SourcedSkill, "name" | "path" | "links" | "harnesses">;
 
-/** What moving one global skill into repos did. `changes` is empty when it never got that far. */
-export type GlobalMove = { name: string; moved: boolean; reason?: string; changes: [root: string, change: Change][] };
+/** What moving one global skill into repos did. `changes` is empty when it never got that far; `left`: package links now pointing at nothing (see strandedLinks). */
+export type GlobalMove = { name: string; moved: boolean; reason?: string; changes: [root: string, change: Change][]; left?: string[] };
 
 /**
  * Moves global skills into the repos that need them: each goes into your library (unless it's already
@@ -75,7 +75,9 @@ export function moveGlobalSkills(
       });
       return { name, moved: false, reason: `added, but ${per.join("; ")}, so it still loads globally`, changes };
     }
+    // Found before the copies go: a broken link isn't found as a skill afterwards.
+    const left = strandedLinks(name, copies, [...roots, ...knownProjects()], label);
     const failed = copies.map((m) => unloadGlobal(m.path, m.links)).find((r) => !r.ok);
-    return failed && !failed.ok ? { name, moved: false, reason: failed.reason, changes } : { name, moved: true, changes };
+    return failed && !failed.ok ? { name, moved: false, reason: failed.reason, changes } : { name, moved: true, changes, ...(left.length ? { left } : {}) };
   });
 }

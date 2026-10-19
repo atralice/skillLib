@@ -960,3 +960,23 @@ test("where add would refuse, edits copied into the library aren't put back to t
   expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([]);
   expect(readFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "utf-8")).toBe("edited\n");
 });
+
+test("Install the pinned versions syncs only the skills it lists, and is a choice where a copy may be your copied edits", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  for (const name of ["foo", "bar"]) {
+    skill(join(tmp, "src", name));
+    importSkill(join(tmp, "src", name));
+  }
+  setHarnesses(["claude-code"]);
+  addSkill(project, "foo");
+  writeFileSync(join(project, ".claude", "skills", "foo", "SKILL.md"), "edited\n");
+  mkdirSync(join(tmp, "ext"));
+  symlinkSync(join(tmp, "ext"), join(project, ".agents"));
+  setHarnesses(["claude-code", "codex"]);
+  const edited = findIssues([project], machineSkills(), new Set(["foo", "bar"])).find((i) => i.id === `edited:${project}:foo`)!;
+  expect(runFix(edited.choices![0]!).ok).toBe(true); // foo's edits are library v2 now; app still pins v1
+  const drift = findIssues([project], machineSkills(), new Set(["foo", "bar"])).find((i) => i.id === `out-of-sync:${project}`)!;
+  expect(drift.fix).toBeUndefined(); // never automatic there
+  expect(drift.choices!.map((c) => c.label)).toEqual(["Install the pinned versions"]);
+});

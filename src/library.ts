@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
@@ -189,6 +189,18 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
  * a moved entry is lost; a real folder anywhere else survives. So a link to a dev folder survives even when the
  * global entry links there too, and a link to the global entry itself doesn't.
  */
+/**
+ * A real path as the file system spells it: Node's JS realpath keeps the case you asked with on a case-insensitive
+ * disk (macOS), and the short names Windows can hand out; the native one gives the one true spelling.
+ */
+function realNative(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
 export function survives(path: string, gone: string[]): boolean {
   return lostAt(path, gone) === null;
 }
@@ -202,7 +214,7 @@ function lostAt(path: string, gone: string[]): string | null {
   // can read back as \\?\C:\... and paths don't care about case: both are evened out before comparing.
   // Compared in lower case on Windows; said as it is.
   const key = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
-  const canon = (p: string) => join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+  const canon = (p: string) => join(realNative(dirname(p)) ?? dirname(p), basename(p));
   const moved = gone.map((g) => key(canon(g)));
   let at = path;
   let last: string | null = null;
@@ -220,7 +232,14 @@ function lostAt(path: string, gone: string[]): string | null {
  * An agent that would lose a skill in a repo (or one of its packages): `folder` is its skills folder there when
  * that's what stops a copy; `link` is a package's own link to the global copy, when that's what would break.
  */
-export type Blind = { root: string; id: HarnessId; folder: string | null; link?: string };
+export type Blind = {
+  root: string;
+  id: HarnessId;
+  folder: string | null;
+  link?: string;
+  /** A skills folder linked to a shared folder of yours that lacks the skill: `to` is that folder, as shown. */
+  shared?: { dir: string; to: string };
+};
 
 /**
  * Who would lose a skill if `copies` (global copies of it, with the global links to each) stopped loading: in each
@@ -248,7 +267,7 @@ export function blindWithoutGlobal(
   // The link to change, as a person finds it: in the repo by its place there, elsewhere (a shared folder) by its path.
   // Both sides as real paths: the repo or home folder may be reached another way (a link, a Windows short name).
   const shown = (root: string, p: string) => {
-    const under = (dir: string) => ((d) => (p.startsWith(d + sep) ? relative(d, p).split(sep).join("/") : null))(realpathOrNull(dir) ?? dir);
+    const under = (dir: string) => ((d) => (p.startsWith(d + sep) ? relative(d, p).split(sep).join("/") : null))(realNative(dir) ?? dir);
     return under(root) ?? ((h) => (h === null ? p : `~/${h}`))(under(userHome()));
   };
   const blindIn = (root: string) =>
@@ -258,8 +277,10 @@ export function blindWithoutGlobal(
       // A skills folder that isn't the repo's choice (a file, a link to a global folder): point it back. One linked to a
       // shared folder of yours is your setup: what to change is the link in it that goes to the global copy.
       const folder = harness(id).projectDirs.map((d) => (reposChoice(root, d) ? null : notWritable(root, d))).find((f) => f !== null) ?? null;
-      const shared = harness(id).projectDirs.find((d) => !writableDir(root, d) && reposChoice(root, d) && existsSync(join(root, d, name, "SKILL.md")));
-      const at = shared ? lostAt(join(root, shared, name), gone) : null;
+      const shared = harness(id).projectDirs.find((d) => !writableDir(root, d) && reposChoice(root, d));
+      const at = shared && existsSync(join(root, shared, name, "SKILL.md")) ? lostAt(join(root, shared, name), gone) : null;
+      // skilllib doesn't write in a shared folder: the copy goes there by hand (or the folder points back).
+      if (shared && !at) return [{ root, id, folder, shared: { dir: shared, to: shown(root, realNative(join(root, shared)) ?? join(root, shared)) } }];
       return [{ root, id, folder, ...(at ? { link: shown(root, at) } : {}) }];
     });
   // A package's copy loads in its package: one that wouldn't survive leaves the agents reading it there without it.
@@ -276,6 +297,25 @@ export function blindWithoutGlobal(
   return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
 }
 
+/**
+ * Package links (a monorepo) that would point at nothing once `copies` go, though the repo's top copy still serves
+ * those agents (else blindWithoutGlobal stops it): left as they are, but said, as "<link> in <repo>".
+ */
+export function strandedLinks(
+  name: string,
+  copies: { path: string; links?: string[] }[],
+  roots: string[],
+  label: (root: string) => string = basename,
+): string[] {
+  const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
+  const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
+  return unique.flatMap((root) =>
+    nestedEntries(root)
+      .filter((n) => n.name === name && isLink(n.path) && !survives(n.path, gone))
+      .map((n) => `${relative(root, n.path).split(sep).join("/")} in ${label(root)}`),
+  );
+}
+
 /** Whether these copies of one skill differ in content: what's there, a broken link (no content) left out. */
 export function copiesDiffer(paths: string[]): boolean {
   return new Set(paths.map((p) => treeHash(p)).filter((h) => h !== null)).size > 1;
@@ -286,11 +326,13 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
   const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link] : [])))];
-  const repos = blind.filter((b) => !b.folder && !b.link);
+  const shared = [...new Set(blind.flatMap((b) => (b.shared ? [`put a copy of ${name} in ${b.shared.to} (${b.shared.dir} in ${label(b.root)} links there), or point ${b.shared.dir} back into the repo`] : [])))];
+  const repos = blind.filter((b) => !b.folder && !b.link && !b.shared);
   const fixes = [
     ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),
     // A package's link to the global copy: add or link at the repo's top doesn't touch it.
     ...(links.length ? [`give ${links.join(", ")} a copy of its own instead of a link to the global one`] : []),
+    ...shared,
     ...(repos.length ? [`give ${new Set(repos.map((b) => b.root)).size === 1 ? "that repo" : "those repos"} a copy of its own (skilllib add, sync or link there)`] : []),
   ];
   return `${who} only ${blind.length === 1 ? "sees" : "see"} the global copy: ${fixes.join("; ")}, or keep ${name} global (skilllib global keep)`;
@@ -816,7 +858,11 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
     writeManifest(root, manifest);
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
     // Its links in the repo's own folders stay too (they reach that copy): named, so nobody thinks they're gone.
-    const keptLinks = (recorded.links ?? []).filter((d) => writableDir(root, d) && isLink(join(root, d, name))).map((d) => `its link ${d}/${name} was left too`);
+    const keptLinks = (recorded.links ?? []).flatMap((d) => {
+      const link = join(root, d, name);
+      if (!writableDir(root, d) || !entryExists(link)) return [];
+      return [slotAt(link, dir) === "taken" ? `${d}/${name} is something else (another copy, or a file): left as it is` : `its link ${d}/${name} was left too`];
+    });
     return { name, action: "removed", reason: [`${why}: only its pin was removed, and that copy was left as it is`, ...keptLinks, ...leftLinks].join("; ") };
   }
   const local = treeHash(dir);

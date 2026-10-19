@@ -17,6 +17,7 @@ import {
   blindWithoutGlobal,
   createSkill,
   entryExists,
+  strandedLinks,
   survives,
   deleteGlobal,
   deleteLibrarySkill,
@@ -404,8 +405,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
-      // Deleting a group: an earlier copy took this link along already.
-      if (!entryExists(m.path)) return `${tildify(m.path)} was already removed, with the copy it went through`;
+      // Gone already: an earlier copy in a group took this link along, or it went outside skilllib.
+      if (!entryExists(m.path)) return `${tildify(m.path)} is already gone`;
       // Other global entries by that name that go through this one (a link to it, or to its link) would break with it:
       // they go too, and their agents count. A plugin's skill is its own (/plugin:name); a broken link loads nothing.
       const others = machine.filter((o) => o.name === m.name && o.path !== m.path && o.kind !== "plugin" && !o.broken);
@@ -418,12 +419,16 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         const blind = blindWithoutGlobal(m.name, [{ path: m.path, harnesses: readers, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
         if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
       }
+      // Package links that will point at nothing (the repo's own copy serves them): found before, said after.
+      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
       const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
       if (!r.ok) return failed(`${m.name}: ${r.reason}`);
       if (m.broken) return `Removed the broken link ${m.name}`;
       // Another global copy by that name still loads: said, so nobody thinks it's gone everywhere.
       const still = stays.map((o) => tildify(o.path));
-      return `Deleted ${tildify(m.path)} (in Settings › Backups)${still.length ? `; ${m.name} still loads globally from ${still.join(", ")}` : ""}`;
+      return `Deleted ${tildify(m.path)} (in Settings › Backups)${still.length ? `; ${m.name} still loads globally from ${still.join(", ")}` : ""}${
+        left.length ? `; ${left.join(", ")} now point${left.length === 1 ? "s" : ""} at nothing: remove ${left.length === 1 ? "it" : "them"}` : ""
+      }`;
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),
     moveGlobal: (skills, repos, group) => {
@@ -440,7 +445,15 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const said = (results: ReturnType<typeof attempt>) => {
         const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
         const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
-        return { moved, text: [summary, ...results.filter((mv) => !mv.moved).map((mv) => `${mv.name}: ${mv.reason}`)].filter(Boolean).join("; ") || "Nothing moved" };
+        // Package links now pointing at nothing (the repo's own copy serves them): said, to remove.
+        const left = results.flatMap((mv) => mv.left ?? []);
+        return {
+          moved,
+          text:
+            [summary, ...(left.length ? [`${left.join(", ")} now point${left.length === 1 ? "s" : ""} at nothing: remove ${left.length === 1 ? "it" : "them"}`] : []), ...results.filter((mv) => !mv.moved).map((mv) => `${mv.name}: ${mv.reason}`)]
+              .filter(Boolean)
+              .join("; ") || "Nothing moved",
+        };
       };
       const results = attempt();
       const { moved, text } = said(results);
@@ -461,9 +474,10 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
             run: (w) => {
               const linked = resultSaid(ask.run(w));
               const retry = said(attempt(names));
-              // The others that stayed global (for their own reasons) are still said.
+              // What moved before the question, and the others that stayed global (for their own reasons), still said.
+              const before = said(results.filter((mv) => mv.moved));
               const others = results.filter((mv) => !mv.moved && !names.includes(mv.name)).map((mv) => `${mv.name}: ${mv.reason}`);
-              const text = [linked, retry.text, ...others].filter(Boolean).join("; ");
+              const text = [before.moved.length ? before.text : "", linked, retry.text, ...others].filter(Boolean).join("; ");
               return retry.moved.length === names.length ? text : failed(text);
             },
           },

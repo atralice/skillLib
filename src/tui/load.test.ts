@@ -849,5 +849,5 @@ test("deleting a group where one copy links through another: the second says it 
   const w = loadWorld();
   const rows = w.machine.filter((m) => m.name === "foo").sort((a) => (a.path.includes(".agents") ? -1 : 1));
   expect(said(w.ops.deleteGlobal(rows[0]!))).toStartWith("Deleted ~/.agents/skills/foo");
-  expect(said(w.ops.deleteGlobal(rows[1]!))).toBe("~/.claude/skills/foo was already removed, with the copy it went through");
+  expect(said(w.ops.deleteGlobal(rows[1]!))).toBe("~/.claude/skills/foo is already gone");
 });

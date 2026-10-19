@@ -871,10 +871,11 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   if (args.json) {
     return json(
       "global move",
-      moves.map(({ name, moved, reason, changes }): GlobalMoveJson[number] => ({
+      moves.map(({ name, moved, reason, changes, left }): GlobalMoveJson[number] => ({
         skill: name,
         moved,
         ...(reason ? { reason } : {}),
+        ...(left ? { left } : {}),
         projects: changes.map(([root, c]) => ({ project: basename(root), path: root, change: withDirs(root, [c])[0]! })),
       })),
     );
@@ -883,6 +884,7 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
     if (m.moved) success(`${m.name} now loads only in ${m.changes.map(([r]) => basename(r)).join(", ")} (the global copy is in skilllib restore)`);
     else error(`${m.name}: ${m.reason}`);
     for (const [root, c] of m.changes) warnHeldLinks(root, c, `in ${basename(root)}`);
+    if (m.left) warn(`${m.name}: ${m.left.join(", ")} now point${m.left.length === 1 ? "s" : ""} at nothing (the repo's own copy serves that package): remove ${m.left.length === 1 ? "it" : "them"}`);
   }
   if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
 }
