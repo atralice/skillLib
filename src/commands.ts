@@ -798,11 +798,12 @@ export function link(args: Args) {
       process.exitCode = 1;
       error(`${label}git tracks ${res.blocked.join(", ")}, so ${res.linked.length ? "some skills weren't" : "nothing was"} linked there; re-run with --allow-tracked to link there too`);
     }
-    if (res.uncommitted.length) process.exitCode = 1;
-    if (res.uncommitted.length)
+    if (res.uncommitted.length) {
+      process.exitCode = 1;
       warn(
         `${label}${res.uncommitted.join(", ")} ${res.uncommitted.length === 1 ? "isn't" : "aren't"} committed, so not linked into folders git tracks (teammates would get broken links); commit ${res.uncommitted.length === 1 ? "it" : "them"} first`,
       );
+    }
   }
 }
 

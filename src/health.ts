@@ -617,6 +617,8 @@ export function findIssues(
     if (partial.length) {
       const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
       const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
+      // Links for a skill skilllib manages are recorded in skilllib.json: when that's committed, git sees it too.
+      const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "");
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         const r = linkAll(root, { allowTracked });
@@ -634,9 +636,11 @@ export function findIssues(
           .map((s) => `${s.name} (not ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))})`)
           .join(", ")}. Adding links makes the one real copy reach every agent you use; nothing is copied or moved.${
           tracked.length ? ` Git tracks ${tracked.join(", ")}, so links there show in git status.` : ""
-        }`,
+        }${manifestShared ? " The new links are recorded in skilllib.json, which git tracks." : ""}`,
         at: rows(root, partial.map((s) => s.name)),
-        ...(tracked.length
+        ...(manifestShared && !tracked.length
+          ? { choices: [{ label: "Add the links", hint: "git will see skilllib.json change", run: run(false) }] }
+          : tracked.length
           ? {
               choices: [
                 // Only when some link goes where git doesn't track: otherwise this one would link nothing.

@@ -12,7 +12,7 @@ import { tildify } from "./output.js";
  * - hidden: projects you don't want listed
  * - harnesses: the coding agents you use; decides where skills get installed.
  *   Unset until you choose (first run asks).
- * - agentsDirOk: projects where you allowed writing links into a git-tracked .agents/skills
+ * - agentsDirOk: projects where you allowed (in the app) writing links into any skill folder git tracks
  * - keepGlobal: names of your global skills you chose to keep global; skilllib stops nagging about them
  */
 export type Config = { roots: string[]; hidden: string[]; harnesses?: HarnessId[]; agentsDirOk?: string[]; keepGlobal?: string[] };

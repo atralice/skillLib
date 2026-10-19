@@ -413,6 +413,10 @@ export function addSkill(
   // even when identical (managed, remove could then delete it), even with --force.
   if (!recorded && entryExists(to) && isGitTracked(root, `${primary}/${name}`))
     return { name, action: "skipped", reason: `${primary}/${name} is the repo's own (committed): skilllib doesn't replace it; remove it in the repo first if the library's should win` };
+  // An untracked link here to a different copy (a dev folder) is replaced only with --force, like a real copy.
+  const linked = local === null && !recorded && isLink(to) ? treeHash(to) : null;
+  if (linked !== null && linked !== target.hash && versionForHash(name, linked) === null && !force)
+    return { name, action: "skipped", reason: `${primary}/${name} links to a different copy (use --force to replace the link)` };
   if (local !== null && local !== target.hash && !knownContent && !force) {
     return {
       name,
@@ -754,8 +758,8 @@ export function listBackups(): Backup[] {
         const match = entry.match(/^(.*)-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-\d{3}Z$/);
         if (!match) return [];
         const name = match[1]!;
-        // No index entry (an older skilllib, or a lost index): only the library and the global folder
-        // are safe to guess; a project's backup has no right answer, so it isn't restored by guessing.
+        // No index entry (an older skilllib, or a lost index): the library (where a trashed repo copy also lands
+        // harmlessly: it loads nowhere) and the global folder are safe guesses; other backups aren't restored by guessing.
         const from = index[entry] ?? (kind === "trash" ? librarySkillDir(name) : kind === "global-backup" ? join(claudeDir(), "skills", name) : "");
         return [{ name, kind, path: join(dir, entry), movedAt: localStamp(Date.parse(`${match[2]}T${match[3]}:${match[4]}:${match[5]}Z`)), from }];
       });
