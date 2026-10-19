@@ -159,7 +159,8 @@ function brokenLinksIn(root: string): Issue[] {
     if (!isDir(folder) || notWritable(root, dir)) return [];
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
-      if (!isLink(path) || existsSync(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
+      // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
+      if (!isLink(path) || isDir(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
       const remove: Choice = {
         label: "Remove the link",
         hint: "restorable with skilllib restore",

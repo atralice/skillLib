@@ -802,7 +802,10 @@ test("doctor --fix converges: a file where a managed copy goes, or a foreign pin
   writeFileSync(copy, "mine");
   let issues = findIssues([project], machineSkills(), new Set(["foo"]));
   expect(issues.find((i) => i.id === `stuck:${project}:foo`)?.detail).toBe(".agents/skills/foo is a file, not a skill folder. Move it out of the way, then run skilllib sync.");
-  expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([]);
+  // The only fix is the link that now reaches a file (restorable); after it, nothing is left to retry.
+  expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([`broken:${project}:.claude/skills/foo`]);
+  expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
+  expect(fixAll(project)).toEqual([]);
   expect(readFileSync(copy, "utf-8")).toBe("mine");
 
   // A copy that's a version your library has, pinned by a hash it doesn't: a choice to pin your newest, not a sync fix.
