@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, notWritable, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -521,14 +521,28 @@ export function findIssues(
     // sync restores a missing folder from your library: the pinned content, found by its hash. A skill the
     // library doesn't have, or a pin from another library, can't come back that way.
     const pins = readManifest(root).skills;
-    const missing = status.filter((s) => s.state === "folder missing" && s.latest !== null);
-    const restorable = missing.filter((s) => versionForHash(s.name, pins[s.name]?.hash ?? "") !== null);
-    for (const s of missing.filter((m) => !restorable.includes(m)))
+    // Something in sync's way (a file where the folder goes, a skills folder that isn't one in the repo): only you
+    // can move it, so it's reported, and no fix is offered that can't succeed.
+    const blockers = new Map(status.filter((s) => s.managed).flatMap((s) => ((b) => (b ? [[s.name, b] as const] : []))(syncBlocker(root, s.name, pins[s.name]))));
+    for (const [name, blocker] of blockers)
+      issues.push({
+        id: `stuck:${root}:${name}`,
+        severity: "problem",
+        title: `${name} in ${where}: sync can't put it back as skilllib.json pins it`,
+        detail: `${blocker}. Move it out of the way, then run skilllib sync.`,
+        at: rows(root, [name]),
+      });
+    const unstuck = status.filter((s) => !blockers.has(s.name));
+    const missing = unstuck.filter((s) => s.state === "folder missing" && s.latest !== null);
+    const knownPin = (s: ProjectSkill) => versionForHash(s.name, pins[s.name]?.hash ?? "") !== null;
+    const restorable = missing.filter(knownPin);
+    // A pin your library has no version of can't come back by sync, whether the folder is gone or holds another version.
+    for (const s of unstuck.filter((m) => (m.state === "folder missing" || m.state === "out of sync") && m.latest !== null && !knownPin(m)))
       issues.push({
         id: `pin:${root}:${s.name}`,
         severity: "problem",
         title: `${s.name}: the version ${where}'s skilllib.json pins isn't in your library`,
-        detail: `The folder is missing, and no version in Your skills has the content it pins (pinned from another library?). Install your newest v${s.latest}; ${where}'s skilllib.json then pins it.`,
+        detail: `${s.state === "folder missing" ? "The folder is missing, and no" : "The copy is another version, and no"} version in Your skills has the content it pins (pinned from another library?). Install your newest v${s.latest}; ${where}'s skilllib.json then pins it.`,
         at: rows(root, [s.name]),
         // It changes what the shared skilllib.json pins: a choice, never run by `doctor --fix`.
         choices: [{ label: `Install your newest (v${s.latest})`, hint: `${where}'s skilllib.json pins it`, run: () => `${s.name}: installed v${track(root, s.name).to}` }],
@@ -549,7 +563,7 @@ export function findIssues(
     }
     // A copy that's another library version than the pin (after a pull, say): sync installs the pinned one. It
     // replaces a copy your library keeps, so nothing is lost; when the copy is committed, git sees it: a choice.
-    const drifted = status.filter((s) => s.state === "out of sync");
+    const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s));
     if (drifted.length) {
       const seen = drifted.some((s) => ["committed", "changed"].includes(gitInfo(root)?.of(relativeTo(root, s.path)) ?? ""));
       const install: Choice = { label: "Install the pinned versions", hint: seen ? "git will see the copies change" : "your library keeps every version", run: () => summarize(where, "synced", syncProject(root)) };
@@ -671,14 +685,17 @@ export function findIssues(
         at: rows(root, []),
       });
     }
-    for (const { s, would } of blindHere.filter(({ would: w }) => w.inTheWay.some((p) => !notFolders.has(p))))
+    for (const { s, would } of blindHere) {
+      const way = would.inTheWay.filter((p) => !notFolders.has(p));
+      if (!way.length || blockers.has(s.name)) continue;
       issues.push({
         id: `intheway:${root}:${s.name}`,
         severity: "problem",
-        title: `${s.name} in ${where}: ${would.inTheWay.join(", ")} ${would.inTheWay.length === 1 ? "is" : "are"} in the way`,
-        detail: `${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))} can't use it here, and skilllib won't link it past what's there. Move ${would.inTheWay.length === 1 ? "it" : "them"} out of the way, then run skilllib link.`,
+        title: `${s.name} in ${where}: ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))} can't use it here`,
+        detail: `${inTheWaySaid(root, way)}. skilllib won't link past what's there: clear the way, then run skilllib link.`,
         at: rows(root, [s.name]),
       });
+    }
     // Only links into folders git tracks would help, and git doesn't share the real copy: those links would be
     // broken for teammates, so skilllib never adds them (see linkEverywhere). Committing it comes first.
     for (const { s, would } of blindHere.filter(({ would: w }) => !w.created.length && !w.blocked.length && w.uncommitted.length))
@@ -702,7 +719,12 @@ export function findIssues(
         const notes = `${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks ${r.blocked.length === 1 ? "it" : "them"})` : ""}${
           r.uncommitted.length ? `; ${r.uncommitted.join(", ")} not linked into folders git tracks (not committed, so teammates would get broken links)` : ""
         }`;
-        if (!r.linked.length) throw new Error(`${where}: nothing linked${notes}`);
+        if (!r.linked.length) {
+          // tidy (fixed just before) may already have put a broken link back: then nothing was left to link.
+          const still = partial.filter((s) => visibilityOf(root, s.name).some((v) => v.paths === 0 && !loadsGlobally(s.name, v.id)));
+          if (!still.length) return `${where}: already usable by ${agentNames(missing)}`;
+          throw new Error(`${where}: nothing linked${notes}`);
+        }
         return `${where}: linked ${plural(r.linked.length, "skill")} for ${agentNames(missing)}${notes}`;
       };
       issues.push({

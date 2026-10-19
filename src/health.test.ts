@@ -786,3 +786,43 @@ test("stopping a global copy only waits for agents that load it: Codex never rea
   expect(runFix(twice.choices![0]!)).toEqual({ ok: true, message: "team-skill no longer loads globally" });
   expect(existsSync(join(tmp, ".claude", "skills", "team-skill"))).toBe(false);
 });
+
+/** doctor --fix: every issue's fix, in order, until none is left (each pass must fix something or stop). */
+const fixAll = (project: string) =>
+  findIssues([project], machineSkills(), new Set(["foo"])).flatMap((i) => (i.fix ? [[i.id, runFix(i.fix)] as const] : []));
+
+test("doctor --fix converges: a file where a managed copy goes, or a foreign pin, gets no fix that can't succeed", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  const copy = join(project, ".agents", "skills", "foo");
+  rmSync(copy, { recursive: true });
+  writeFileSync(copy, "mine");
+  let issues = findIssues([project], machineSkills(), new Set(["foo"]));
+  expect(issues.find((i) => i.id === `stuck:${project}:foo`)?.detail).toBe(".agents/skills/foo is a file, not a skill folder. Move it out of the way, then run skilllib sync.");
+  expect(issues.filter((i) => i.fix).map((i) => i.id)).toEqual([]);
+  expect(readFileSync(copy, "utf-8")).toBe("mine");
+
+  // A copy that's a version your library has, pinned by a hash it doesn't: a choice to pin your newest, not a sync fix.
+  rmSync(copy);
+  skill(copy);
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { foo: { ...readManifest(project).skills.foo, hash: "0000000000000000" } } }));
+  importSkill(copy);
+  issues = findIssues([project], machineSkills(), new Set(["foo"]));
+  expect(issues.some((i) => i.id === `out-of-sync:${project}`)).toBe(false);
+  expect(issues.find((i) => i.id === `pin:${project}:foo`)?.choices?.length).toBe(1);
+});
+
+test("tidy and the link fix both mending one broken link: the second says it's already done", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  rmSync(join(project, ".claude", "skills", "foo"));
+  symlinkSync(join(tmp, "nowhere"), join(project, ".claude", "skills", "foo"));
+  expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
+  expect(fixAll(project)).toEqual([]);
+});

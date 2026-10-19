@@ -1,10 +1,10 @@
 import { basename } from "node:path";
-import { addSkill, importSkill, unloadGlobal, visibilityOf, type Change } from "./library.js";
+import { addSkill, importSkill, inTheWaySaid, unloadGlobal, visibilityOf, type Change } from "./library.js";
 import { harness } from "./harnesses.js";
 import { treeHash } from "./skills.js";
 import { recordOrigin, type SourcedSkill } from "./sources.js";
 
-type GlobalSkill = Pick<SourcedSkill, "name" | "path" | "links">;
+type GlobalSkill = Pick<SourcedSkill, "name" | "path" | "links" | "harnesses">;
 
 /** What moving one global skill into repos did. `changes` is empty when it never got that far. */
 export type GlobalMove = { name: string; moved: boolean; reason?: string; changes: [root: string, change: Change][] };
@@ -47,13 +47,16 @@ export function moveGlobalSkills(
     if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally`, changes };
     // A link kept out (git tracks the folder, or something is in the way), so an agent you use couldn't see it
     // there: keep the global copy until that's sorted. Checked in every repo, whatever add said.
-    const blindIn = changes.filter(([root]) => visibilityOf(root, name).some((v) => v.paths === 0));
-    const blind = blindIn.flatMap(([root]) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 ? [`${harness(v.id).name} in ${label(root)}`] : [])));
+    // Only agents that load a global copy can lose it (Codex never reads ~/.claude/skills), as doctor's "Stop loading it globally".
+    const readers = new Set(copies.flatMap((m) => m.harnesses));
+    const blindAt = (root: string) => visibilityOf(root, name).filter((v) => v.paths === 0 && readers.has(v.id));
+    const blindIn = changes.filter(([root]) => blindAt(root).length);
+    const blind = blindIn.flatMap(([root]) => blindAt(root).map((v) => `${harness(v.id).name} in ${label(root)}`));
     if (blind.length && (!allowBlind || blindIn.some(([, c]) => c.inTheWay?.length))) {
-      const inTheWay = blindIn.flatMap(([root, c]) => (c.inTheWay ?? []).map((p) => `${p} in ${label(root)}`));
+      const inTheWay = blindIn.flatMap(([root, c]) => (c.inTheWay?.length ? [`in ${label(root)}, ${inTheWaySaid(root, c.inTheWay)}`] : []));
       // --allow-tracked helps where git tracks the folder; where git doesn't share the copy, only committing it does.
       const next = inTheWay.length
-        ? `move ${inTheWay.join(", ")} out of the way, then run skilllib link there`
+        ? `clear the way (${inTheWay.join("; ")}), then run skilllib link there`
         : blindIn.some(([, c]) => c.uncommitted?.length)
           ? "commit the skill's copy in the repo, then run skilllib link --allow-tracked there"
           : "re-run with --allow-tracked";

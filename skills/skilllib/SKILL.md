@@ -25,9 +25,11 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 ## Changing (ask first unless the user asked for this exact change)
 
-`add <name>...` · `remove <name>...` (skills skilllib manages, `source: library`) · `update [name...]` · `sync` (installs what `skilllib.json` pins; takes no names). Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, backedUp}]`, which is the whole result: there's no need to check files afterwards. `import <dir>...` (into the library) prints `[{path, name, status}]` and exits 1 if a folder was skipped (`exists`, `no SKILL.md`). `doctor --fix` prints doctor's issues, each fix with `fixed: {ok, message}`.
+`add <name>...` · `remove <name>...` (skills skilllib manages, `source: library`) · `update [name...]` · `sync` (installs what `skilllib.json` pins; takes no names). Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, inTheWay, backedUp}]`, which is the whole result: there's no need to check files afterwards. `import <dir>...` (into the library) prints `[{path, name, status}]` and exits 1 if a folder was skipped (`exists`, `no SKILL.md`). `doctor --fix` prints doctor's issues, each fix with `fixed: {ok, message}`.
 
 - `skipped` + `reason`: nothing changed for that skill, and the command exits 1; tell the user. `--force` overwrites local edits (`backedUp` says where they went; `skilllib restore <name>` brings them back), but only use it with their OK.
+- `action`: `installed`, `updated`, `reset` (edits overwritten), `relinked` (only links were written), `unchanged` (it was already there as asked), `removed`, `skipped`.
+- `inTheWay`: something is where a link goes (a file or another copy, or a skills folder that's a file or links out of the repo), so an agent can't use the skill there, and the command exits 1. Tell the user what's there; once they move it, `skilllib link` adds the link.
 - `blocked`: git tracks that folder. Re-run with `--allow-tracked` (for that command only) only with their OK.
 - `uncommitted`: git tracks that folder but not the skill's real copy, so a link there would break for teammates; `--allow-tracked` doesn't change that. Once the copy is committed, `link --allow-tracked` adds it.
 - Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and the folders in `dirs`.

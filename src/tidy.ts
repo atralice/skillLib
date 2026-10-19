@@ -71,7 +71,7 @@ function namesIn(dirs: string[]): string[] {
 }
 
 /** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. */
-export const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
 /** The repo's own skill folders tidy works in: not one that links out of the repo (.agents/skills -> ~/.agents/skills holds your global skills). */
 export const repoTidyDirs = (root: string) => PROJECT_TIDY_DIRS.filter((d) => notWritable(root, d) === null);
 

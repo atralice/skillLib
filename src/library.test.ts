@@ -865,7 +865,7 @@ test("add never writes through a .claude/skills link that leads out of the repo"
   mkdirSync(outside);
   mkdirSync(join(project, ".claude"));
   symlinkSync(outside, join(project, ".claude", "skills"));
-  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there first" });
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills links out of the repo (to ~/elsewhere), so skilllib doesn't install there" });
   expect(existsSync(join(outside, "alpha"))).toBe(false);
   expect(readManifest(project).skills).toEqual({});
 });
@@ -874,13 +874,13 @@ test("a file where one agent's skills folder goes stops add, link and sync there
   setHarnesses(["claude-code", "codex"]);
   mkdirSync(join(project, ".claude"));
   writeFileSync(join(project, ".claude", "skills"), "x");
-  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there first" });
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude/skills is a file, not a folder, so skilllib doesn't install there" });
   expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
   expect(existsSync(join(project, "skilllib.json"))).toBe(false);
 
   // A pin from before the file was there: sync says why, and never throws.
   writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: latestVersion("alpha")!.hash, dir: ".agents/skills", links: [".claude/skills"] } } }));
-  expect(syncProject(project)).toEqual([expect.objectContaining({ name: "alpha", action: "skipped", reason: ".claude/skills isn't a folder in the repo: move what's there, then sync" })]);
+  expect(syncProject(project)).toEqual([expect.objectContaining({ name: "alpha", action: "skipped", reason: ".claude/skills is a file, not a folder: move it, then sync" })]);
 });
 
 test("update reports the version a pin's hash names, not skilllib.json's number", () => {
@@ -895,7 +895,7 @@ test("update reports the version a pin's hash names, not skilllib.json's number"
 test("a .claude that links out of the repo is never written through, even before .claude/skills exists", () => {
   mkdirSync(join(tmp, "ext"));
   symlinkSync(join(tmp, "ext"), join(project, ".claude"));
-  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude isn't a folder in the repo: move what's there first" });
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude links out of the repo (to ~/ext), so skilllib doesn't install there" });
   expect(existsSync(join(tmp, "ext", "skills"))).toBe(false);
 });
 
@@ -915,7 +915,7 @@ test("what's in the way of a link is said, and keeps a global skill loading; a l
   mkdirSync(join(project, ".claude", "skills"), { recursive: true });
   writeFileSync(join(project, ".claude", "skills", "alpha"), "notes");
   writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
-  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [] }], [project]);
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false });
   expect(mv!.changes[0]![1].inTheWay).toEqual([".claude/skills/alpha"]);
   expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
@@ -946,4 +946,53 @@ test("adding what's already there says unchanged; a description with an unquoted
   mkdirSync(join(tmp, "colon"));
   writeFileSync(join(tmp, "colon", "SKILL.md"), "---\nname: colon\ndescription: Use it when: the user asks\n---\nbody\n");
   expect(readSkillInfo(join(tmp, "colon"))).toEqual({ name: "colon", description: "Use it when: the user asks" });
+});
+
+test("sync never restores a copy whose recorded link it can't put back", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha");
+  rmSync(join(project, ".agents", "skills", "alpha"), { recursive: true });
+  rmSync(local("alpha"));
+  writeFileSync(local("alpha"), "mine");
+  expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude/skills/alpha is in the way of its link: move it, then sync" }]);
+  expect(existsSync(join(project, ".agents", "skills", "alpha"))).toBe(false);
+});
+
+test("a recorded link stays in skilllib.json when something is in its way, and remove leaves another copy's link", () => {
+  setHarnesses(["claude-code", "codex"]);
+  addSkill(project, "alpha");
+  const link = local("alpha");
+  rmSync(link);
+  expect(addSkill(project, "alpha").action).toBe("relinked"); // the link was written again
+  expect(addSkill(project, "alpha").action).toBe("unchanged");
+  rmSync(link);
+  writeSkill(join(project, ".grok", "skills", "alpha"), "team");
+  symlinkSync(join(project, ".grok", "skills", "alpha"), link);
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "unchanged", inTheWay: [".claude/skills/alpha"] });
+  expect(readManifest(project).skills.alpha?.links).toEqual([".claude/skills"]);
+  removeSkill(project, "alpha");
+  expect(readFileSync(join(link, "SKILL.md"), "utf-8")).toContain("team");
+});
+
+test("a package's skills folder that links out of the repo isn't a nested skill", () => {
+  writeSkill(join(tmp, ".claude", "skills", "glob"), "global");
+  mkdirSync(join(project, "packages", "web"), { recursive: true });
+  symlinkSync(join(tmp, ".claude"), join(project, "packages", "web", ".claude"));
+  expect(nestedSkills(project).map((s) => s.name)).toEqual([]);
+});
+
+test("global move only waits for agents that load the global copy", () => {
+  setHarnesses(["claude-code", "codex"]);
+  // The repo already has the copy in .claude/skills; git tracks .agents/skills, so Codex's link is held back.
+  writeSkill(local("alpha"), "v1");
+  writeSkill(join(project, ".agents", "skills", "team"), "team");
+  execFileSync("git", ["init", "-q"], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", ".agents"], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  // Codex can't see it in the repo, but it never read ~/.claude/skills: nothing is lost, so the move goes ahead.
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: true });
+  // Held back: git tracks .agents/skills and doesn't share the .claude copy, so a link there would break for teammates.
+  expect(mv!.changes[0]![1].uncommitted).toEqual([".agents/skills"]);
 });

@@ -14,6 +14,7 @@ import {
   projectStatus,
   projectsUsing,
   removeSkill,
+  inTheWaySaid,
   linkAll,
   syncProject,
   updateProject,
@@ -104,7 +105,7 @@ function colorState(state: SkillState): string {
 function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
   return changes.map((c): ChangeJson => {
-    const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" || c.action === "relinked" ? skills[c.name] : undefined;
+    const dep = c.action !== "removed" && c.action !== "skipped" ? skills[c.name] : undefined;
     return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])] } : c;
   });
 }
@@ -113,11 +114,11 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
 const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length || !!c.inTheWay?.length;
 
 /** The links a change held back where git tracks the folder, and how to add them. */
-function warnHeldLinks(c: Change, where = "here") {
+function warnHeldLinks(root: string, c: Change, where = "here") {
   if (c.blocked?.length) warn(`${c.name}: git tracks ${c.blocked.join(", ")} ${where}, so no link was added there. Re-run with --allow-tracked to add it.`);
   if (c.uncommitted?.length)
     warn(`${c.name}: git tracks ${c.uncommitted.join(", ")} ${where} but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`);
-  if (c.inTheWay?.length) warn(`${c.name}: ${c.inTheWay.join(", ")} ${where} is in the way, so no link was added there. Move it, then run skilllib link.`);
+  if (c.inTheWay?.length) warn(`${c.name}: not linked everywhere ${where}: ${inTheWaySaid(root, c.inTheWay)}. Clear the way, then run skilllib link.`);
 }
 
 /**
@@ -128,7 +129,7 @@ function printChanges(root: string, changes: Change[], args: Args) {
   if (changes.some(incomplete)) process.exitCode = 1;
   if (args.json) return json("changes", withDirs(root, changes));
   for (const c of changes) {
-    warnHeldLinks(c);
+    warnHeldLinks(root, c);
     if (c.action === "skipped") error(`${c.name}: ${c.reason}`);
     else {
       const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : c.action === "unchanged" ? dim("=") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
@@ -789,7 +790,7 @@ export function link(args: Args) {
     else if (!args.all && !res.blocked.length && !res.uncommitted.length && !res.inTheWay.length) success("Every skill here is already usable by all your agents");
     if (res.inTheWay.length) {
       process.exitCode = 1;
-      error(`${label}${res.inTheWay.join(", ")} ${res.inTheWay.length === 1 ? "is" : "are"} in the way (a file, or another copy), so some skills weren't linked there; move ${res.inTheWay.length === 1 ? "it" : "them"}, then link again`);
+      error(`${label}some skills weren't linked everywhere: ${inTheWaySaid(root, res.inTheWay)}. Clear the way, then link again`);
     }
     if (res.blocked.length) {
       // Some agents still can't see some skills: that's a failure for scripts and agents.
@@ -869,7 +870,7 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   for (const m of moves) {
     if (m.moved) success(`${m.name} now loads only in ${m.changes.map(([r]) => basename(r)).join(", ")} (the global copy is in skilllib restore)`);
     else error(`${m.name}: ${m.reason}`);
-    for (const [root, c] of m.changes) warnHeldLinks(c, `in ${basename(root)}`);
+    for (const [root, c] of m.changes) warnHeldLinks(root, c, `in ${basename(root)}`);
   }
   if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
 }
