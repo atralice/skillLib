@@ -420,7 +420,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
       }
       // Package links that will point at nothing (the repo's own copy serves them): found before, said after.
-      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
+      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()], (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
       const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
       if (!r.ok) return failed(`${m.name}: ${r.reason}`);
       if (m.broken) return `Removed the broken link ${m.name}`;
@@ -444,7 +444,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         moveGlobalSkills(names ? sourced.filter((m) => names.includes(m.name)) : sourced, repoRoots, { group, label, allowTrackedHint: "allow links there, then move it again" });
       const said = (results: ReturnType<typeof attempt>) => {
         const moved = results.filter((mv) => mv.moved).map((mv) => mv.name);
-        const summary = moved.length ? `${moved.length === 1 ? moved[0] : `${moved.length} skills`} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
+        // Named (a few) so a group's result says which went, not only how many.
+        const which = moved.length <= 4 ? moved.join(", ") : `${moved.length} skills`;
+        const summary = moved.length ? `${which} now load${moved.length === 1 ? "s" : ""} only in ${repos.join(", ")}` : "";
         // Package links now pointing at nothing (the repo's own copy serves them): said, to remove.
         const left = results.flatMap((mv) => mv.left ?? []);
         return {

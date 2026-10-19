@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { addSkill, blindSaid, blindWithoutGlobal, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
@@ -1248,4 +1248,30 @@ test("a move a repo's top copy allows says which package links it leaves pointin
   rememberProjects([mono, project]);
   const [mv] = moveGlobalSkills([{ name: "foo", path: entry, links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: true, left: ["packages/web/.claude/skills/foo in mono"] });
+});
+
+test("a link spelled in another case to the global copy is lost with it (case-insensitive disks)", () => {
+  if (process.platform !== "darwin") return; // a case-sensitive disk has no FOO for foo
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "foo");
+  writeSkill(entry, "global");
+  const r = join(tmp, "r");
+  mkdirSync(join(r, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".claude", "skills", "FOO"), join(r, ".claude", "skills", "foo"));
+  expect(blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [r]).map((b) => b.id)).toEqual(["claude-code"]);
+});
+
+test("a monorepo package with its own skilllib.json pinning a skill holds it, even with nothing in its folders", () => {
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "g1");
+  writeSkill(entry, "global");
+  mkdirSync(join(tmp, "devskills3"));
+  const mono = join(tmp, "mono");
+  const web5 = join(mono, "packages", "web5");
+  mkdirSync(join(web5, ".claude"), { recursive: true });
+  symlinkSync(join(tmp, "devskills3"), join(web5, ".claude", "skills"));
+  writeFileSync(join(web5, "skilllib.json"), JSON.stringify({ skills: { g1: { version: 1, hash: "x" } } }));
+  const blind = blindWithoutGlobal("g1", [{ path: entry, harnesses: ["claude-code"] }], [mono]);
+  expect(blind.map((b) => [basename(b.root), b.id])).toEqual([["web5", "claude-code"]]);
+  expect(blindSaid("g1", blind)).toContain("put a copy of g1 in ~/devskills3");
 });
