@@ -221,6 +221,7 @@ The app shows the issues `skilllib doctor` reports, from `src/health.ts`: `findI
 | `differs:<root>:<skill>` | Repo | Differs from your library (no library version matches) | ⚠ | yes | Update your library from it (then tracked) · Replace it with your library's. The team's copy (committed, or the repo's own folder): only Update your library from it |
 | `npx:<root>:<skill>` | Repo | From npx skills | ⚠ | yes | Import it into your library (then tracked; committed, only copied) |
 | `not-in-lib:<root>:<skill>` | Repo | No longer in your library | ⚠ | yes | Copy it back into your library |
+| `out-of-sync:<root>` | Repo | Not the pinned version | ⚠ | when the copies are committed | Install the pinned versions |
 | `edited:<root>:<skill>` | Repo | Edited here | ⚠ | yes | Save as a new version in Your skills · Discard the edits |
 | `unused:<root>` | Repo | Unused 30 days (Claude Code) | ⚠ | yes | Remove the skills skilllib installed from *repo* |
 | `unused:library` | Your skills | In no repo, unused 30 days | ⚠ | yes | Delete them from Your skills |

@@ -11,6 +11,7 @@ import {
   librarySkills,
   nestedSkills,
   projectStatus,
+  projectsUsing,
   removeSkill,
   linkAll,
   syncProject,
@@ -756,13 +757,13 @@ export function show(args: Args) {
       path: dir,
       latest: latestVersion(name)?.version ?? null,
       origin: libraryOrigins()[name] ?? "",
-      projects: knownProjects().filter((p) => name in pinsIn(p)).map((p) => basename(p)),
+      projects: projectsUsing(name).map((p) => basename(p)),
       skillMd: readFileSync(join(dir, "SKILL.md"), "utf-8"),
     });
   }
   info(`${name} ${dim(tildify(dir))}`);
   if (description) info(`\n${description}`);
-  const using = knownProjects().filter((p) => name in pinsIn(p));
+  const using = projectsUsing(name);
   info(`\nInstalled in: ${using.map((p) => tildify(p)).join(", ") || "no projects"}`);
 }
 

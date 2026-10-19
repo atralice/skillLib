@@ -29,6 +29,8 @@ export type SkillState =
   | "update available"
   | "edited locally"
   | "edited locally, update available"
+  /** The copy is another version from your library than the one skilllib.json pins (after a pull, say): sync installs the pinned one. */
+  | "out of sync"
   | "folder missing"
   | "not in library"
   | "untracked copy of library skill"
@@ -128,16 +130,20 @@ export function projectStatus(root: string): ProjectSkill[] {
     const path = join(root, location, name);
     const local = treeHash(path);
     const latest = latestVersion(name);
-    const edited = local !== dep.hash;
+    // Edits are content your library has no version of; another known version is just out of sync.
+    const known = local !== null && local !== dep.hash && versionForHash(name, local) !== null;
+    const edited = local !== dep.hash && !known;
     const behind = latest !== null && latest.hash !== dep.hash && latest.version > dep.version;
     const state: SkillState =
       local === null
         ? "folder missing"
         : latest === null
           ? "not in library"
-          : local === latest.hash
+          : local === latest.hash && !known
             ? "ok"
-            : edited && behind
+            : known
+              ? "out of sync"
+              : edited && behind
               ? "edited locally, update available"
               : edited
                 ? "edited locally"
@@ -524,7 +530,8 @@ function syncSkill(root: string, name: string, { force = false, allowTracked = f
   if (local === dep.hash && linksOk) return [];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
-  if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
+  // Another version your library has isn't an edit: sync puts the pinned one back without --force.
+  if (local !== null && local !== dep.hash && versionForHash(name, local) === null && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
   const change = addSkill(root, name, { force: true, version, allowTracked });

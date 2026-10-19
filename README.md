@@ -148,7 +148,7 @@ The list shows everything agents can use in the repo, one row per skill, even wh
 
 | Column | Meaning |
 |---|---|
-| Source | `lib v2`: from your library · `repo`: committed by your team (`.agents/skills` or `.grok/skills`) · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` · `grok` |
+| Source | `lib v2`: from your library · `repo`: the team's (committed to git, or in `.agents/skills` or `.grok/skills`) · `untracked`: only on this machine · `global` (`global ✓`: global on purpose) · `⧉ plugin` · `claude.ai` · `cursor` · `grok` |
 | Uses | Claude Code uses in this repo, last 30 days |
 | Issue | The worst of its issues; the details show them all |
 
@@ -165,6 +165,7 @@ What skilllib flags:
 | **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo. If you keep it global on purpose, remove the repo copies skilllib installed instead |
 | **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
 | **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
+| **Not the pinned version** (the copy is another version from your library, e.g. after a pull) | Install the pinned versions (`sync`; a choice when the copies are committed) |
 | **Out of date** · **Edited here** | Update every out-of-date skill in the repo (or one, from its *Update to vN* action) · save the edits as a new version, or discard them |
 | **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
 | **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |

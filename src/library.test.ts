@@ -794,3 +794,24 @@ test("a skilllib.json whose skills is a list is an error, not pins named 0 and 1
   writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: ["foo", "bar"] }));
   expect(() => readManifest(project)).toThrow("isn't a skilllib.json");
 });
+
+describe("round 13", () => {
+  test("a skilllib.json whose dir or links leave the repo is an error, never followed", () => {
+    for (const dep of [{ dir: "../../.claude/skills" }, { links: ["../../.agents/skills"] }, { dir: "" }]) {
+      writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: latestVersion("alpha")!.hash, ...dep } } }));
+      expect(() => readManifest(project)).toThrow("isn't a skill folder");
+    }
+  });
+
+  test("a copy that's another library version than the pin is out of sync, and sync fixes it without --force", () => {
+    addSkill(project, "alpha"); // v1
+    writeSkill(join(tmp, "src", "alpha"), "v2");
+    importSkill(join(tmp, "src", "alpha"), { force: true });
+    updateProject(project); // the folder and pin go to v2
+    // A pull brings back a v1 pin while the (gitignored) folder keeps v2.
+    writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 1, hash: versionHistory("alpha")[0]!.hash } } }));
+    expect(projectStatus(project).find((s) => s.name === "alpha")?.state).toBe("out of sync");
+    expect(syncProject(project).map((c) => c.action)).toEqual(["updated"]);
+    expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v1");
+  });
+});

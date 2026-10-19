@@ -219,8 +219,7 @@ function usageLines(w: W.World, name: string, width: number, repo: string | null
   ];
 }
 
-/** One row per skill, whatever number of places it loads from. */
-/** `repo`: the repo you're looking from, or null in Global, where everything is machine-wide. */
+/** One row per skill, whatever number of places it loads from. `repo`: the repo you're looking from, or null in Global. */
 function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: number, actions: Option[], repo: string | null): Item {
   const u = copies[0]!;
   const top = W.worst(issues);
