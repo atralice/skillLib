@@ -432,7 +432,13 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
           then: {
             ...ask,
             label: `${ask.label}, then stop loading ${names.length === 1 ? "it" : "them"} globally`,
-            run: (w) => [resultSaid(ask.run(w)), said(attempt(names)).text].filter(Boolean).join("; "),
+            // The retry is what says whether it's done: a skill still global after it is a failure, said as one.
+            run: (w) => {
+              const linked = resultSaid(ask.run(w));
+              const retry = said(attempt(names));
+              const text = [linked, retry.text].filter(Boolean).join("; ");
+              return retry.moved.length === names.length ? text : failed(text);
+            },
           },
         };
       }
@@ -498,13 +504,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const hidden = using.filter((root) => ![...roots.values()].includes(root));
       if (hidden.length) return failed(`${name} is also in ${hidden.map((r) => basename(r)).join(", ")}, which ${hidden.length === 1 ? "is" : "are"} hidden: unhide ${hidden.length === 1 ? "it" : "them"} (Settings) to delete it everywhere`);
       // A repo whose skilllib.json can't be read (a merge conflict) may pin it: deleting it would strand that pin.
-      const unreadable = using.filter((root) => {
-        try {
-          return void readManifest(root), false;
-        } catch {
-          return true;
-        }
-      });
+      const unreadable = readableRoots(using).unreadable.map((u) => u.root);
       if (unreadable.length) return failed(`${name} is pinned in ${unreadable.map((r) => basename(r)).join(", ")}, whose skilllib.json can't be read: fix it first, then delete`);
       // Each copy (edits included) goes to the backups first. One behind a folder that links out of the repo isn't
       // the repo's: remove drops just its pin, touching nothing outside.

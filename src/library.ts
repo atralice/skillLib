@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, posix, relative, sep } from "node:path";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
@@ -173,35 +173,57 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
   }));
 }
 
-/** An agent that would lose a skill in a repo: `folder` is its skills folder there when that's what stops a copy (notWritable). */
+/**
+ * Whether `path` still reaches a skill once the global entries `gone` (their own paths: a link entry, not what it
+ * points to) are moved away, as unloadGlobal does. Each hop of its link chain is checked: one that lands on (or in)
+ * a moved entry is lost; a real folder anywhere else survives. So a link to a dev folder survives even when the
+ * global entry links there too, and a link to the global entry itself doesn't.
+ */
+function survives(path: string, gone: string[]): boolean {
+  // Its parent's real path plus its own name: folder links resolved, the entry itself not followed.
+  const canon = (p: string) => join(realpathOrNull(dirname(p)) ?? dirname(p), basename(p));
+  const moved = gone.map(canon);
+  let at = path;
+  for (let hop = 0; hop < 40; hop++) {
+    const here = canon(at);
+    if (moved.some((m) => here === m || here.startsWith(m + sep))) return false;
+    if (!isLink(here)) return existsSync(join(here, "SKILL.md"));
+    at = resolve(dirname(here), readlinkSync(here));
+  }
+  return false; // a loop of links reaches nothing
+}
+
+/** An agent that would lose a skill in a repo (or one of its packages): `folder` is its skills folder there when that's what stops a copy. */
 export type Blind = { root: string; id: HarnessId; folder: string | null };
 
 /**
- * Who would lose a skill if `copies` (global copies of it) stopped loading: in each of `roots` that holds the skill,
- * each agent that reaches it now (it reads one of those copies, or finds it in one of the repo's folders) but whose
- * every copy there resolves to one of them, or that has none. A link to a dev folder survives; a link (or a skills
- * folder linking out of the repo) to the global copy itself doesn't; a held-back link or a stray file is no copy.
- * doctor's "Stop loading it globally" and global move both ask this, of every repo they know.
+ * Who would lose a skill if `copies` (global copies of it, with the global links to each) stopped loading: in each
+ * of `roots`, each agent that reaches it now (it reads one of those copies, or finds it in the repo's folders) but
+ * none of whose copies there would survive (see survives); a held-back link or a stray file is no copy. A repo that
+ * doesn't hold the skill (no pin, nothing in a folder really its own) loses nothing it asked for. A package's own
+ * skills folder (a monorepo) counts on its own. doctor's "Stop loading it globally" and global move both ask this.
  */
-export function blindWithoutGlobal(name: string, copies: { path: string; harnesses: HarnessId[] }[], roots: string[]): Blind[] {
-  const doomed = new Set(copies.map((c) => realpathOrNull(c.path) ?? c.path));
+export function blindWithoutGlobal(name: string, copies: { path: string; harnesses: HarnessId[]; links?: string[] }[], roots: string[]): Blind[] {
+  const gone = copies.flatMap((c) => [c.path, ...(c.links ?? [])]);
   const readers = new Set(copies.flatMap((c) => c.harnesses));
   const enabled = enabledHarnesses();
   // The repo wants it: pinned (even with its folder missing: its agents run the global copy until sync), or present in
   // a folder that really is the repo's (one linking out to ~/.claude holds every global skill, and none of them).
-  const holds = (root: string) => {
-    return ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
-  };
+  const holds = (root: string) => ALL_PROJECT_DIRS.some((d) => writableDir(root, d) && entryExists(join(root, d, name))) || pinsSkill(root, name);
   const blindIn = (root: string) =>
     enabled.flatMap((id): Blind[] => {
-      const reach = harness(id).projectDirs.filter((d) => existsSync(join(root, d, name, "SKILL.md"))).map((d) => realpathOrNull(join(root, d, name)));
-      const keeps = reach.some((r) => r !== null && !doomed.has(r));
-      if (keeps || (!readers.has(id) && !reach.length)) return [];
+      const reach = harness(id).projectDirs.map((d) => join(root, d, name)).filter((p) => existsSync(join(p, "SKILL.md")));
+      if (reach.some((p) => survives(p, gone)) || (!readers.has(id) && !reach.length)) return [];
       return [{ root, id, folder: harness(id).projectDirs.map((d) => notWritable(root, d)).find((f) => f !== null) ?? null }];
     });
+  // A package's copy loads in its package: one that wouldn't survive leaves the agents reading it there without it.
+  const nestedBlind = (root: string) =>
+    nestedSkills(root, { enabled })
+      .filter((n) => n.name === name && !survives(n.path, gone))
+      .flatMap((n) => n.visibility.filter((v) => v.paths > 0).map((v): Blind => ({ root: join(root, n.location, "..", ".."), id: v.id, folder: null })));
   // One per real folder: a repo named two ways (a link, ~) is still one repo.
   const unique = [...new Map(roots.map((r) => [realpathOrNull(r) ?? r, r])).values()];
-  return unique.filter(holds).flatMap(blindIn);
+  return unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root)]);
 }
 
 /** What blindWithoutGlobal found, and what to do about it: keeping the skill global always works. */
@@ -709,7 +731,9 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
     }
   };
   // Links left alone where their folder isn't the repo's: said, so nobody thinks they're gone.
-  const leftLinks = (recorded.links ?? []).flatMap((d) => ((b) => (b ? [`${blockerSaid(root, b)}: its link there was left alone`] : []))(notWritable(root, d)));
+  const leftLinks = (recorded.links ?? []).flatMap((d) =>
+    ((b) => (b && entryExists(join(root, d, name)) ? [`${blockerSaid(root, b)}: its link there was left alone`] : []))(notWritable(root, d)),
+  );
   const ownStuck = notWritable(root, home);
   if (ownStuck || fileAt(dir)) {
     // Its copy isn't skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
