@@ -688,7 +688,7 @@ describe("round 2: sync, discard, remove and state files never lose a copy", () 
 });
 
 describe("round 3", () => {
-  test("sync points a recorded link that reaches another skill back at its own copy", () => {
+  test("sync never repoints a recorded link that reaches other content, only one to nothing", () => {
     setHarnesses(["claude-code", "codex"]);
     writeSkill(join(tmp, "src", "beta"), "beta");
     importSkill(join(tmp, "src", "beta"));
@@ -697,6 +697,12 @@ describe("round 3", () => {
     const link = join(project, ".claude", "skills", "alpha");
     rmSync(link);
     symlinkSync(join(project, ".agents", "skills", "beta"), link, "junction");
+    // Repointing it would change what Claude Code runs, with nothing backed up: sync says so and leaves it.
+    expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude/skills/alpha links to a different copy: move it, then sync" }]);
+    expect(readFileSync(join(link, "SKILL.md"), "utf-8")).toContain("beta");
+    // A link to nothing is put back.
+    rmSync(link);
+    symlinkSync(join(tmp, "nowhere"), link, "junction");
     expect(syncProject(project).map((c) => [c.name, c.action])).toEqual([["alpha", "relinked"]]);
     expect(readFileSync(join(link, "SKILL.md"), "utf-8")).toContain("v1");
   });

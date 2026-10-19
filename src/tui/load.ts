@@ -215,7 +215,12 @@ export function loadWorld(): World {
       name: names.get(root)!,
       path: root,
       manifest: hasManifest ? (git ? git.of("skilllib.json") : "no git") : "none",
-      skills: status.map((s) => localSkill(root, s, git)),
+      skills: status.map((s) => {
+        const local = localSkill(root, s, git);
+        // A repo's own copy can say something else than your library's or the global one by that name.
+        const own = s.state.includes("missing") ? "" : readSkillInfo(s.path).description;
+        return own && own !== descriptions[s.name] ? { ...local, description: own } : local;
+      }),
       ...loadedHere(root),
     };
   });

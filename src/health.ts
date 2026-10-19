@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blockerSaid, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -676,13 +676,19 @@ export function findIssues(
     const notFolders = new Set<string>();
     for (const dir of new Set(enabledIds.map((id) => harness(id).projectDirs[0]!))) {
       const blocker = notWritable(root, dir);
-      if (!blocker || isDir(join(root, blocker)) || notFolders.has(blocker)) continue;
+      if (!blocker || notFolders.has(blocker)) continue;
       notFolders.add(blocker);
+      const who = agentNames(enabledIds.filter((id) => notWritable(root, harness(id).projectDirs[0]!) === blocker));
+      // A folder that links out of the repo is a setup of yours: its skills load, they just aren't the repo's. Said
+      // once, so a refused add here has its reason; a file or a link to nothing is a problem.
+      const out = isDir(join(root, blocker));
       issues.push({
         id: `notdir:${root}:${blocker}`,
-        severity: "problem",
-        title: `${where}: ${blocker} isn't a folder`,
-        detail: `${agentNames(enabledIds.filter((id) => notWritable(root, harness(id).projectDirs[0]!) === blocker))} can't load skills from ${where}, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
+        severity: out ? "suggestion" : "problem",
+        title: out ? `${where}: ${blocker} links out of the repo` : `${where}: ${blocker} isn't a folder`,
+        detail: out
+          ? `${blockerSaid(root, blocker)}. ${who} load what's there, but skilllib treats it as outside ${where}: it adds, links and removes nothing there.`
+          : `${blockerSaid(root, blocker)}: ${who} can't load skills from ${where}, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
         at: rows(root, []),
       });
     }
@@ -1000,9 +1006,13 @@ export function findIssues(
                 // copy would lose it. An agent that never read the global copy (Codex and ~/.claude/skills) loses nothing.
                 // (A nested copy loads where it lives, in its package: no link at the repo root is needed there.)
                 const readers = new Set(machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses));
-                const blind = copies
-                  .filter((c) => !c.nested)
-                  .flatMap((c) => visibilityOf(c.root, name).flatMap((v) => (v.paths === 0 && readers.has(v.id) ? [`${harness(v.id).name} in ${basename(c.root)}`] : [])));
+                // Every repo that holds it, not only those listed here: where an agent couldn't see the repo's copy (a link git
+                // held back, a file in the way), the global copy was what it ran, so the repo isn't "also" loading it.
+                const holders = new Set([
+                  ...copies.filter((c) => !c.nested).map((c) => c.root),
+                  ...projects.filter((r) => statuses.get(r)!.some((s) => s.name === name && s.state !== "folder missing")),
+                ]);
+                const blind = [...holders].flatMap((root) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 && readers.has(v.id) ? [`${harness(v.id).name} in ${basename(root)}`] : [])));
                 if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; link the repo copies first (skilllib link)`);
                 if (!libraryNames.has(name)) importSkill(movable.path);
                 for (const m of machine.filter((x) => x.name === name && x.movable)) {

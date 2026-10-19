@@ -130,9 +130,18 @@ export function syncBlocker(root: string, name: string, dep: Dependency | undefi
   if (stuck) return blockerSaid(root, stuck);
   const copy = join(root, dir, name);
   if (fileAt(copy)) return `${dir}/${name} is a file, not a skill folder`;
-  // A link there is the recorded one gone astray (sync points it back); anything else is in the way.
-  const taken = (dep.links ?? []).find((d) => entryExists(join(root, d, name)) && !isLink(join(root, d, name)));
-  return taken ? `${taken}/${name} is in the way of its link` : null;
+  // What's at each recorded link's place: a link to nothing (or a file) is put back; a link to a version your
+  // library has is pointed back at the pin. A link to other content isn't: repointing it would change what that
+  // agent runs, with nothing backed up. Anything that isn't a link is in the way.
+  for (const d of dep.links ?? []) {
+    const link = join(root, d, name);
+    if (!entryExists(link)) continue;
+    if (!isLink(link)) return `${d}/${name} is in the way of its link`;
+    if (!isDir(link) || realpathOrNull(link) === realpathOrNull(copy)) continue;
+    const there = treeHash(link);
+    if (there !== dep.hash && versionForHash(name, there ?? "") === null) return `${d}/${name} links to a different copy`;
+  }
+  return null;
 }
 
 /**
@@ -686,7 +695,7 @@ function relinkPinned(root: string, name: string, dep: Dependency): Change {
   for (const dir of dep.links ?? []) {
     const link = join(root, dir, name);
     if (realpathOrNull(link) === realpathOrNull(to)) continue;
-    if (isLink(link)) unlinkSync(link); // a link to nothing, or to another skill
+    if (isLink(link)) unlinkSync(link); // a link to nothing, a file, or another version (syncBlocker checked)
     else if (entryExists(link)) return { name, action: "skipped", reason: `${dir}/${name} is in the way of its link: move it, then sync` };
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);

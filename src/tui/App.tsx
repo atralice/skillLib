@@ -96,9 +96,9 @@ function tag(u: W.Usable): Seg {
   return [u.source, color.muted];
 }
 
-/** Keys that can be part of a name: they filter instead of acting. */
+/** Keys that can be part of a name: they filter instead of acting. A paste (or keys read together) is several at once. */
 function isNameChar(input: string, key: Key): boolean {
-  return !key.ctrl && !key.meta && /^[a-zA-Z0-9._-]$/.test(input);
+  return !key.ctrl && !key.meta && /^[a-zA-Z0-9._-]+$/.test(input);
 }
 
 /** Truncates to leave a one-space gap before the next column. */
@@ -119,7 +119,7 @@ function builder(title: string) {
     issues(issues: W.Issue[]) {
       if (!issues.length) return d.body.push({ segs: [["✓ No issues", color.green]] });
       for (const issue of [...issues].sort(bySeverity)) {
-        d.body.push({ segs: [[`${SEV[issue.severity].icon} `, SEV[issue.severity].color], [issue.title, color.text], [issue.decision ? "  · your call" : "", color.faint]] });
+        d.body.push({ segs: [[`${SEV[issue.severity].icon} `, SEV[issue.severity].color], [issue.title, color.text], [issue.decision && issue.fixes.length ? "  · your call" : "", color.faint]] });
         issue.fixes.forEach((fix, i) => d.body.push({ segs: [], option: d.options.push({ label: fix.label, fix, issue, recommended: !issue.decision && i === 0 }) - 1 }));
       }
       return 0;
@@ -241,7 +241,7 @@ function skillItem(w: W.World, copies: W.Usable[], issues: W.Issue[], nameW: num
     ],
     detail: (width) => {
       const b = builder(u.name);
-      for (const l of wrap(w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
+      for (const l of wrap(u.local?.description || w.descriptions[u.name] || "(no description)", width - 4, 3)) b.line([l, color.muted]);
       b.line();
       if (repo && !u.local) b.line(["Loads in every repo", color.text], [u.source === "global" || u.source === "skilllib" ? "   issues and cleanup live in Global" : "   managed at its source", color.faint]);
       else b.issues(issues);

@@ -771,7 +771,8 @@ test("a repo whose .claude/skills links to your global skills never offers to un
   skill(join(tmp, ".claude", "skills", "gstripe"));
   symlinkSync(join(tmp, ".claude", "skills"), join(project, ".claude", "skills"));
   const ids = findIssues([project], machineSkills(), new Set()).map((i) => i.id);
-  expect(ids.filter((id) => id.includes("gstripe") || id.includes(project))).toEqual([]);
+  // Only why skilllib leaves it alone (so a refused add has its reason): nothing to unload, track or link.
+  expect(ids.filter((id) => id.includes("gstripe") || id.includes(project))).toEqual([`notdir:${project}:.claude/skills`]);
 });
 
 test("stopping a global copy only waits for agents that load it: Codex never read ~/.claude/skills", () => {
@@ -828,4 +829,24 @@ test("tidy and the link fix both mending one broken link: the second says it's a
   symlinkSync(join(tmp, "nowhere"), join(project, ".claude", "skills", "foo"));
   expect(fixAll(project).every(([, r]) => r.ok)).toBe(true);
   expect(fixAll(project)).toEqual([]);
+});
+
+test("stopping a global copy waits for every repo holding the skill, not only the ones it's listed in", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, "src", "alpha"));
+  importSkill(join(tmp, "src", "alpha"));
+  skill(join(tmp, ".claude", "skills", "alpha"));
+  // app1 commits .claude/skills, so add's link there is held back (the copy isn't committed): Claude Code runs the global copy in app1.
+  const app1 = join(tmp, "app1");
+  skill(join(app1, ".claude", "skills", "team"));
+  execFileSync("git", ["init", "-q"], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });
+  expect(addSkill(app1, "alpha").uncommitted).toEqual([".claude/skills"]);
+  const app2 = join(tmp, "app2");
+  addSkill(app2, "alpha");
+  const twice = findIssues([app1, app2], machineSkills(), new Set(["alpha"])).find((i) => i.id === "twice:alpha")!;
+  expect(twice.title).toBe("alpha: in app2 and also loaded globally");
+  expect(runFix(twice.choices![0]!)).toEqual({ ok: false, message: "alpha: Claude Code in app1 only sees the global copy; link the repo copies first (skilllib link)" });
+  expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });

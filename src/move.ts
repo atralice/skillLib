@@ -37,14 +37,17 @@ export function moveGlobalSkills(
     if (new Set(copies.map((m) => treeHash(m.path))).size > 1)
       return { name, moved: false, reason: `your global copies of ${name} differ; nothing moved (keep one first: skilllib tidy --global)`, changes: [] };
     // Your library already has a different skill by that name: moving this one would swap in the other.
-    if (importSkill(copies[0]!.path).status === "exists")
+    const imported = importSkill(copies[0]!.path).status;
+    if (imported === "exists")
       return { name, moved: false, reason: `your library has a different ${name}; nothing moved (update your library from this copy first)`, changes: [] };
     if (group) recordOrigin(name, `group: ${group}`);
     const changes = roots.map((root) => [root, addSkill(root, name, { allowTracked })] as [string, Change]);
     const skipped = changes.filter(([, c]) => c.action === "skipped");
     // add's own hints (--force) aren't move's: say what to do instead.
     const why = (reason = "") => reason.replace(/ \(use --force to replace it\)$/, ": move or remove it there first");
-    if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally`, changes };
+    // The library copy stays (it's only a copy), but say so: the move didn't otherwise happen.
+    const kept = imported === "added" ? `; it's in Your skills now` : "";
+    if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally${kept}`, changes };
     // A link kept out (git tracks the folder, or something is in the way), so an agent you use couldn't see it
     // there: keep the global copy until that's sorted. Checked in every repo, whatever add said.
     // Only agents that load a global copy can lose it (Codex never reads ~/.claude/skills), as doctor's "Stop loading it globally".

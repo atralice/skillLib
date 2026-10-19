@@ -16,6 +16,7 @@ import {
   removeSkill,
   inTheWaySaid,
   linkAll,
+  notWritable,
   syncProject,
   updateProject,
   type Change,
@@ -511,7 +512,8 @@ export function scan(args: Args) {
   const library = new Set(librarySkills().map((s) => s.name));
   // Every agent's folder, and monorepo packages' own folders.
   const skillNames = (root: string) => [
-    ...new Set([...ALL_PROJECT_DIRS.flatMap((d) => skillDirsIn(join(root, d))).map((d) => basename(d)), ...nestedSkills(root).map((s) => s.name)]),
+    // Not a folder that links out of the repo: what's in it isn't the repo's (as in status).
+    ...new Set([...ALL_PROJECT_DIRS.filter((d) => !notWritable(root, d)).flatMap((d) => skillDirsIn(join(root, d))).map((d) => basename(d)), ...nestedSkills(root).map((s) => s.name)]),
   ];
   const withSkills = found.filter((root) => skillNames(root).length > 0);
   info(`Scanned ${roots.map((r) => tildify(r)).join(", ")}: ${found.length} project${found.length === 1 ? "" : "s"}, ${withSkills.length} with skills\n`);
