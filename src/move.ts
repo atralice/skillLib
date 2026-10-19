@@ -1,6 +1,7 @@
 import { basename } from "node:path";
-import { addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, strandedLinks, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
+import { addRefusal, addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, strandedLinks, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
 import { realPath } from "./paths.js";
+import { treeHash } from "./skills.js";
 import { knownProjects } from "./project.js";
 import { harness } from "./harnesses.js";
 import { recordOrigin, type SourcedSkill } from "./sources.js";
@@ -41,9 +42,10 @@ export function moveGlobalSkills(
     // checked before anything changes.
     const elsewhere = blindWithoutGlobal(name, copies, knownProjects().filter((p) => !roots.some((r) => realPath(r) === realPath(p))));
     if (elsewhere.length) return { name, moved: false, reason: `nothing moved: ${blindSaid(name, elsewhere, label)}`, changes: [] };
-    // A repo you're moving it to that can't take it (a skills folder add would use isn't one in the repo): refused
-    // before anything is written, the library included.
-    const cant = roots.flatMap((root) => ((b) => (b ? [`${label(root)} (${b})`] : []))(trackBlocker(root, name)));
+    // A repo you're moving it to that can't take it (a skills folder add would use isn't one in the repo, the team's
+    // committed copy, a different copy already there): refused before anything is written, the library included.
+    const hash = treeHash(copies[0]!.path) ?? "";
+    const cant = roots.flatMap((root) => ((b) => (b ? [`${label(root)} (${b.replace(/ \(use --force to replace (it|the link)\)$/, "")})`] : []))(trackBlocker(root, name) ?? addRefusal(root, name, hash)));
     if (cant.length) return { name, moved: false, reason: `nothing moved: it can't be added to ${cant.join(", ")}`, changes: [] };
     // Your library already has a different skill by that name: moving this one would swap in the other.
     const imported = importSkill(copies[0]!.path).status;

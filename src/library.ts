@@ -317,7 +317,7 @@ export function blindWithoutGlobal(
   // even with no skills folder yet. Its agents read the repo's top folders too, so a copy there serves them.
   const pinnedPackages = (root: string) =>
     packagesOf(root)
-      .filter((sub) => !asked.has(key(sub)) && existsSync(join(sub, MANIFEST_FILE)) && pinsSkill(sub, name))
+      .filter((sub) => existsSync(join(sub, MANIFEST_FILE)) && pinsSkill(sub, name) && !asked.has(key(sub)))
       .flatMap((sub) => blindIn(sub).filter((b) => !keepsTop(root, b.id)));
   // One per repo or package and agent: the entry that says what to change wins.
   const all = unique.flatMap((root) => [...(holds(root) ? blindIn(root) : []), ...nestedBlind(root), ...pinnedPackages(root)]);
@@ -798,6 +798,53 @@ export type Change = {
 };
 
 /**
+ * What add would do in a repo, checked before anything is written: where the copy and its links go and what's there,
+ * or why it refuses (a folder that isn't the repo's, the team's committed copy, edits or a different copy in the way).
+ * `hash` is the content it would install.
+ */
+function addPlan(
+  root: string,
+  name: string,
+  hash: string,
+  force: boolean,
+): { reason: string } | { manifest: ReturnType<typeof readManifest>; recorded: Dependency | undefined; primary: string; wantedLinks: string[]; to: string; local: string | null } {
+  const manifest = readManifest(root);
+  const recorded = manifest.skills[name];
+  const [primary = PROJECT_SKILLS_DIR, ...wantedLinks] = dependencyDirs(root, name, recorded);
+  // A skills folder that's a link out of the repo (to ~/.claude/skills, say) isn't the repo's, and a file there isn't a folder:
+  // never write there, and never install for only some of your agents (global move would then unload a skill one still needs).
+  const stuck = firstStuck(root, [primary, ...wantedLinks]);
+  if (stuck) return { reason: `${blockerSaid(root, stuck)}, so skilllib doesn't install there` };
+  const to = join(root, primary, name);
+  if (fileAt(to)) return { reason: `${primary}/${name} is a file, not a skill folder: move it first` };
+  const local = isLink(to) && !recorded ? null : treeHash(to);
+  const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
+
+  // A copy (or a link) git tracks that skilllib.json doesn't pin is the team's: never replaced or taken over,
+  // even when identical (managed, remove could then delete it), even with --force.
+  if (!recorded && entryExists(to) && isGitTracked(root, `${primary}/${name}`))
+    return { reason: `${primary}/${name} is the repo's own (committed): skilllib doesn't replace it; remove it in the repo first if the library's should win` };
+  // An untracked link here to a different copy (a dev folder) is replaced only with --force, like a real copy.
+  const linked = local === null && !recorded && isLink(to) ? treeHash(to) : null;
+  if (linked !== null && linked !== hash && versionForHash(name, linked) === null && !force)
+    return { reason: `${primary}/${name} links to a different copy (use --force to replace the link)` };
+  if (local !== null && local !== hash && !knownContent && !force) {
+    return {
+      reason: recorded
+        ? "has local edits (use --force to overwrite, or save them to the library first)"
+        : `${primary}/${name} already exists with different content (use --force to replace it)`,
+    };
+  }
+  return { manifest, recorded, primary, wantedLinks, to, local };
+}
+
+/** Why add would refuse to install content `hash` as `name` in a repo (null when it wouldn't), writing nothing: global move asks every repo first. */
+export function addRefusal(root: string, name: string, hash: string): string | null {
+  const plan = addPlan(root, name, hash, false);
+  return "reason" in plan ? plan.reason : null;
+}
+
+/**
  * Installs a library skill version (default: the newest) into the project and
  * records it as a dependency. The real copy goes in the first folder your
  * harnesses need (see installDirs); the others get links. Existing installs
@@ -814,35 +861,9 @@ export function addSkill(
   const target = version === undefined ? latestVersion(name) : getVersion(name, version);
   if (!target) return { name, action: "skipped", reason: version === undefined ? "not in the library" : `version ${version} doesn't exist` };
 
-  const manifest = readManifest(root);
-  const recorded = manifest.skills[name];
-  const [primary = PROJECT_SKILLS_DIR, ...wantedLinks] = dependencyDirs(root, name, recorded);
-  // A skills folder that's a link out of the repo (to ~/.claude/skills, say) isn't the repo's, and a file there isn't a folder:
-  // never write there, and never install for only some of your agents (global move would then unload a skill one still needs).
-  const stuck = firstStuck(root, [primary, ...wantedLinks]);
-  if (stuck) return { name, action: "skipped", reason: `${blockerSaid(root, stuck)}, so skilllib doesn't install there` };
-  const to = join(root, primary, name);
-  if (fileAt(to)) return { name, action: "skipped", reason: `${primary}/${name} is a file, not a skill folder: move it first` };
-  const local = isLink(to) && !recorded ? null : treeHash(to);
-  const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
-
-  // A copy (or a link) git tracks that skilllib.json doesn't pin is the team's: never replaced or taken over,
-  // even when identical (managed, remove could then delete it), even with --force.
-  if (!recorded && entryExists(to) && isGitTracked(root, `${primary}/${name}`))
-    return { name, action: "skipped", reason: `${primary}/${name} is the repo's own (committed): skilllib doesn't replace it; remove it in the repo first if the library's should win` };
-  // An untracked link here to a different copy (a dev folder) is replaced only with --force, like a real copy.
-  const linked = local === null && !recorded && isLink(to) ? treeHash(to) : null;
-  if (linked !== null && linked !== target.hash && versionForHash(name, linked) === null && !force)
-    return { name, action: "skipped", reason: `${primary}/${name} links to a different copy (use --force to replace the link)` };
-  if (local !== null && local !== target.hash && !knownContent && !force) {
-    return {
-      name,
-      action: "skipped",
-      reason: recorded
-        ? "has local edits (use --force to overwrite, or save them to the library first)"
-        : `${primary}/${name} already exists with different content (use --force to replace it)`,
-    };
-  }
+  const plan = addPlan(root, name, target.hash, force);
+  if ("reason" in plan) return { name, action: "skipped", reason: plan.reason };
+  const { manifest, recorded, primary, wantedLinks, to, local } = plan;
 
   let backedUp: string | undefined;
   const copied = local !== target.hash || isLink(to);
@@ -1099,6 +1120,11 @@ export function importSkill(dir: string, { force = false } = {}): { name: string
   mkdirSync(libraryDir(), { recursive: true });
   // A new version keeps where the skill first came from (saving a repo's edits doesn't make it "from that repo").
   const origin = existing !== null && libraryOrigins()[name] ? null : originFor(dir);
+  // What's there now becomes a version first (an edit made in the library itself, say): replacing it loses nothing.
+  if (existing !== null) {
+    forgetLatest(name); // read the library as it is now, not as this process last saw it
+    latestVersion(name);
+  }
   copySkill(dir, to);
   if (origin) recordOrigin(name, origin);
   forgetLatest(name);

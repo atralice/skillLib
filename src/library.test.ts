@@ -6,7 +6,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { addSkill, blindSaid, blindWithoutGlobal, createSkill, strandedLinks, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
-import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
+import { forgetLatest, latestVersion, versionDir, versionHistory } from "./versions.js";
 import { copySkill, readSkillInfo, treeHash } from "./skills.js";
 import { readManifest, rememberProjects } from "./project.js";
 import { setHarnesses } from "./config.js";
@@ -1376,4 +1376,23 @@ test("a link a move leaves is said once, though a repo and its opened package ar
   symlinkSync(entry, join(web7, ".claude", "skills", "g1"));
   writeFileSync(join(web7, "skilllib.json"), "{}\n");
   expect(strandedLinks("g1", [{ path: entry, links: [] }], [mono, web7])).toEqual(["packages/web7/.claude/skills/g1 in mono"]);
+});
+
+test("import --force keeps what your library had as a version first, even an edit made in the library itself", () => {
+  addSkill(project, "alpha");
+  writeSkill(lib("alpha"), "edited in the library");
+  writeSkill(local("alpha"), "edited in the repo");
+  importSkill(local("alpha"), { force: true });
+  const bodies = versionHistory("alpha").map((v) => readFileSync(join(versionDir("alpha", v.version), "SKILL.md"), "utf-8"));
+  expect(bodies.some((b) => b.includes("edited in the library"))).toBe(true);
+});
+
+test("global move refuses before writing when a later repo already has a different copy", () => {
+  writeSkill(join(tmp, ".claude", "skills", "gm"), "global");
+  const b = join(tmp, "b");
+  writeSkill(join(b, ".claude", "skills", "gm"), "b's own");
+  const [mv] = moveGlobalSkills([{ name: "gm", path: join(tmp, ".claude", "skills", "gm"), links: [], harnesses: ["claude-code"] }], [project, b]);
+  expect(mv).toMatchObject({ moved: false, changes: [] });
+  expect(mv!.reason).toStartWith("nothing moved: it can't be added to b (.claude/skills/gm already exists with different content");
+  expect(readManifest(project).skills).toEqual({});
 });

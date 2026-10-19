@@ -180,6 +180,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
         } else steps.push(needed ? { kind: "link", path: e.path, target: primary.path } : { kind: "unlink", path: e.path });
       } else {
         const differs = e.hash !== primary.hash ? { differs: true as const } : {};
+        // A real copy the repo commits is the team's: never removed (a teammate's agent may read that folder).
+        if (!needed && ["committed", "changed"].includes((git ??= gitInfo(root))?.of(rel(e.path)) ?? "")) continue;
         steps.push(needed ? { kind: "replace", path: e.path, target: primary.path, ...differs } : { kind: "remove", path: e.path, ...differs });
       }
     }
