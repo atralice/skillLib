@@ -149,7 +149,10 @@ export type DoctorJson = {
   detail: string;
   /** A safe repair; `doctor --fix` runs it. */
   fix?: string;
-  /** Fixes that need a decision: `skilllib apply <id> <n>` runs the nth (from 1). */
+  /**
+   * Fixes that need a decision: `skilllib apply <id> <n>` runs the nth (from 1). An issue that spans repos can list
+   * other choices inside one (status there), and then apply takes only the label: `skilllib apply <id> "<label>"`.
+   */
   choices?: string[];
   /** With --fix: what running `fix` did. */
   fixed?: { ok: boolean; message: string };

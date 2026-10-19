@@ -115,9 +115,11 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
 
 /** Folders in a repo holding another real copy of a skill, besides `dir` (e.g. ".agents/skills"). */
 function otherCopies(root: string, name: string, dir: string): string[] {
+  // The same folder seen through a skills folder that links to another (.claude/skills → .agents/skills) is no other copy.
+  const self = realPath(join(root, dir, name));
   return foldersOf(root, name)
-    .real.map((d) => relativeTo(root, d))
-    .filter((d) => d !== dir);
+    .real.filter((d) => realPath(join(d, name)) !== self)
+    .map((d) => relativeTo(root, d));
 }
 
 /** When a folder appeared, to the minute ("2026-09-25 20:55"). */
