@@ -184,12 +184,6 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
 }
 
 /**
- * Whether `path` still reaches a skill once the global entries `gone` (their own paths: a link entry, not what it
- * points to) are moved away, as unloadGlobal does. Each hop of its link chain is checked: one that lands on (or in)
- * a moved entry is lost; a real folder anywhere else survives. So a link to a dev folder survives even when the
- * global entry links there too, and a link to the global entry itself doesn't.
- */
-/**
  * A real path as the file system spells it: Node's JS realpath keeps the case you asked with on a case-insensitive
  * disk (macOS), and the short names Windows can hand out; the native one gives the one true spelling.
  */
@@ -201,6 +195,12 @@ function realNative(p: string): string | null {
   }
 }
 
+/**
+ * Whether `path` still reaches a skill once the global entries `gone` (their own paths: a link entry, not what it
+ * points to) are moved away, as unloadGlobal does. Each hop of its link chain is checked: one that lands on (or in)
+ * a moved entry is lost; a real folder anywhere else survives. So a link to a dev folder survives even when the
+ * global entry links there too, and a link to the global entry itself doesn't.
+ */
 export function survives(path: string, gone: string[]): boolean {
   return lostAt(path, gone) === null;
 }
@@ -214,7 +214,18 @@ function lostAt(path: string, gone: string[]): string | null {
   // can read back as \\?\C:\... and paths don't care about case: both are evened out before comparing.
   // Compared in lower case on Windows; said as it is.
   const key = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
-  const canon = (p: string) => join(realNative(dirname(p)) ?? dirname(p), basename(p));
+  // The leaf too, as the disk spells it (a case-insensitive disk takes FOO for foo): not followed, only spelled.
+  const canon = (p: string) => {
+    const dir = realNative(dirname(p)) ?? dirname(p);
+    const leaf = basename(p);
+    if (process.platform === "linux") return join(dir, leaf);
+    try {
+      const names = readdirSync(dir);
+      return join(dir, names.includes(leaf) ? leaf : (names.find((n) => n.toLowerCase() === leaf.toLowerCase()) ?? leaf));
+    } catch {
+      return join(dir, leaf);
+    }
+  };
   const moved = gone.map((g) => key(canon(g)));
   let at = path;
   let last: string | null = null;
@@ -525,8 +536,26 @@ export type NestedEntry = { name: string; path: string; location: string; skills
 
 /** nestedSkills' walk, without comparing anything to the library: what blindWithoutGlobal needs, cheaply. */
 export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnesses() }: { depth?: number; enabled?: HarnessId[] } = {}): NestedEntry[] {
-  const found: NestedEntry[] = [];
   const top = realpathOrNull(root) ?? root;
+  const found = packageSkillFolders(root, depth).flatMap(({ sub, skillsDir, location }) =>
+    skillDirsIn(join(sub, skillsDir)).flatMap((path): NestedEntry[] => {
+      // A link to a skill elsewhere in the repo is that skill, already reported.
+      if (isLink(path) && (realpathOrNull(path) ?? "").startsWith(top + sep)) return [];
+      const name = basename(path);
+      // Its own folder's readers, plus any that reach it through a link in another of the package's folders.
+      const readers = NESTED_READERS.filter(([d]) => realpathOrNull(join(sub, d, name)) === realpathOrNull(path)).flatMap(([, r]) => r);
+      return [{ name, path, location, skillsDir, readers: enabled.filter((id) => readers.includes(id)) }];
+    }),
+  );
+  return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
+}
+
+/**
+ * The skills folders of a repo's packages (a monorepo) that are the repo's choice (see reposChoice), down to `depth`
+ * folders: `location` relative to the repo. Not below another repo (a .git), node_modules and the like.
+ */
+export function packageSkillFolders(root: string, depth = 3): { sub: string; skillsDir: string; location: string }[] {
+  const found: { sub: string; skillsDir: string; location: string }[] = [];
   const walk = (dir: string, left: number) => {
     let subs: string[] = [];
     try {
@@ -542,21 +571,13 @@ export function nestedEntries(root: string, { depth = 3, enabled = enabledHarnes
         if (!existsSync(join(sub, skillsDir))) continue;
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
         // A package's skills folder that links to a global one (~/.claude, say) just shows the global skills.
-        if (!reposChoice(root, location)) continue;
-        for (const path of skillDirsIn(join(sub, skillsDir))) {
-          // A link to a skill elsewhere in the repo is that skill, already reported.
-          if (isLink(path) && (realpathOrNull(path) ?? "").startsWith(top + sep)) continue;
-          const name = basename(path);
-          // Its own folder's readers, plus any that reach it through a link in another of the package's folders.
-          const readers = NESTED_READERS.filter(([d]) => realpathOrNull(join(sub, d, name)) === realpathOrNull(path)).flatMap(([, r]) => r);
-          found.push({ name, path, location, skillsDir, readers: enabled.filter((id) => readers.includes(id)) });
-        }
+        if (reposChoice(root, location)) found.push({ sub, skillsDir, location });
       }
       if (left > 1) walk(sub, left - 1);
     }
   };
   walk(root, depth);
-  return found.sort((a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name));
+  return found;
 }
 
 /**

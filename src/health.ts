@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -156,14 +156,16 @@ function brokenLinksIn(root: string): Issue[] {
   const pins = readManifest(root).skills;
   const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
   let git: ReturnType<typeof gitInfo> | undefined;
-  return ALL_PROJECT_DIRS.flatMap((dir) => {
+  // The repo's top folders, and its packages' own (a monorepo): a global copy moved away can leave a link to nothing there.
+  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageSkillFolders(root).map((f) => ({ dir: f.location, top: false }))];
+  return folders.flatMap(({ dir, top }) => {
     const folder = join(root, dir);
     // A folder that links out of the repo isn't the repo's: its broken links are reported where it really is.
     if (!isDir(folder) || notWritable(root, dir)) return [];
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
       // A link that doesn't reach a folder (nothing, or a file) is broken for every agent, on every platform.
-      if (!isLink(path) || isDir(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name)) || syncMends(dir, name)) return [];
+      if (!isLink(path) || isDir(path) || (top && ((dir !== GROK_SKILLS_DIR && hasCopy(name)) || syncMends(dir, name)))) return [];
       const remove: Choice = {
         label: "Remove the link",
         hint: "restorable with skilllib restore",
@@ -600,7 +602,11 @@ export function findIssues(
         id: `out-of-sync:${root}`,
         severity: "suggestion",
         title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
-        detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.`,
+        detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.${
+          yours
+            ? ` ${untrackable(drifted.find((s) => untrackable(s))!)}, so skilllib can't re-pin here: a copy may be edits you copied into Your skills on purpose, and stays unless you choose this.`
+            : ""
+        }`,
         at: rows(root, drifted.map((s) => s.name)),
         ...(seen || yours ? { choices: [install] } : { fix: install }),
       });

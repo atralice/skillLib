@@ -980,3 +980,20 @@ test("Install the pinned versions syncs only the skills it lists, and is a choic
   expect(drift.fix).toBeUndefined(); // never automatic there
   expect(drift.choices!.map((c) => c.label)).toEqual(["Install the pinned versions"]);
 });
+
+test("a package's link left pointing at nothing is reported, like one at the repo's top", () => {
+  const mono = join(tmp, "mono");
+  mkdirSync(join(mono, "packages", "web", ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "gone"), join(mono, "packages", "web", ".claude", "skills", "foo"));
+  const broken = findIssues([mono], machineSkills(), new Set()).find((i) => i.id === `broken:${mono}:packages/web/.claude/skills/foo`)!;
+  expect(broken.title).toBe("foo: broken link in mono/packages/web/.claude/skills");
+  expect(runFix(broken.fix!).ok).toBe(true);
+  expect(isLinkAt(join(mono, "packages", "web", ".claude", "skills", "foo"))).toBe(false);
+});
+const isLinkAt = (p: string) => {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};

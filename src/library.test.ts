@@ -1249,3 +1249,14 @@ test("a move a repo's top copy allows says which package links it leaves pointin
   const [mv] = moveGlobalSkills([{ name: "foo", path: entry, links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: true, left: ["packages/web/.claude/skills/foo in mono"] });
 });
+
+test("a link spelled in another case to the global copy is lost with it (case-insensitive disks)", () => {
+  if (process.platform !== "darwin") return; // a case-sensitive disk has no FOO for foo
+  setHarnesses(["claude-code"]);
+  const entry = join(tmp, ".claude", "skills", "foo");
+  writeSkill(entry, "global");
+  const r = join(tmp, "r");
+  mkdirSync(join(r, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".claude", "skills", "FOO"), join(r, ".claude", "skills", "foo"));
+  expect(blindWithoutGlobal("foo", [{ path: entry, harnesses: ["claude-code"] }], [r]).map((b) => b.id)).toEqual(["claude-code"]);
+});

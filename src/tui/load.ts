@@ -420,7 +420,7 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
       }
       // Package links that will point at nothing (the repo's own copy serves them): found before, said after.
-      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
+      const left = m.broken ? [] : strandedLinks(m.name, [{ path: m.path, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()], (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
       const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
       if (!r.ok) return failed(`${m.name}: ${r.reason}`);
       if (m.broken) return `Removed the broken link ${m.name}`;
