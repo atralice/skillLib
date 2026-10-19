@@ -402,7 +402,7 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const fixes = [
     ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),
     // A package's link to the global copy: add or link at the repo's top doesn't touch it.
-    ...(links.length ? [`give ${links.join(", ")} a copy of its own instead of a link to the global one`] : []),
+    ...(links.length ? [`give ${links.join(", ")} ${links.length === 1 ? "a copy of its own" : "each a copy of its own"} instead of a link to the global one`] : []),
     ...shared,
     // Named, so with other advice beside it, it's clear which repo (or package) this is about.
     ...(repos.length
