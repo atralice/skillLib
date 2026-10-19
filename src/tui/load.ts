@@ -28,6 +28,7 @@ import {
   librarySkillDir,
   projectsUsing,
   removeUntracked,
+  syncBlocker,
   restoreBackup,
   updateProject,
   visibilityOf,
@@ -369,7 +370,8 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
   };
   /** Local edits in the way: offer to go ahead anyway (`lost`: the edits aren't backed up). */
   const orForce = (c: Change, repo: string, label: string, force: () => Change): Result =>
-    c.action === "skipped" && c.reason?.includes("edits")
+    // Whatever --force would get past (edits, a pin from another library, another copy in the way): offer it here.
+    c.action === "skipped" && !!c.reason?.includes("--force")
       ? {
           message: `${c.name} in ${repo} has local edits`,
           then: { label, preview: `Your edits to ${c.name} in ${repo} go to Settings › Backups.`, run: () => result(force(), repo) },
@@ -509,12 +511,14 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       const using = projectsUsing(name);
       const hidden = using.filter((root) => ![...roots.values()].includes(root));
       if (hidden.length) return failed(`${name} is also in ${hidden.map((r) => basename(r)).join(", ")}, which ${hidden.length === 1 ? "is" : "are"} hidden: unhide ${hidden.length === 1 ? "it" : "them"} (Settings) to delete it everywhere`);
-      // Each copy (edits included) goes to the backups first.
+      // Each copy (edits included) goes to the backups first. One behind a folder that links out of the repo isn't
+      // the repo's: remove drops just its pin, touching nothing outside.
       const from: string[] = [];
       for (const root of using) {
         const s = projectStatus(root).find((x) => x.name === name && x.managed);
-        if (s && existsSync(s.path)) removeUntracked(root, name, s.path);
-        removeSkill(root, name, { force: true });
+        if (s && existsSync(s.path) && !syncBlocker(root, name)?.outside) removeUntracked(root, name, s.path);
+        const c = removeSkill(root, name, { force: true });
+        if (c.action === "skipped") return failed(`${name}: ${c.reason}${from.length ? `; removed from ${from.join(", ")} so far` : ""}`);
         from.push([...roots].find(([, r]) => r === root)?.[0] ?? basename(root));
       }
       const r = deleteLibrarySkill(name);

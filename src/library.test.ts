@@ -943,7 +943,9 @@ test("a file where a managed skill's folder goes is never deleted, and status do
   expect(() => projectStatus(project)).not.toThrow();
   expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude/skills/alpha is a file, not a skill folder: move it, then sync" }]);
   expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "skipped" });
-  expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
+  // remove drops just the pin, touching no file.
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed", reason: ".claude/skills/alpha is a file, not a skill folder: only its pin was removed, nothing there was touched" });
+  expect(readManifest(project).skills).toEqual({});
   expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
 });
 
@@ -1037,4 +1039,27 @@ test("a link to a file where a skill's link goes is broken, so add replaces it o
   symlinkSync(join(project, "README"), local("alpha"));
   expect(addSkill(project, "alpha").inTheWay).toBeUndefined();
   expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v1");
+});
+
+test("a pin under a .claude that links out of the repo: sync says why (exit 1), remove drops just the pin", () => {
+  addSkill(project, "alpha");
+  mkdirSync(join(tmp, "ext"));
+  execFileSync("mv", [join(project, ".claude"), join(tmp, "ext", "claude")]);
+  symlinkSync(join(tmp, "ext", "claude"), join(project, ".claude"));
+  expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude links out of the repo (to ~/ext/claude): skilllib only installs inside the repo" }]);
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "removed" });
+  expect(readManifest(project).skills).toEqual({});
+  expect(existsSync(join(tmp, "ext", "claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+});
+
+test("global move counts a repo that reaches the global copy through a link as still needing it", () => {
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  const r = join(tmp, "r");
+  mkdirSync(join(r, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".claude", "skills", "alpha"), join(r, ".claude", "skills", "alpha"));
+  rememberProjects([r, project]);
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: false, changes: [] });
+  expect(mv!.reason).toStartWith("Claude Code in r only sees the global copy");
+  expect(existsSync(join(r, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
 });

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "../config.js";
-import { importSkill, isLink, listBackups } from "../library.js";
+import { addSkill, importSkill, isLink, listBackups } from "../library.js";
 import { rememberProjects } from "../project.js";
 import { recordOrigin } from "../sources.js";
 import { forgetLatest } from "../versions.js";
@@ -695,4 +695,31 @@ test("opening the app in a repo remembers it, so it's still listed when opened f
   expect(loadWorld().projects.map((p) => p.name)).toContain("other");
   process.chdir(tmp);
   expect(loadWorld().projects.map((p) => p.name)).toContain("other");
+});
+
+test("Delete from your library goes through every repo, even one whose pin sits behind a folder outside it", () => {
+  writeSkill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  const b = join(tmp, "b");
+  mkdirSync(join(b, ".git"), { recursive: true });
+  rememberProjects([b]);
+  addSkill(repo, "foo");
+  addSkill(b, "foo");
+  mkdirSync(join(tmp, "ext"));
+  execFileSync("mv", [join(b, ".claude"), join(tmp, "ext", "claude")]);
+  symlinkSync(join(tmp, "ext", "claude"), join(b, ".claude"));
+  const w = loadWorld();
+  expect(said(w.ops.deleteLibrary("foo"))).toStartWith("Deleted foo from your library and from app, b");
+  expect(existsSync(join(repo, ".claude", "skills", "foo"))).toBe(false);
+  expect(existsSync(join(tmp, "ext", "claude", "skills", "foo", "SKILL.md"))).toBe(true); // outside b: untouched
+});
+
+test("removing a pin from another library whose copy differs offers Remove it anyway", () => {
+  writeSkill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(repo, "foo");
+  writeSkill(join(repo, ".claude", "skills", "foo"), "edited");
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: { foo: { version: 1, hash: "deadbeefdeadbeef" } } }));
+  const r = loadWorld().ops.remove("app", "foo");
+  expect(typeof r !== "string" && "then" in r).toBe(true);
 });
