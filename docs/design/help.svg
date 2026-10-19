@@ -101,7 +101,7 @@
 <text x="18.0" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="339.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  e2e-tests            </text>
 <text x="245.6" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
-<text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="640.7" lengthAdjust="spacingAndGlyphs">Usage counts Claude Code sessions only: other agents don't record skill use.</text>
+<text x="270.9" y="339.0" fill="#8a93a6" xml:space="preserve" textLength="708.1" lengthAdjust="spacingAndGlyphs">Usage counts Claude Code sessions only: skilllib reads no other agent's transcripts.</text>
 <text x="1004.3" y="339.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="358.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="358.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  infra                </text>
@@ -149,5 +149,5 @@
 <text x="245.6" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">││</text>
 <text x="1004.3" y="567.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="586.0" fill="#8b9dff" xml:space="preserve" textLength="994.7" lengthAdjust="spacingAndGlyphs">╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯</text>
-<text x="886.3" y="605.0" fill="#5a6275" xml:space="preserve" textLength="126.4" lengthAdjust="spacingAndGlyphs">any key closes </text>
+<text x="869.4" y="605.0" fill="#5a6275" xml:space="preserve" textLength="143.3" lengthAdjust="spacingAndGlyphs">  any key closes </text>
 </svg>

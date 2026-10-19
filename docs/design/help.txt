@@ -13,7 +13,7 @@
 │     cli-tools            ││ auto-fixed                                                                             │
 │     dotfiles             ││ Source: lib = from your library · repo = committed by the team · untracked = only on   │
 │     design-system        ││ this machine                                                                           │
-│     e2e-tests            ││ Usage counts Claude Code sessions only: other agents don't record skill use.           │
+│     e2e-tests            ││ Usage counts Claude Code sessions only: skilllib reads no other agent's transcripts.   │
 │     infra                ││                                                                                        │
 │     landing              ││                                                                                        │
 │     marketing-site       ││                                                                                        │

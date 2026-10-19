@@ -7,7 +7,7 @@ import { gitInfo, relativeTo } from "./git.js";
 import { pinsIn, projectHere } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
-import { findIssues, type Issue } from "./health.js";
+import { detailWithGit, findIssues, type Issue } from "./health.js";
 import type { ListJson, StatusGlobalGroup, StatusIssue, StatusJson, StatusSkillGroup } from "./json.js";
 
 /** Groups items by a key, collecting names. */
@@ -98,7 +98,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
   for (const i of statusIssues(root, machine)) {
     const choices = i.choices?.map((c) => c.label);
     const key = `${i.detail}\0${i.fix?.label ?? ""}\0${choices?.join() ?? ""}`;
-    const issue = issues.get(key) ?? { problems: [], ids: [], detail: i.detail, fix: i.fix?.label, choices };
+    const issue = issues.get(key) ?? { problems: [], ids: [], detail: detailWithGit(i), fix: i.fix?.label, choices };
     issue.problems.push(i.title);
     issue.ids.push(i.id);
     issues.set(key, issue);

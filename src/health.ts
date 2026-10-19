@@ -14,6 +14,15 @@ import { versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
+/**
+ * An issue's detail as --json shows it: plus what a fix or choice says about git (its hint), so an agent that
+ * reads labels and detail only still sees which choice changes committed files.
+ */
+export function detailWithGit(issue: { detail: string; fix?: Choice; choices?: Choice[] }): string {
+  const notes = [...(issue.fix ? [issue.fix] : []), ...(issue.choices ?? [])].filter((c) => c.hint && /\bgit\b|committed/.test(c.hint)).map((c) => `"${c.label}": ${c.hint}.`);
+  return notes.length ? `${issue.detail} ${notes.join(" ")}` : issue.detail;
+}
+
 /** One way to fix an issue; returns a message describing what happened, or throws if it failed. */
 export type Choice = { label: string; hint?: string; run: () => string };
 

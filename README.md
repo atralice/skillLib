@@ -380,7 +380,7 @@ skilllib status                 this repo's skills, which agents load them, and 
 skilllib add | remove <name>    change this repo's skills
 skilllib sync [--all]           install exactly the pinned versions
 skilllib outdated [--all]       skills with a newer version
-skilllib update [name...]       move to the newest versions
+skilllib update [name...|--all] move to the newest versions (--all: every project)
 skilllib link [--all]           make every skill here usable by all your agents
 skilllib tidy [--all|--global]  one real copy per skill, plus only the links your agents need
 
