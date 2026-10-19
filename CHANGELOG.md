@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.5](https://github.com/atralice/skillLib/compare/v1.11.4...v1.11.5) (2026-10-19)
+
+
+### Bug Fixes
+
+* final regression findings (conflict choices, odd transcripts, replace plugin) ([#110](https://github.com/atralice/skillLib/issues/110)) ([483c7d0](https://github.com/atralice/skillLib/commit/483c7d0b5921b81f22a72748a4458d981d35efb8))
+* post-release code review (usage in the app, move's --force hint, cleanup) ([#108](https://github.com/atralice/skillLib/issues/108)) ([994e158](https://github.com/atralice/skillLib/commit/994e1586a30a337c6ddf9075039a25fcf1b313d3))
+
 ## [1.11.4](https://github.com/atralice/skillLib/compare/v1.11.3...v1.11.4) (2026-10-19)
 
 A reliability release from many rounds of review. Nothing new to learn; skilllib is now much harder to make lose a skill, leave a change half done, or write somewhere it shouldn't.
