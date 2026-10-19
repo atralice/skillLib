@@ -157,24 +157,33 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
   const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
   let git: ReturnType<typeof gitInfo> | undefined;
   // The repo's top folders, and its packages' own (a monorepo): a global copy moved away can leave a link to nothing there.
-  // A package with its own skilllib.json (or inside one) is a project of its own: one you've opened reports its links in
-  // its own scan, with its pins. One you haven't is reported here, never removed by itself: its skilllib.json may record
-  // the link (a sync there mends it).
-  const projectOf = (sub: string) => {
-    for (let d = sub; d.startsWith(root + sep); d = dirname(d)) if (existsSync(join(d, MANIFEST_FILE))) return d;
-    return null;
+  // Each folder by where it really is (a folder can be a link to another): one folder once, the top's first. Inside a
+  // project you've opened (any skilllib.json folder between it and the repo's top), that project's scan reports it.
+  // Otherwise here, never removed by itself when it's in a package or in a project of its own: asked first.
+  const realRoot = realNative(root) ?? root;
+  const ownerOf = (real: string) => {
+    let nearest: string | null = null;
+    for (let d = dirname(dirname(real)); d.startsWith(realRoot + sep); d = dirname(d)) {
+      if (!existsSync(join(d, MANIFEST_FILE))) continue;
+      if (opened.has(d)) return { opened: true, own: d };
+      nearest ??= d;
+    }
+    return { opened: false, own: nearest };
   };
-  const packages = packageSkillFolders(root).flatMap((f) => {
-    const own = projectOf(f.sub);
-    return own && opened.has(realNative(own) ?? own) ? [] : [{ dir: f.location, top: false, own }];
-  });
-  // One per real folder, the top's first: a package folder that links to the top one (or another) is that same folder.
   const seen = new Set<string>();
-  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true, own: null as string | null })), ...packages].filter(({ dir }) => {
+  // A package's real folder before one that's only a link to it: the link is named where it really is.
+  const aliased = (dir: string) => (realNative(join(root, dir)) ?? "") !== join(realRoot, dir);
+  const packageFolders = packageSkillFolders(root)
+    .map((f) => ({ dir: f.location, top: false }))
+    .sort((a, b) => Number(aliased(a.dir)) - Number(aliased(b.dir)));
+  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageFolders].flatMap(({ dir, top }) => {
     const real = realNative(join(root, dir)) ?? join(root, dir);
-    return seen.has(real) ? false : (seen.add(real), true);
+    if (seen.has(real)) return [];
+    seen.add(real);
+    const owner = ownerOf(real);
+    return owner.opened ? [] : [{ dir, top: top && !owner.own, own: owner.own, real }];
   });
-  return folders.flatMap(({ dir, top, own }) => {
+  return folders.flatMap(({ dir, top, own, real }) => {
     const folder = join(root, dir);
     // A folder that links out of the repo isn't the repo's: its broken links are reported where it really is.
     if (!isDir(folder) || notWritable(root, dir)) return [];
@@ -191,12 +200,15 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
           return `Removed the broken link ${dir}/${name} in ${where} (restorable with skilllib restore)`;
         },
       };
-      // Package folders too: a link committed there is the team's to remove, asked first.
-      git ??= gitInfo(root, packages.map((p) => p.dir));
-      // Asked where the link really is: a folder reached through another link isn't what git lists.
-      const realPlace = relative(realNative(root) ?? root, join(realNative(folder) ?? folder, name)).split(sep).join("/");
-      const tracked = ["committed", "changed"].includes(git?.of(realPlace) ?? "") || ["committed", "changed"].includes(git?.of(relativeTo(root, path)) ?? "");
-      const pinnedThere = own ? ` ${relativeTo(root, own)} has its own skilllib.json: if it records this link, skilllib sync there puts it back instead.` : "";
+      // Asked where the link really is (git lists nothing through a folder that's a link), package folders included.
+      const placeOf = (p: string) => relative(realRoot, p).split(sep).join("/");
+      git ??= gitInfo(root, folders.filter((f) => !f.top).map((f) => placeOf(f.real)));
+      const tracked = ["committed", "changed"].includes(git?.of(placeOf(join(real, name))) ?? "");
+      // In a project of its own: whether its skilllib.json records this link (then a sync there brings back what it points to).
+      const recorded = own ? (pinsIn(own)[name]?.links ?? []).includes(relative(own, real).split(sep).join("/")) : false;
+      const pinnedThere = own
+        ? ` ${placeOf(own)} has its own skilllib.json${recorded ? `, which records this link: skilllib sync in ${placeOf(own)} brings back what it points to` : ""}.`
+        : "";
       return [
         {
           id: `broken:${root}:${dir}/${name}`,
@@ -204,7 +216,8 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
           title: `${name}: broken link in ${where}/${dir}`,
           detail: `It points at ${existsSync(path) ? "a file, not a skill folder" : "a folder that no longer exists"}, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}${pinnedThere}`,
           at: rows(root, [name]),
-          ...(tracked || own ? { choices: [remove] } : { fix: remove }),
+          // Removed by itself only at the repo's top, uncommitted: a package's link (or a committed one) is asked first.
+          ...(top && !tracked ? { fix: remove } : { choices: [remove] }),
         },
       ];
     });
