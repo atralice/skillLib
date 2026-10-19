@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
@@ -1108,3 +1108,31 @@ test("removing a skill you keep global from several repos offers only copies rem
   const twice = findIssues([join(tmp, "a"), join(tmp, "b")], machineSkills(), new Set(["foo"])).find((i) => i.id === "twice:foo")!;
   expect(twice.choices!.map((c) => c.label)).toEqual(["Remove the copies in b"]);
 });
+
+test("two committed copies that differ: every choice doctor offers resolves it, whichever agents you use", () => {
+  for (const agents of [["claude-code"], ["codex"], ["cursor"], ["cursor", "grok", "zed"], ["claude-code", "codex"]] as const) {
+    setHarnesses([...agents]);
+    const first = (() => {
+      const repo = join(tmp, `team-${agents.join("-")}`);
+      skill(join(repo, ".claude", "skills", "dup"), "claude version");
+      skill(join(repo, ".agents", "skills", "dup"), "agents version");
+      const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+      git("init", "-q");
+      git("add", ".");
+      git("commit", "-qm", "team");
+      return repo;
+    })();
+    const issue = findIssues([first], [], new Set()).find((i) => i.id === `conflict:${first}:dup`)!;
+    expect([agents, issue.choices!.length > 0]).toEqual([agents, true]);
+    for (const [n, choice] of issue.choices!.entries()) {
+      // Each choice on a fresh copy of the repo: the first one changes it.
+      const repo = `${first}-${n}`;
+      cpSync(first, repo, { recursive: true });
+      const again = findIssues([repo], [], new Set()).find((i) => i.id === `conflict:${repo}:dup`)!;
+      const r = runFix(again.choices!.find((c) => c.label === choice.label)!);
+      expect([agents, choice.label, r.ok]).toEqual([agents, choice.label, true]);
+      expect(findIssues([repo], [], new Set()).some((i) => i.id === `conflict:${repo}:dup`)).toBe(false);
+    }
+  }
+});
+

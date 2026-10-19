@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanUsage, summarize, usesFromTranscriptLine } from "./usage.js";
@@ -58,6 +59,23 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a transcr
     expect(await scanUsage(30)).toEqual([]);
   } finally {
     chmodSync(locked, 0o755);
+    rmSync(dir, { recursive: true, force: true });
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
+  }
+});
+
+test.skipIf(process.platform === "win32")("a transcript that's a looping link or a FIFO is skipped, not an error or a hang", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-usage-"));
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  const project = join(dir, "projects", "p");
+  mkdirSync(project, { recursive: true });
+  symlinkSync("loop.jsonl", join(project, "loop.jsonl"));
+  execFileSync("mkfifo", [join(project, "pipe.jsonl")]);
+  try {
+    expect(await scanUsage(30)).toEqual([]);
+  } finally {
     rmSync(dir, { recursive: true, force: true });
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
