@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, entryExists, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -635,6 +635,30 @@ export function findIssues(
       });
     }
     issues.push(...tidy.conflicts.map(conflictIssue));
+    // Copies that differ behind a link: tidy never repoints a link (that changes what an agent runs, with nothing backed up), so this is yours to sort out.
+    for (const s of tidy.skipped.filter((x) => x.differs))
+      issues.push({
+        id: `linkdiffers:${root}:${s.name}`,
+        severity: "problem",
+        title: `${s.name} in ${where}: the copies differ`,
+        detail: `${s.reason}, with other content than the copy beside it: your agents run different versions. Make them the same, or remove the link; skilllib doesn't change a link to another copy.`,
+        at: rows(root, [s.name]),
+      });
+
+    // A file (or a broken link) where an agent's skills folder goes: that agent loads no repo skills here, and
+    // skilllib won't add or link any there. Only you can say what it is, so this is reported, never fixed.
+    const enabledIds = enabledHarnesses();
+    for (const dir of [...new Set(enabledIds.map((id) => harness(id).projectDirs[0]!))]) {
+      const path = join(root, dir);
+      if (!entryExists(path) || isDir(path)) continue;
+      issues.push({
+        id: `notdir:${root}:${dir}`,
+        severity: "problem",
+        title: `${where}: ${dir} isn't a folder`,
+        detail: `${agentNames(enabledIds.filter((id) => harness(id).projectDirs[0] === dir))} can't load skills from it, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
+        at: rows(root, []),
+      });
+    }
 
     // Skills some of your agents can't reach here: links fix that (nothing is copied or moved). An agent that
     // already loads a global copy by that name isn't missing it: a link would make it load twice (that's twice:).
@@ -731,7 +755,8 @@ export function findIssues(
           choices: [
             {
               label: "Import into the library",
-              hint: "copies it into Your skills",
+              // Tracking it writes skilllib.json.
+              hint: `copies it into Your skills${gitNote(root, [join(root, MANIFEST_FILE)])}`,
               run: () => {
                 intoLibrary(s.path);
                 track(root, s.name);

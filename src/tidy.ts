@@ -39,7 +39,8 @@ export type Conflict = {
   managed?: string;
 };
 
-export type TidyReport = { plans: TidyPlan[]; conflicts: Conflict[]; skipped: { name: string; reason: string }[] };
+/** skipped: skills tidy leaves alone; `differs` when that leaves your agents running different content (doctor reports it). */
+export type TidyReport = { plans: TidyPlan[]; conflicts: Conflict[]; skipped: { name: string; reason: string; differs?: boolean }[] };
 
 type Entry = { dir: string; path: string; link: boolean; real: string | null; hash: string | null };
 
@@ -120,7 +121,8 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     const entries = entriesOf(PROJECT_TIDY_DIRS.map(abs), name);
     const external = entries.find((e) => e.link && e.real && !(e.real + sep).startsWith(realpathOrNull(root)! + sep));
     if (external) {
-      report.skipped.push({ name, reason: `${rel(external.path)} links outside the repo` });
+      const differs = entries.some((e) => e !== external && e.real && existsSync(join(e.real, "SKILL.md")) && treeHash(e.real) !== treeHash(external.real!));
+      report.skipped.push({ name, reason: `${rel(external.path)} links outside the repo`, ...(differs ? { differs } : {}) });
       continue;
     }
     // One real folder reached two ways (a skills folder that's a link to another) is one copy, as in planGlobalTidy (#54).
@@ -158,7 +160,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
     // what that agent runs, with nothing backed up. That's a decision, so tidy leaves this skill alone.
     const elsewhere = entries.find((e) => e.link && e.real && e.real !== primary.real && existsSync(join(e.real, "SKILL.md")) && treeHash(e.real) !== treeHash(primary.path));
     if (elsewhere) {
-      report.skipped.push({ name, reason: `${rel(elsewhere.path)} links to a different copy` });
+      report.skipped.push({ name, reason: `${rel(elsewhere.path)} links to a different copy`, differs: true });
       continue;
     }
     const wanted = new Set([...installDirs(enabled, rel(primary.dir)), ...(dep?.links ?? [])].map(abs));
