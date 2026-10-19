@@ -7,7 +7,7 @@ import { recordOrigin, type SourcedSkill } from "./sources.js";
 
 type GlobalSkill = Pick<SourcedSkill, "name" | "path" | "links" | "harnesses">;
 
-/** What moving one global skill into repos did. `changes` is empty when it never got that far; `left`: package links now pointing at nothing (see strandedLinks). */
+/** What moving one global skill into repos did. `changes` is empty when it never got that far; `left`: links (a repo's or its packages') now pointing at nothing, though a copy in the repo serves them (see strandedLinks). */
 export type GlobalMove = { name: string; moved: boolean; reason?: string; changes: [root: string, change: Change][]; left?: string[] };
 
 /**

@@ -153,8 +153,11 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
   const tidyDirs = repoTidyDirs(root);
   const hasCopy = (name: string) => tidyDirs.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
   // A link skilllib.json records for a pinned skill whose folder is gone: sync puts the folder back and the link works again.
-  const pins = readManifest(root).skills;
-  const syncMends = (dir: string, name: string) => !!pins[name]?.links?.includes(dir) && !syncBlocker(root, name, pins[name]) && versionForHash(name, pins[name]!.hash) !== null;
+  const mends = (project: string, dir: string, name: string) => {
+    const dep = pinsIn(project)[name];
+    return !!dep && (dep.links ?? []).includes(dir) && !syncBlocker(project, name, dep) && versionForHash(name, dep.hash) !== null;
+  };
+  const syncMends = (dir: string, name: string) => mends(root, dir, name);
   let git: ReturnType<typeof gitInfo> | undefined;
   // The repo's top folders, and its packages' own (a monorepo): a global copy moved away can leave a link to nothing there.
   // Each folder by where it really is (a folder can be a link to another): one folder once, the top's first. Inside a
@@ -205,14 +208,12 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
       // Every folder's real place inside the repo (one outside, a shared folder, would make git refuse them all).
       git ??= gitInfo(
         root,
-        folders.map((f) => placeOf(f.real)).filter((p) => p !== ".." && !p.startsWith("../") && !isAbsolute(p)),
+        folders.map((f) => placeOf(f.real)).filter((p) => p !== "" && p !== ".." && !p.startsWith("../") && !isAbsolute(p)),
       );
       const tracked = ["committed", "changed"].includes(git?.of(placeOf(join(real, name))) ?? "");
       // In a project of its own: whether its skilllib.json records this link (then a sync there brings back what it points to).
       // Said only when a sync there really would: the pin's version is in your library and nothing is in sync's way.
-      const dep = own ? pinsIn(own)[name] : undefined;
-      const recorded =
-        !!own && !!dep && (dep.links ?? []).includes(relative(own, real).split(sep).join("/")) && !syncBlocker(own, name, dep) && versionForHash(name, dep.hash) !== null;
+      const recorded = !!own && mends(own, relative(own, real).split(sep).join("/"), name);
       const pinnedThere = own
         ? ` ${placeOf(own)} has its own skilllib.json${recorded ? `, which records this link: skilllib sync in ${placeOf(own)} brings back what it points to` : ""}.`
         : "";

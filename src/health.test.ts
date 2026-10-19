@@ -1070,3 +1070,17 @@ test("a committed broken link at the top is asked first even when a package's sk
   expect(broken.fix).toBeUndefined();
   expect(broken.detail).toContain("Git tracks the link");
 });
+
+test("a skills folder that resolves to the repo's own top folder doesn't make git refuse every folder", () => {
+  const repo = join(tmp, "repo");
+  mkdirSync(join(repo, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(repo, ".agents", "skills", "foo"));
+  mkdirSync(join(repo, "packages", "web", ".claude"), { recursive: true });
+  symlinkSync(repo, join(repo, "packages", "web", ".claude", "skills"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "links"], { cwd: repo });
+  const broken = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `broken:${repo}:.agents/skills/foo`)!;
+  expect(broken.fix).toBeUndefined();
+  expect(broken.detail).toContain("Git tracks the link");
+});
