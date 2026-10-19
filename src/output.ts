@@ -74,8 +74,9 @@ export const error = (msg: string) => console.error(`${red("✗")} ${msg}`);
 export function tildify(path: string): string {
   // $HOME normalized (a trailing or doubled slash), then without symlinks (the folder you're in comes back that way).
   for (const home of new Set([resolve(userHome()), realPath(userHome())]))
-    if (path === home || path.startsWith(home + sep)) return ("~" + path.slice(home.length)).replace(/\\/g, "/");
-  return path;
+    if (path === home || path.startsWith(home + sep)) path = "~" + path.slice(home.length);
+  // Always "/", so labels read the same on every OS.
+  return path.replace(/\\/g, "/");
 }
 
 export function truncate(s: string, max: number): string {

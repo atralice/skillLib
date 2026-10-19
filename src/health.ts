@@ -3,8 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { visibilityOf } from "./library.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, realPath as realPathOf } from "./paths.js";
 import { skillDirsIn, treeHash } from "./skills.js";
@@ -382,7 +381,8 @@ export function findIssues(
   for (const root of projects) {
     const where = basename(root);
     const repoOnly = loadedHere.get(root)!.filter((m) => m.kind === "plugin" && !machinePluginSkills.has(m.path));
-    for (const plugin of claudePlugins(repoOnly, root)) {
+    // A repo's Claude Code settings matter only to Claude Code.
+    for (const plugin of enabledHarnesses().includes("claude-code") ? claudePlugins(repoOnly, root) : []) {
       const names = plugin.skills.map((p) => basename(p));
       const inRepo = namesIn(root).filter((n) => names.includes(n));
       const dupes = names.filter((n) => inRepo.includes(n) || globalYours.has(n));
@@ -690,7 +690,8 @@ export function findIssues(
             },
           ],
         });
-      } else if (s.state === "untracked copy of library skill") {
+      } else if (s.state === "untracked copy of library skill" && !committed(s)) {
+        // (A committed copy is the team's: never tracked from here, so update and remove never touch it.)
         issues.push({
           id: `adopt:${root}:${s.name}`,
           severity: "suggestion",
@@ -737,8 +738,9 @@ export function findIssues(
                 ]),
           ],
         });
-      } else if (s.state === "from npx skills") {
-        // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it.
+      } else if (s.state === "from npx skills" && !(committed(s) && versionForHash(s.name, treeHash(s.path) ?? "") !== null)) {
+        // Installed with `npx skills add`: skilllib doesn't manage it. Committed, it's the team's: copy it, never track it
+        // (and once your library has this copy, there's nothing left to do).
         const teams = committed(s);
         issues.push({
           id: `npx:${root}:${s.name}`,
@@ -960,7 +962,7 @@ export function usageIssues(
     issues.push({
       id: `unused:${root}`,
       severity: "suggestion",
-      title: `${where}: ${plural(unused.length, "skill")} unused in ${uses.days} days`,
+      title: `${where}: ${plural(unused.length, "skill")} unused in ${plural(uses.days, "day")}`,
       detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
         unused.length > removable.length ? " The repo's own skills are the team's: remove those in the repo if nobody needs them." : ""
       }`,
@@ -991,7 +993,7 @@ export function usageIssues(
       issues.push({
         id: `plugin-unused:${installId(p)}`,
         severity: "suggestion",
-        title: `${p.id}${installedIn(p)}: its skills weren't used in ${uses.days} days`,
+        title: `${p.id}${installedIn(p)}: its skills weren't used in ${plural(uses.days, "day")}`,
         detail: `No Claude Code session used ${p.skills.map((path) => `/${name}:${basename(path)}`).join(", ")}. Each one's name and description still takes context in every session.${
           p.extras.length ? ` It also brings ${p.extras.join(", ")}: turning it off pauses those too.` : ""
         }`,
@@ -1015,7 +1017,7 @@ export function usageIssues(
     issues.push({
       id: "unused:library",
       severity: "suggestion",
-      title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${uses.days} days`,
+      title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${plural(uses.days, "day")}`,
       detail: `${idle.sort().join(", ")}. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.`,
       // Your skills' rows (none loads globally, so none is in Global).
       at: rows(null, idle),

@@ -684,3 +684,29 @@ test("review:global counts only global skills one of your agents loads", () => {
   skill(join(tmp, ".claude", "skills", "only-claude")); // Zed doesn't read ~/.claude/skills
   expect(findIssues([], machineSkills(), new Set()).some((i) => i.id === "review:global")).toBe(false);
 });
+
+test("a committed copy identical to your library's is the team's: no Track it", () => {
+  const project = join(tmp, "code", "web");
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  skill(join(project, ".claude", "skills", "foo"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: project, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "team");
+  expect(findIssues([project], machineSkills(), new Set(["foo"])).some((i) => i.id === `adopt:${project}:foo`)).toBe(false);
+});
+
+test("a committed npx skill your library already has raises nothing more (doctor converges)", () => {
+  const project = join(tmp, "code", "web");
+  skill(join(project, ".agents", "skills", "npx-one"));
+  writeFileSync(join(project, "skills-lock.json"), JSON.stringify({ skills: { "npx-one": { source: "acme/skills" } } }));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: project, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "npx");
+  const id = `npx:${project}:npx-one`;
+  const before = findIssues([project], machineSkills(), new Set()).find((i) => i.id === id)!;
+  expect(runFix(before.choices![0]!).ok).toBe(true);
+  expect(findIssues([project], machineSkills(), new Set(["npx-one"])).some((i) => i.id === id)).toBe(false);
+});

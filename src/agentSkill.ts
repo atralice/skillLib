@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, unlinkSync, wri
 import { join } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { harness, type HarnessId } from "./harnesses.js";
-import { linkDir } from "./library.js";
+import { entryExists, linkDir } from "./library.js";
 import { claudeDir, OWN_SKILL_MARKER, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 
@@ -41,14 +41,6 @@ function isDangling(path: string): boolean {
   return entryExists(path) && lstatSync(path).isSymbolicLink() && !existsSync(path);
 }
 
-function entryExists(path: string): boolean {
-  try {
-    lstatSync(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export type AgentSkillState = "installed" | "outdated" | "missing";
 

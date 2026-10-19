@@ -137,7 +137,7 @@ Three panes: **Places** on the left, a **list** on the right, and the **details*
 | *type* | Filter the pane you're in. Word initials work too: `cfw` finds `cloudflare-workers`. |
 | `↑` `↓` | Move |
 | `enter` `→` | One pane deeper: Places → list → details. In the details, apply the selected fix or action. |
-| `esc` `←` | One pane back (`esc` clears a filter first). In the details, `←` `→` move along the actions. |
+| `esc` `←` | One pane back (`esc` clears a filter first). In the details, `←` `→` move along a line of actions and `↑` `↓` between lines. |
 | `space` | Apply the ★ recommended fix, or show the choices when it's your call; on a group, open or close it |
 | `tab` | Next tab: All · Issues · Local · Global · Plugins · Vendor |
 | `ctrl+r` | Read everything again from disk · `ctrl+c` quits |

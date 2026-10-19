@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { readState, realPath, skilllibHome, MANIFEST_FILE, writeState } from "./paths.js";
+import { readState, realPath, skilllibHome, MANIFEST_FILE, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
@@ -32,7 +31,7 @@ function writeConfig(config: Config) {
 }
 
 export function expandHome(path: string): string {
-  return resolve(path.replace(/^~(?=$|\/)/, homedir()));
+  return resolve(path.replace(/^~(?=$|[\\/])/, userHome()));
 }
 
 /** Adds a folder to scan for projects; throws when it isn't an existing folder. */
