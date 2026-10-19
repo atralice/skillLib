@@ -741,17 +741,17 @@ test("a kept-global skill's repo copy isn't offered for removal when an agent re
   expect(twice?.detail).toContain("Claude Code");
 });
 
-test("a file where a skills folder goes, and other content behind a link, are reported", () => {
+test("a file where a skills folder goes, and other content behind a link, are reported on the skill", () => {
   setHarnesses(["claude-code", "codex"]);
   const project = join(tmp, "web");
   mkdirSync(join(project, ".claude"), { recursive: true });
   writeFileSync(join(project, ".claude", "skills"), "x");
   skill(join(project, ".agents", "skills", "notes"));
   let issues = findIssues([project], machineSkills(), new Set());
-  const notdir = issues.find((i) => i.id === `notdir:${project}:.claude/skills`);
-  expect(notdir?.title).toBe("web: .claude/skills isn't a folder");
+  const stuck = issues.find((i) => i.id === `intheway:${project}:notes`);
+  expect(stuck?.title).toBe("notes in web: .claude/skills is in the way");
   // Reported, not fixed: doctor --fix has nothing to retry here.
-  expect(notdir?.fix ?? notdir?.choices).toBeUndefined();
+  expect(stuck?.fix ?? stuck?.choices).toBeUndefined();
   expect(issues.some((i) => i.id === `usable:${project}`)).toBe(false);
 
   rmSync(join(project, ".claude", "skills"));

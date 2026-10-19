@@ -3,7 +3,9 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addSkill, createSkill, discardEdits, importSkill, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { addSkill, createSkill, discardEdits, importSkill, linkAll, listBackups, nestedSkills, projectStatus, removeSkill, removeUntracked, restoreBackup, stash, syncProject, updateProject } from "./library.js";
+import { moveGlobalSkills } from "./move.js";
+import { planProjectTidy } from "./tidy.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { copySkill, readSkillInfo, treeHash } from "./skills.js";
 import { readManifest } from "./project.js";
@@ -267,7 +269,7 @@ describe("harnesses", () => {
       ],
     });
 
-    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(linkEverywhere(project, "team-flow", ".agents/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [], inTheWay: [] });
     expect(lstatSync(local("team-flow")).isSymbolicLink()).toBe(true);
     // One skill, reported once; Cursor now reaches it through two folders.
     expect(projectStatus(project).filter((s) => s.name === "team-flow")).toHaveLength(1);
@@ -336,8 +338,8 @@ describe("harnesses", () => {
     writeSkill(join(project, ".cursor", "skills", "mine"), "in a folder git doesn't track");
     setHarnesses(["claude-code", "codex", "zed"]);
 
-    expect(linkEverywhere(project, "team", ".claude/skills")).toEqual({ created: [], blocked: [".agents/skills"], uncommitted: [] });
-    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
+    expect(linkEverywhere(project, "team", ".claude/skills")).toEqual({ created: [], blocked: [".agents/skills"], uncommitted: [], inTheWay: [] });
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"], inTheWay: [] });
   });
 
   test("never links a skill git doesn't share into a folder git tracks, even when allowed", async () => {
@@ -354,10 +356,10 @@ describe("harnesses", () => {
     writeSkill(join(project, ".agents", "skills", "fresh"), "new in a committed folder");
     setHarnesses(["claude-code", "cursor", "codex"]);
 
-    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"] });
-    expect(linkEverywhere(project, "ignored", ".codex/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills"] });
+    expect(linkEverywhere(project, "mine", ".cursor/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills", ".agents/skills"], inTheWay: [] });
+    expect(linkEverywhere(project, "ignored", ".codex/skills", { allowTracked: true })).toEqual({ created: [], blocked: [], uncommitted: [".claude/skills"], inTheWay: [] });
     // Not yet committed, but in a folder the repo commits: it goes in with the link.
-    expect(linkEverywhere(project, "fresh", ".agents/skills", { allowTracked: true })).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(linkEverywhere(project, "fresh", ".agents/skills", { allowTracked: true })).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [], inTheWay: [] });
     expect(existsSync(local("mine"))).toBe(false);
 
     const res = linkAll(project, { allowTracked: true });
@@ -461,7 +463,7 @@ describe("harnesses", () => {
         { id: "grok", paths: 1 },
       ],
     });
-    expect(linkEverywhere(project, "team-flow", ".grok/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [] });
+    expect(linkEverywhere(project, "team-flow", ".grok/skills")).toEqual({ created: [".claude/skills"], blocked: [], uncommitted: [], inTheWay: [] });
     expect(lstatSync(local("team-flow")).isSymbolicLink()).toBe(true);
   });
 
@@ -469,7 +471,7 @@ describe("harnesses", () => {
     const { linkEverywhere } = await import("./library.js");
     setHarnesses(["grok"]);
     writeSkill(join(project, ".codex", "skills", "only-codex"), "x");
-    expect(linkEverywhere(project, "only-codex", ".codex/skills")).toEqual({ created: [".agents/skills"], blocked: [], uncommitted: [] });
+    expect(linkEverywhere(project, "only-codex", ".codex/skills")).toEqual({ created: [".agents/skills"], blocked: [], uncommitted: [], inTheWay: [] });
     expect(lstatSync(join(project, ".agents", "skills", "only-codex")).isSymbolicLink()).toBe(true);
     expect(projectStatus(project).find((s) => s.name === "only-codex")?.visibility).toEqual([{ id: "grok", paths: 1 }]);
   });
@@ -888,4 +890,52 @@ test("update reports the version a pin's hash names, not skilllib.json's number"
   latestVersion("alpha");
   writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 9, hash: versionHistory("alpha")[0]!.hash } } }));
   expect(updateProject(project)).toEqual([{ name: "alpha", action: "updated", from: 1, to: 2 }]);
+});
+
+test("a .claude that links out of the repo is never written through, even before .claude/skills exists", () => {
+  mkdirSync(join(tmp, "ext"));
+  symlinkSync(join(tmp, "ext"), join(project, ".claude"));
+  expect(addSkill(project, "alpha")).toMatchObject({ action: "skipped", reason: ".claude isn't a folder in the repo: move what's there first" });
+  expect(existsSync(join(tmp, "ext", "skills"))).toBe(false);
+});
+
+test("a skills folder that links to your global skills isn't the repo's: tidy and remove leave it alone", () => {
+  setHarnesses(["claude-code"]);
+  writeSkill(join(project, ".claude", "skills", "foo"), "same");
+  writeSkill(join(tmp, ".agents", "skills", "foo"), "same");
+  mkdirSync(join(project, ".agents"));
+  symlinkSync(join(tmp, ".agents", "skills"), join(project, ".agents", "skills"));
+  expect(planProjectTidy(project).plans).toEqual([]);
+  expect(() => removeUntracked(project, "foo", join(project, ".agents", "skills", "foo"))).toThrow(".agents/skills isn't a folder in the repo");
+  expect(existsSync(join(tmp, ".agents", "skills", "foo", "SKILL.md"))).toBe(true);
+});
+
+test("what's in the way of a link is said, and keeps a global skill loading; a link to nothing is replaced", () => {
+  setHarnesses(["claude-code", "codex"]);
+  mkdirSync(join(project, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(project, ".claude", "skills", "alpha"), "notes");
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [] }], [project]);
+  expect(mv).toMatchObject({ moved: false });
+  expect(mv!.changes[0]![1].inTheWay).toEqual([".claude/skills/alpha"]);
+  expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+  expect(readFileSync(join(project, ".claude", "skills", "alpha"), "utf-8")).toBe("notes");
+  expect(linkAll(project).inTheWay).toEqual([".claude/skills/alpha"]);
+
+  rmSync(join(project, ".claude", "skills", "alpha"));
+  symlinkSync(join(tmp, "nowhere"), join(project, ".claude", "skills", "alpha"));
+  removeSkill(project, "alpha");
+  expect(addSkill(project, "alpha").inTheWay).toBeUndefined();
+  expect(readFileSync(join(project, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toContain("v1");
+});
+
+test("a file where a managed skill's folder goes is never deleted, and status doesn't crash on it", () => {
+  addSkill(project, "alpha");
+  rmSync(local("alpha"), { recursive: true });
+  writeFileSync(local("alpha"), "mine");
+  expect(() => projectStatus(project)).not.toThrow();
+  expect(syncProject(project)).toEqual([{ name: "alpha", action: "skipped", reason: ".claude/skills/alpha is a file, not a skill folder: move it, then sync" }]);
+  expect(addSkill(project, "alpha", { force: true })).toMatchObject({ action: "skipped" });
+  expect(removeSkill(project, "alpha")).toMatchObject({ action: "skipped" });
+  expect(readFileSync(local("alpha"), "utf-8")).toBe("mine");
 });

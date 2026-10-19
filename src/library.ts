@@ -69,23 +69,30 @@ export function isLink(path: string): boolean {
 }
 
 /**
+ * The part of a repo skill folder's path (which may not exist yet) that stops skilllib writing there, or null
+ * when it can: the nearest part that exists must be a folder inside the repo, not a file, a broken link, or a
+ * link out of the repo (.claude -> ~/.claude, say).
+ */
+export function notWritable(root: string, dir: string): string | null {
+  const top = realpathOrNull(root) ?? root;
+  for (let p = join(root, dir); p.startsWith(root + sep); p = dirname(p)) {
+    if (!entryExists(p)) continue;
+    const real = realpathOrNull(p);
+    return isDir(p) && real !== null && (real === top || real.startsWith(top + sep)) ? null : relative(root, p).split(sep).join("/");
+  }
+  return null;
+}
+/** The first of these repo skill folders skilllib can't write into, named as notWritable names it. */
+const writableDir = (root: string, dir: string) => notWritable(root, dir) === null;
+const firstStuck = (root: string, dirs: string[]) => dirs.map((d) => notWritable(root, d)).find((p) => p !== null) ?? null;
+/** A file (not a folder or a link) where a skill's folder goes: never replaced, it may be yours. */
+const fileAt = (path: string) => entryExists(path) && !isLink(path) && !isDir(path);
+
+/**
  * Links `link` to the folder `target`: a relative symlink on macOS/Linux (so
  * the repo can be moved), a directory junction on Windows (no admin rights or
  * Developer Mode needed; junctions need an absolute target).
  */
-/**
- * Whether skilllib may write into a repo skill folder (which may not exist yet): it's inside the repo, not a
- * link out of it, and a folder, not a file (or a broken link) in the way of one.
- */
-export function writableDir(root: string, dir: string): boolean {
-  const real = realpathOrNull(join(root, dir));
-  const top = realpathOrNull(root) ?? root;
-  if (real !== null && real !== top && !real.startsWith(top + sep)) return false;
-  // The nearest part of the path that exists must be a folder: .claude/skills, or .claude when skills isn't there.
-  for (let p = join(root, dir); p.startsWith(root + sep); p = dirname(p)) if (entryExists(p)) return isDir(p);
-  return true;
-}
-
 export function linkDir(target: string, link: string) {
   if (process.platform === "win32") symlinkSync(target, link, "junction");
   else symlinkSync(relative(dirname(link), target), link);
@@ -300,9 +307,10 @@ function sharedByGit(root: string, location: string, name: string): boolean {
 /**
  * created: folders that got a link · blocked: folders git tracks, skipped without
  * your consent · uncommitted: folders git tracks, skipped because git doesn't share
- * the real copy (a committed link to it would be broken for teammates).
+ * the real copy (a committed link to it would be broken for teammates) · inTheWay:
+ * what stops a link (a file or other copy where it goes, or a skills folder that isn't one in the repo).
  */
-export type LinkResult = { created: string[]; blocked: string[]; uncommitted: string[] };
+export type LinkResult = { created: string[]; blocked: string[]; uncommitted: string[]; inTheWay: string[] };
 
 /**
  * Adds relative symlinks so every enabled harness loads a skill whose real
@@ -311,14 +319,26 @@ export type LinkResult = { created: string[]; blocked: string[]; uncommitted: st
  */
 export function linkEverywhere(root: string, name: string, location: string, { allowTracked = false, dryRun = false } = {}): LinkResult {
   const enabled = enabledHarnesses();
-  const result: LinkResult = { created: [], blocked: [], uncommitted: [] };
+  const result: LinkResult = { created: [], blocked: [], uncommitted: [], inTheWay: [] };
   let shared: boolean | undefined;
+  const stuck = (path: string) => void (result.inTheWay.includes(path) || result.inTheWay.push(path));
   for (const id of enabled) {
     if (visibilityOf(root, name, [id])[0]!.paths > 0) continue;
     const dir = harness(id).projectDirs[0]!;
     const link = join(root, dir, name);
     // Agents can share a folder (Codex and Zed both read .agents/skills): one entry each.
-    if (entryExists(link) || !writableDir(root, dir) || Object.values(result).some((dirs) => dirs.includes(dir))) continue;
+    if (Object.values(result).some((dirs) => dirs.includes(dir))) continue;
+    const blocker = notWritable(root, dir);
+    if (blocker) {
+      stuck(blocker);
+      continue;
+    }
+    // This agent can't see the skill, so whatever is there isn't it: a link to nothing is replaced, anything else stays.
+    const broken = isLink(link) && realpathOrNull(link) === null;
+    if (entryExists(link) && !broken) {
+      stuck(`${dir}/${name}`);
+      continue;
+    }
     if (isGitTracked(root, dir)) {
       if (!(shared ??= sharedByGit(root, location, name))) {
         if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
@@ -331,6 +351,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
       }
     }
     if (!dryRun) {
+      if (broken) unlinkSync(link);
       mkdirSync(join(root, dir), { recursive: true });
       linkDir(join(root, location, name), link);
     }
@@ -344,7 +365,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
  * moved away (removeUntracked backs it up first). A link to another copy (the team's, say) stays.
  */
 export function unlinkEverywhere(root: string, name: string): string[] {
-  return ALL_PROJECT_DIRS.filter((dir) => {
+  return ALL_PROJECT_DIRS.filter((dir) => writableDir(root, dir)).filter((dir) => {
     const link = join(root, dir, name);
     if (!isLink(link) || realpathOrNull(link) !== null) return false;
     unlinkSync(link);
@@ -356,7 +377,7 @@ export function unlinkEverywhere(root: string, name: string): string[] {
 export function relinkDependency(root: string, name: string, { allowTracked = false } = {}): LinkResult {
   const manifest = readManifest(root);
   const dep = manifest.skills[name];
-  if (!dep) return { created: [], blocked: [], uncommitted: [] };
+  if (!dep) return { created: [], blocked: [], uncommitted: [], inTheWay: [] };
   const result = linkEverywhere(root, name, dep.dir ?? PROJECT_SKILLS_DIR, { allowTracked });
   if (result.created.length) {
     manifest.skills[name] = { ...dep, links: [...new Set([...(dep.links ?? []), ...result.created])] };
@@ -373,18 +394,20 @@ export function relinkDependency(root: string, name: string, { allowTracked = fa
 export function linkAll(
   root: string,
   { allowTracked = false, names }: { allowTracked?: boolean; names?: string[] } = {},
-): { linked: { name: string; into: string[] }[]; blocked: string[]; uncommitted: string[] } {
+): { linked: { name: string; into: string[] }[]; blocked: string[]; uncommitted: string[]; inTheWay: string[] } {
   const linked: { name: string; into: string[] }[] = [];
   const blocked = new Set<string>();
   const uncommitted: string[] = [];
+  const inTheWay = new Set<string>();
   for (const skill of projectStatus(root)) {
     if ((names && !names.includes(skill.name)) || !skill.visibility.some((v) => v.paths === 0) || skill.state === "folder missing") continue;
     const res = skill.managed ? relinkDependency(root, skill.name, { allowTracked }) : linkEverywhere(root, skill.name, skill.location, { allowTracked });
     if (res.created.length) linked.push({ name: skill.name, into: res.created });
     for (const dir of res.blocked) blocked.add(dir);
     if (res.uncommitted.length) uncommitted.push(skill.name);
+    for (const path of res.inTheWay) inTheWay.add(path);
   }
-  return { linked, blocked: [...blocked], uncommitted };
+  return { linked, blocked: [...blocked], uncommitted, inTheWay: [...inTheWay] };
 }
 
 export type Change = {
@@ -401,6 +424,8 @@ export type Change = {
   blocked?: string[];
   /** Harness folders git tracks, left without a link because git doesn't share the real copy (teammates would get a broken link). */
   uncommitted?: string[];
+  /** What kept a link out (a file or another copy where it goes): an agent can't use the skill there. */
+  inTheWay?: string[];
   /** Where overwritten local edits went (~/.skilllib/edit-backup/…); `skilllib restore` puts them back. */
   backedUp?: string;
 };
@@ -427,10 +452,10 @@ export function addSkill(
   const [primary = PROJECT_SKILLS_DIR, ...wantedLinks] = dependencyDirs(root, name, recorded);
   // A skills folder that's a link out of the repo (to ~/.claude/skills, say) isn't the repo's, and a file there isn't a folder:
   // never write there, and never install for only some of your agents (global move would then unload a skill one still needs).
-  const stuck = [primary, ...wantedLinks].find((d) => !writableDir(root, d));
+  const stuck = firstStuck(root, [primary, ...wantedLinks]);
   if (stuck) return { name, action: "skipped", reason: `${stuck} isn't a folder in the repo: move what's there first` };
-  const linkDirs = wantedLinks;
   const to = join(root, primary, name);
+  if (fileAt(to)) return { name, action: "skipped", reason: `${primary}/${name} is a file, not a skill folder: move it first` };
   const local = isLink(to) && !recorded ? null : treeHash(to);
   const knownContent = local !== null && (local === recorded?.hash || versionForHash(name, local) !== null);
 
@@ -464,14 +489,20 @@ export function addSkill(
   const links: string[] = [];
   const blocked: string[] = [];
   const uncommitted: string[] = [];
+  const inTheWay: string[] = [];
   let shared: boolean | undefined;
-  for (const dir of linkDirs) {
+  for (const dir of wantedLinks) {
     const link = join(root, dir, name);
     if (isLink(link) && realpathOrNull(link) === realpathOrNull(to)) {
       links.push(dir);
       continue;
     }
-    if (entryExists(link)) continue;
+    // A link to nothing is replaced; anything else there (a file, another copy) is left, and said.
+    const broken = isLink(link) && realpathOrNull(link) === null;
+    if (entryExists(link) && !broken) {
+      inTheWay.push(`${dir}/${name}`);
+      continue;
+    }
     // A new link in a folder git tracks, as linkEverywhere: never when git doesn't share the real copy, else with your consent.
     if (!recorded?.links?.includes(dir) && isGitTracked(root, dir)) {
       if (!(shared ??= sharedByGit(root, primary, name))) {
@@ -483,6 +514,7 @@ export function addSkill(
         continue;
       }
     }
+    if (broken) unlinkSync(link);
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
     links.push(dir);
@@ -495,14 +527,16 @@ export function addSkill(
     ...(links.length ? { links } : {}),
   };
   writeManifest(root, manifest);
+  // The version the pin's hash names, as everywhere else: never skilllib.json's raw number.
+  const from = recorded ? (versionForHash(name, recorded.hash)?.version ?? recorded.version) : undefined;
   return {
     name,
-    action: !recorded && local === null ? "installed" : backedUp && recorded?.version === target.version ? "reset" : "updated",
-    // The version the pin's hash names, as everywhere else: never skilllib.json's raw number.
-    ...(recorded ? { from: versionForHash(name, recorded.hash)?.version ?? recorded.version } : {}),
+    action: !recorded && local === null ? "installed" : backedUp && from === target.version ? "reset" : "updated",
+    ...(from !== undefined ? { from } : {}),
     to: target.version,
     ...(blocked.length ? { blocked } : {}),
     ...(uncommitted.length ? { uncommitted } : {}),
+    ...(inTheWay.length ? { inTheWay } : {}),
     ...(backedUp ? { backedUp } : {}),
   };
 }
@@ -512,8 +546,10 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   const recorded = manifest.skills[name];
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
-  if (!writableDir(root, recorded.dir ?? PROJECT_SKILLS_DIR)) return { name, action: "skipped", reason: `${recorded.dir ?? PROJECT_SKILLS_DIR} isn't a folder in the repo` };
+  const stuck = firstStuck(root, [recorded.dir ?? PROJECT_SKILLS_DIR, ...(recorded.links ?? [])]);
+  if (stuck) return { name, action: "skipped", reason: `${stuck} isn't a folder in the repo` };
   const dir = join(root, recorded.dir ?? PROJECT_SKILLS_DIR, name);
+  if (fileAt(dir)) return { name, action: "skipped", reason: `${recorded.dir ?? PROJECT_SKILLS_DIR}/${name} is a file, not a skill folder` };
   const local = treeHash(dir);
   // Content your library has a version of can be deleted; anything else is kept in a backup.
   const inLibrary = local !== null && versionForHash(name, local) !== null;
@@ -552,8 +588,9 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   const linksOk = (dep.links ?? []).every((d) => realpathOrNull(join(root, d, name)) === realpathOrNull(copy));
   if (local === dep.hash && linksOk) return [];
   // Never half done: a copy put back whose links can't be.
-  const stuck = [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])].find((d) => !writableDir(root, d));
+  const stuck = firstStuck(root, [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])]);
   if (stuck) return [{ name, action: "skipped", reason: `${stuck} isn't a folder in the repo: move what's there, then sync` }];
+  if (fileAt(copy)) return [{ name, action: "skipped", reason: `${dep.dir ?? PROJECT_SKILLS_DIR}/${name} is a file, not a skill folder: move it, then sync` }];
   // The real copy is as pinned and only links are gone: put those back, never reinstall content.
   if (local === dep.hash) return [relinkPinned(root, name, dep)];
   // Another version your library has isn't an edit: sync puts the pinned one back without --force.
@@ -698,6 +735,9 @@ export function stash(dir: string, bucket: string): string {
  * The folder goes to the trash, restorable from Settings like everything skilllib removes.
  */
 export function removeUntracked(root: string, name: string, path: string): string {
+  // A copy reached through a skills folder that links out of the repo is someone else's (your global skills, say).
+  const stuck = notWritable(root, relative(root, dirname(path)));
+  if (stuck) throw new Error(`${stuck} isn't a folder in the repo: skilllib leaves what's in it alone`);
   // The backup first: when the copy is itself a link, removing links first would take it away.
   const to = stash(path, "trash");
   unlinkEverywhere(root, name);

@@ -109,14 +109,15 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   });
 }
 
-/** A change that didn't do all it was asked: skipped, or a link held back where git tracks the folder. */
-const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length;
+/** A change that didn't do all it was asked: skipped, or a link held back (git tracks the folder, or something is in the way). */
+const incomplete = (c: Change) => c.action === "skipped" || !!c.blocked?.length || !!c.uncommitted?.length || !!c.inTheWay?.length;
 
 /** The links a change held back where git tracks the folder, and how to add them. */
 function warnHeldLinks(c: Change, where = "here") {
   if (c.blocked?.length) warn(`${c.name}: git tracks ${c.blocked.join(", ")} ${where}, so no link was added there. Re-run with --allow-tracked to add it.`);
   if (c.uncommitted?.length)
     warn(`${c.name}: git tracks ${c.uncommitted.join(", ")} ${where} but not ${c.name}'s real copy, so no link was added there (teammates would get a broken link). Commit ${c.name} first, then run skilllib link --allow-tracked.`);
+  if (c.inTheWay?.length) warn(`${c.name}: ${c.inTheWay.join(", ")} ${where} is in the way, so no link was added there. Move it, then run skilllib link.`);
 }
 
 /**
@@ -790,7 +791,11 @@ export function link(args: Args) {
     const res = linkAll(root, { allowTracked: args.allowTracked });
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
-    else if (!args.all && !res.blocked.length && !res.uncommitted.length) success("Every skill here is already usable by all your agents");
+    else if (!args.all && !res.blocked.length && !res.uncommitted.length && !res.inTheWay.length) success("Every skill here is already usable by all your agents");
+    if (res.inTheWay.length) {
+      process.exitCode = 1;
+      error(`${label}${res.inTheWay.join(", ")} ${res.inTheWay.length === 1 ? "is" : "are"} in the way (a file, or another copy), so some skills weren't linked there; move ${res.inTheWay.length === 1 ? "it" : "them"}, then link again`);
+    }
     if (res.blocked.length) {
       // Some agents still can't see some skills: that's a failure for scripts and agents.
       process.exitCode = 1;

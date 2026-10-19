@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, entryExists, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, notWritable, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -12,7 +12,7 @@ import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setP
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
-import { applyTidy, PROJECT_TIDY_DIRS, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
+import { applyTidy, repoTidyDirs, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
 /**
  * An issue's detail as --json shows it: plus what a fix or choice says about git (its hint), so an agent that
@@ -150,11 +150,13 @@ function applyAll(plans: TidyPlan[], git: "keep" | "go"): { skills: number; held
 function brokenLinksIn(root: string): Issue[] {
   const where = basename(root);
   // tidy works in every repo skill folder except .grok/skills (the team's, for Grok): there a broken link is always ours to report.
-  const hasCopy = (name: string) => PROJECT_TIDY_DIRS.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
+  const tidyDirs = repoTidyDirs(root);
+  const hasCopy = (name: string) => tidyDirs.some((d) => !isLink(join(root, d, name)) && existsSync(join(root, d, name, "SKILL.md")));
   let git: ReturnType<typeof gitInfo> | undefined;
   return ALL_PROJECT_DIRS.flatMap((dir) => {
     const folder = join(root, dir);
-    if (!isDir(folder)) return [];
+    // A folder that links out of the repo isn't the repo's: its broken links are reported where it really is.
+    if (!isDir(folder) || notWritable(root, dir)) return [];
     return readdirSync(folder).flatMap((name): Issue[] => {
       const path = join(folder, name);
       if (!isLink(path) || existsSync(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
@@ -645,27 +647,22 @@ export function findIssues(
         at: rows(root, [s.name]),
       });
 
-    // A file (or a broken link) where an agent's skills folder goes: that agent loads no repo skills here, and
-    // skilllib won't add or link any there. Only you can say what it is, so this is reported, never fixed.
-    const enabledIds = enabledHarnesses();
-    for (const dir of [...new Set(enabledIds.map((id) => harness(id).projectDirs[0]!))]) {
-      const path = join(root, dir);
-      if (!entryExists(path) || isDir(path)) continue;
-      issues.push({
-        id: `notdir:${root}:${dir}`,
-        severity: "problem",
-        title: `${where}: ${dir} isn't a folder`,
-        detail: `${agentNames(enabledIds.filter((id) => harness(id).projectDirs[0] === dir))} can't load skills from it, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
-        at: rows(root, []),
-      });
-    }
-
     // Skills some of your agents can't reach here: links fix that (nothing is copied or moved). An agent that
     // already loads a global copy by that name isn't missing it: a link would make it load twice (that's twice:).
     const loadsGlobally = (name: string, id: HarnessId) => globalCopies.some((m) => m.name === name && m.harnesses.includes(id));
     const blindHere = status
       .filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0 && !loadsGlobally(s.name, v.id)))
       .map((s) => ({ s, would: linkEverywhere(root, s.name, s.location, { dryRun: true }) }));
+    // Something where a link goes (a file, another copy, a skills folder that's a file or links out of the repo):
+    // only you can say what it is, so this is reported, never fixed, and doctor --fix has nothing to retry.
+    for (const { s, would } of blindHere.filter(({ would: w }) => w.inTheWay.length))
+      issues.push({
+        id: `intheway:${root}:${s.name}`,
+        severity: "problem",
+        title: `${s.name} in ${where}: ${would.inTheWay.join(", ")} ${would.inTheWay.length === 1 ? "is" : "are"} in the way`,
+        detail: `${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))} can't use it here, and skilllib won't link it past what's there. Move ${would.inTheWay.length === 1 ? "it" : "them"} out of the way, then run skilllib link.`,
+        at: rows(root, [s.name]),
+      });
     // Only links into folders git tracks would help, and git doesn't share the real copy: those links would be
     // broken for teammates, so skilllib never adds them (see linkEverywhere). Committing it comes first.
     for (const { s, would } of blindHere.filter(({ would: w }) => !w.created.length && !w.blocked.length && w.uncommitted.length))

@@ -46,10 +46,10 @@ function listFiles(dir: string, seen = new Set<string>()): string[] {
 
 /**
  * Content hash of a skill folder: covers every file's path and bytes, so it
- * changes on any edit, addition, or deletion. Null if the folder is missing.
+ * changes on any edit, addition, or deletion. Null if the folder is missing (or a file is where it goes).
  */
 export function treeHash(dir: string): string | null {
-  if (!existsSync(dir)) return null;
+  if (!isDir(dir)) return null;
   const hash = createHash("sha256");
   const files = listFiles(dir)
     .map((f) => ({ path: relative(dir, f).split(sep).join("/"), full: f }))
@@ -77,7 +77,13 @@ export function copySkill(from: string, to: string) {
 }
 
 /** A folder (not a file someone left where a skills folder goes). */
-export const isDir = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+export function isDir(path: string): boolean {
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
+  } catch {
+    return false; // a file above it in the path (Bun throws ENOTDIR here; Node returns undefined)
+  }
+}
 
 /** Skill folders directly inside `dir` (folders containing SKILL.md). */
 export function skillDirsIn(dir: string): string[] {
