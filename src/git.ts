@@ -13,6 +13,11 @@ import { MANIFEST_FILE } from "./paths.js";
  */
 export type GitState = "committed" | "changed" | "new" | "ignored";
 
+/** Whether git shares it with the team: tracked, committed or with uncommitted edits. */
+export function isShared(state: GitState | null | undefined): boolean {
+  return state === "committed" || state === "changed";
+}
+
 export type GitInfo = {
   /** Git state per path relative to the project root (e.g. ".agents/skills/foo"). */
   of: (relPath: string) => GitState;

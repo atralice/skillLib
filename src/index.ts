@@ -104,7 +104,7 @@ async function main() {
   setJsonMode(argv.includes("--json"));
   // Flags may come first (`skilllib --json status`): the command is the first word after them.
   let at = 0;
-  while (argv[at]?.startsWith("--") && !["--version", "--help"].includes(argv[at]!)) at += ["--days", "--keep", "--to"].includes(argv[at]!) ? 2 : 1;
+  while (argv[at]?.startsWith("--") && !["--version", "--help"].includes(argv[at]!)) at += commands.VALUE_FLAGS.includes(argv[at]!) ? 2 : 1;
   const command = argv[at];
   const rest = [...argv.slice(0, at), ...argv.slice(at + 1)];
   const args = commands.parseArgs(rest);

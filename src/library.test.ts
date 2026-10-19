@@ -1424,3 +1424,14 @@ test.skipIf(process.platform === "win32")("add through skills folders that are o
   }
 });
 
+test("global move into a repo whose pinned copy has edits says what to do there, never --force (global takes none)", () => {
+  addSkill(project, "alpha");
+  writeFileSync(join(local("alpha"), "SKILL.md"), "edited\n");
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: false });
+  expect(mv!.reason).toContain("local edits");
+  expect(mv!.reason).not.toContain("--force");
+  expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toBe("edited\n");
+});
+

@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { addRefusal, addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, strandedLinks, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
+import { addRefusal, addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, strandedLinks, inTheWaySaid, trackBlocker, unloadGlobal, withoutForceHint, type Change } from "./library.js";
 import { realPath } from "./paths.js";
 import { treeHash } from "./skills.js";
 import { knownProjects } from "./project.js";
@@ -45,7 +45,7 @@ export function moveGlobalSkills(
     // A repo you're moving it to that can't take it (a skills folder add would use isn't one in the repo, the team's
     // committed copy, a different copy already there): refused before anything is written, the library included.
     const hash = treeHash(copies[0]!.path) ?? "";
-    const cant = roots.flatMap((root) => ((b) => (b ? [`${label(root)} (${b.replace(/ \(use --force to replace (it|the link)\)$/, "")})`] : []))(trackBlocker(root, name) ?? addRefusal(root, name, hash)));
+    const cant = roots.flatMap((root) => ((b) => (b ? [`${label(root)} (${withoutForceHint(b)})`] : []))(trackBlocker(root, name) ?? addRefusal(root, name, hash)));
     if (cant.length) return { name, moved: false, reason: `nothing moved: it can't be added to ${cant.join(", ")}`, changes: [] };
     // Your library already has a different skill by that name: moving this one would swap in the other.
     const imported = importSkill(copies[0]!.path).status;
@@ -55,7 +55,7 @@ export function moveGlobalSkills(
     const changes = roots.map((root) => [root, addSkill(root, name, { allowTracked })] as [string, Change]);
     const skipped = changes.filter(([, c]) => c.action === "skipped");
     // add's own hints (--force) aren't move's: say what to do instead.
-    const why = (reason = "") => reason.replace(/ \(use --force to replace it\)$/, ": move or remove it there first");
+    const why = (reason = "") => (withoutForceHint(reason) === reason ? reason : `${withoutForceHint(reason)}: move or remove it there first`);
     // The library copy stays (it's only a copy), but say so: the move didn't otherwise happen.
     const kept = imported === "added" ? `; it's in Your skills now` : "";
     if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally${kept}`, changes };

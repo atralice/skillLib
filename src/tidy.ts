@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
-import { gitInfo, relativeTo, type GitInfo } from "./git.js";
+import { gitInfo, isShared, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, notWritable, stash } from "./library.js";
 import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
@@ -148,7 +148,7 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       const planned = installDirs(enabled).map(abs);
       const fromSkillsSh = name in skillsLock;
       const rank = (e: Entry) =>
-        (git && ["committed", "changed"].includes(git.of(rel(e.path))) ? 0 : 1000) +
+        (isShared(git?.of(rel(e.path))) ? 0 : 1000) +
         (fromSkillsSh && e.dir === abs(AGENTS_SKILLS_DIR) ? 0 : 100) +
         (planned.includes(e.dir) ? planned.indexOf(e.dir) : 50);
       primary = [...reals].sort((a, b) => rank(a) - rank(b))[0];
@@ -175,13 +175,13 @@ export function planProjectTidy(root: string, { keep = {}, enabled = enabledHarn
       if (e.link) {
         if (e.real === primary.real) {
           // A link the repo commits for its own skill is the team's: a teammate's agent may need it.
-          if (!needed && !dep && ["committed", "changed"].includes((git ??= gitInfo(root))?.of(rel(e.path)) ?? "")) continue;
+          if (!needed && !dep && isShared((git ??= gitInfo(root))?.of(rel(e.path)))) continue;
           if (!needed) steps.push({ kind: "unlink", path: e.path });
         } else steps.push(needed ? { kind: "link", path: e.path, target: primary.path } : { kind: "unlink", path: e.path });
       } else {
         const differs = e.hash !== primary.hash ? { differs: true as const } : {};
         // A real copy the repo commits is the team's: never removed (a teammate's agent may read that folder).
-        if (!needed && ["committed", "changed"].includes((git ??= gitInfo(root))?.of(rel(e.path)) ?? "")) continue;
+        if (!needed && isShared((git ??= gitInfo(root))?.of(rel(e.path)))) continue;
         steps.push(needed ? { kind: "replace", path: e.path, target: primary.path, ...differs } : { kind: "remove", path: e.path, ...differs });
       }
     }
@@ -242,7 +242,7 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
  */
 export function gitVisibleSteps(plan: TidyPlan, git: GitInfo | null = plan.root ? gitInfo(plan.root) : null): TidyStep[] {
   if (!plan.root || !git) return [];
-  const shared = (rel: string) => ["committed", "changed"].includes(git.of(rel));
+  const shared = (rel: string) => isShared(git.of(rel));
   // A managed skill's new link is also written into skilllib.json: when that's committed, git sees it too.
   const dep = readManifest(plan.root).skills[plan.name];
   const recordsLink = (s: TidyStep) => !!dep && (s.kind === "link" || s.kind === "replace") && !dep.links?.includes(relativeTo(plan.root!, dirname(s.path)));
@@ -256,8 +256,8 @@ export type TidyResult = { name: string; root: string | null; applied: TidyStep[
  * (see gitVisibleSteps) and reported instead. Links skilllib.json should know
  * about are recorded there.
  */
-export function applyTidy(plan: TidyPlan, { git = "keep", info }: { git?: "keep" | "go"; info?: GitInfo | null } = {}): TidyResult {
-  const held = git === "keep" ? gitVisibleSteps(plan, info) : [];
+export function applyTidy(plan: TidyPlan, { git = "keep" }: { git?: "keep" | "go" } = {}): TidyResult {
+  const held = git === "keep" ? gitVisibleSteps(plan) : [];
   const applied: TidyStep[] = [];
   for (const step of plan.steps) {
     // Planned earlier (Health builds plans on load); skip what changed since.

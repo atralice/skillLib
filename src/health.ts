@@ -1,14 +1,14 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
-import { gitInfo, relativeTo } from "./git.js";
+import { gitInfo, isShared, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { addSkill, realNative, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageDirs, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
 import { knownProjects, pinsIn, readableRoots, readManifest } from "./project.js";
-import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
+import { claudePlugins, cursorPluginSkills, installedPlugins, pluginNameOf, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { latestVersion, versionForHash, versionHistory } from "./versions.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
@@ -100,16 +100,16 @@ const rows = (root: string | null, skills: string[]) => skills.map((skill) => ({
  */
 const removesClean = (root: string, s: { name: string; managed: boolean; state: string }) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library" && !syncBlocker(root, s.name);
 
-/** "; git will see it" when any of these copies is committed: a choice that changes them says so. */
 /** One git snapshot per repo for a scan (findIssues and usageIssues start afresh): each gitInfo spawns git. */
 let gitMemo = new Map<string, ReturnType<typeof gitInfo>>();
 const gitOf = (root: string) => {
   if (!gitMemo.has(root)) gitMemo.set(root, gitInfo(root));
   return gitMemo.get(root)!;
 };
+/** "; git will see it" when any of these copies is committed: a choice that changes them says so. */
 const gitNote = (root: string, paths: string[]) => {
   const git = gitOf(root);
-  return paths.some((p) => ["committed", "changed"].includes(git?.of(relativeTo(root, p)) ?? "")) ? "; git will see it" : "";
+  return paths.some((p) => isShared(git?.of(relativeTo(root, p)))) ? "; git will see it" : "";
 };
 const agentNames = (ids: HarnessId[]) => ids.map((id) => harness(id).name).join(", ");
 
@@ -222,7 +222,7 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
         root,
         folders.map((f) => placeOf(f.real)).filter((p) => p !== "" && p !== ".." && !p.startsWith("../") && !isAbsolute(p)),
       );
-      const tracked = ["committed", "changed"].includes(git?.of(placeOf(join(real, name))) ?? "");
+      const tracked = isShared(git?.of(placeOf(join(real, name))));
       // In a project of its own: whether its skilllib.json records this link (then a sync there brings back what it points to).
       // Said only when a sync there really would: the pin's version is in your library and nothing is in sync's way.
       const recorded = !!own && mends(own, relative(own, real).split(sep).join("/"), name);
@@ -418,7 +418,7 @@ export function findIssues(
     const dupes = names.filter((n) => libraryNames.has(n) || loadedYours.has(n));
     if (!dupes.length) continue;
     const others = plugin.skills.length - dupes.length;
-    const pluginName = plugin.id.split("@")[0]!;
+    const pluginName = pluginNameOf(plugin.id);
     const remove: Choice = {
       label: `Remove the plugin ${plugin.id}`,
       hint: plugin.extras.length ? `also removes its ${plugin.extras.join(", ")}` : "restorable with skilllib restore",
@@ -488,7 +488,7 @@ export function findIssues(
         id: `plugin:${root}:${plugin.id}`,
         severity: "problem",
         title: `${dupes.join(", ")}: also in the Claude Code plugin ${plugin.id}, on in ${where}`,
-        detail: `${where}'s Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /${plugin.id.split("@")[0]}:${dupes[0]}). Your skill wins.`,
+        detail: `${where}'s Claude Code settings turn the plugin on, so Claude Code loads both there (the plugin's as /${pluginNameOf(plugin.id)}:${dupes[0]}). Your skill wins.`,
         choices: repoChoices(plugin, root, inRepo),
         at: rows(root, dupes),
         plugin: plugin.id,
@@ -658,7 +658,7 @@ export function findIssues(
     // library on purpose: still said, but putting the pinned one back is your call there, never automatic.
     const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s));
     if (drifted.length) {
-      const seen = drifted.some((s) => ["committed", "changed"].includes(gitOf(root)?.of(relativeTo(root, s.path)) ?? ""));
+      const seen = drifted.some((s) => isShared(gitOf(root)?.of(relativeTo(root, s.path))));
       const yours = drifted.some((s) => untrackable(s));
       // Only these skills: the rest of the repo is other issues' business.
       const install: Choice = {
@@ -714,7 +714,7 @@ export function findIssues(
         choices: [
           {
             label: "Update to the newest versions",
-            hint: ["committed", "changed"].includes(gitOf(root)?.of(MANIFEST_FILE) ?? "") ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+            hint: isShared(gitOf(root)?.of(MANIFEST_FILE)) ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
             run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
           },
         ],
@@ -826,7 +826,7 @@ export function findIssues(
       const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
       const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
       // Links for a skill skilllib manages are recorded in skilllib.json: when that's committed, git sees it too.
-      const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitOf(root)?.of(MANIFEST_FILE) ?? "");
+      const manifestShared = partial.some((s) => s.managed) && isShared(gitOf(root)?.of(MANIFEST_FILE));
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         // Only the skills this issue lists (not one an agent already loads from a global copy).
@@ -871,7 +871,7 @@ export function findIssues(
     const differing = new Set(tidy.conflicts.map((c) => c.name));
     // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
     const git = gitOf(root);
-    const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
+    const committed = (s: ProjectSkill) => isShared(git?.of(relativeTo(root, s.path)));
     for (const s of unstuck) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
       // and copies that differ need a winner first (the conflict issue above).
@@ -930,7 +930,7 @@ export function findIssues(
         // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
         const teams = s.state.startsWith("repo skill") || committed(s) || !!untrackable(s);
         // Why the repo's copy stays: the team's, or skilllib can't track it here.
-        const whose = s.state.startsWith("repo skill") || committed(s) ? "It's the team's copy (committed, or in the repo's own .agents/skills)" : `${untrackable(s)}, so skilllib can't track it here`;
+        const whose = s.state.startsWith("repo skill") || committed(s) ? "It's the team's copy (committed, or in the repo's own .agents/skills or .grok/skills)" : `${untrackable(s)}, so skilllib can't track it here`;
         issues.push({
           id: `differs:${root}:${s.name}`,
           severity: "suggestion",
@@ -1287,7 +1287,7 @@ export function usageIssues(
   // Plugins that are on and ship skills, none used: they still take context in every session. Turning one off is a choice.
   if (uses.asUsed)
     for (const p of installedPlugins().filter((x) => x.agent === "claude-code" && x.on && x.skills.length)) {
-      const name = p.id.split("@")[0]!;
+      const name = pluginNameOf(p.id);
       if (p.skills.some((path) => uses.asUsed!(`${name}:${basename(path)}`) > 0)) continue;
       issues.push({
         id: `plugin-unused:${installId(p)}`,
