@@ -815,3 +815,27 @@ describe("round 13", () => {
     expect(readFileSync(join(local("alpha"), "SKILL.md"), "utf-8")).toContain("v1");
   });
 });
+
+describe("round 14", () => {
+  test("a pin whose version number came from another library is judged by its hash", () => {
+    addSkill(project, "alpha"); // v1
+    writeSkill(join(tmp, "src", "alpha"), "v2");
+    importSkill(join(tmp, "src", "alpha"), { force: true });
+    const v1 = versionHistory("alpha")[0]!.hash;
+    writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 9, hash: v1 } } }));
+    const s = projectStatus(project).find((x) => x.name === "alpha")!;
+    expect(s.version).toBe(1);
+    expect(s.state).toBe("update available");
+  });
+
+  test("sync can restore just the named skills", () => {
+    writeSkill(join(tmp, "src", "beta"), "beta");
+    importSkill(join(tmp, "src", "beta"));
+    addSkill(project, "alpha");
+    addSkill(project, "beta");
+    rmSync(local("alpha"), { recursive: true });
+    rmSync(local("beta"), { recursive: true });
+    expect(syncProject(project, { names: ["alpha"] }).map((c) => c.name)).toEqual(["alpha"]);
+    expect(existsSync(local("beta"))).toBe(false);
+  });
+});

@@ -54,11 +54,10 @@ import {
   type PluginRef,
 } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type SourcedSkill } from "../sources.js";
-import { scanUsage } from "../usage.js";
+import { scanUsage, skillOf } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
 import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { localStamp, tildify } from "../output.js";
-
 
 /** Folder names, with as many parent folders as it takes to tell repos apart (ops find repos by name). */
 export function uniqueNames(roots: string[]): Map<string, string> {
@@ -249,7 +248,7 @@ export async function loadUsage(w: World): Promise<Pick<World, "usage" | "days" 
   const totals: Record<string, number> = {};
   for (const use of await scanUsage(30)) {
     // As doctor counts them: every session, and a plugin's copy (/plugin:name) counts for the skill.
-    const skill = use.skill.split(":").pop()!;
+    const skill = skillOf(use.skill);
     totals[skill] = (totals[skill] ?? 0) + 1;
     if (skill !== use.skill) totals[use.skill] = (totals[use.skill] ?? 0) + 1;
     const root = projectOf(use.cwd);

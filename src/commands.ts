@@ -105,7 +105,7 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   const { skills } = readManifest(root);
   return changes.map((c): ChangeJson => {
     const dep = c.action === "installed" || c.action === "updated" || c.action === "reset" || c.action === "relinked" ? skills[c.name] : undefined;
-    return dep ? { ...c, dirs: [dep.dir ?? ".claude/skills", ...(dep.links ?? [])] } : c;
+    return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? [])] } : c;
   });
 }
 

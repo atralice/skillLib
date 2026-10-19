@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
 import { basename } from "node:path";
+import { PROJECT_SKILLS_DIR } from "./paths.js";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
@@ -68,7 +69,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
         // Left out at their usual value: JSON.stringify drops undefined (as a spread would), and tsc checks each name.
         const attrs: Omit<StatusSkillGroup, "skills"> = {
           source: s.managed ? "library" : repo ? "repo" : "local",
-          dir: s.location !== ".claude/skills" ? s.location : undefined,
+          dir: s.location !== PROJECT_SKILLS_DIR ? s.location : undefined,
           version: s.version ?? undefined,
           state: usual ? undefined : s.state,
           latest: behind ? s.latest! : undefined,

@@ -43,7 +43,6 @@ function isDangling(path: string): boolean {
   return entryExists(path) && lstatSync(path).isSymbolicLink() && !existsSync(path);
 }
 
-
 export type AgentSkillState = "installed" | "outdated" | "missing";
 
 /** Whether every agent you use has the current skilllib skill. */

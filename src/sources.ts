@@ -148,7 +148,6 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
   return skills;
 }
 
-
 /** Grok's bundled skills (~/.grok/bundled/skills). A same-named user or project skill overrides these. */
 function grokBuiltInSkills(enabled: HarnessId[]): SourcedSkill[] {
   if (!enabled.includes("grok")) return [];
@@ -200,6 +199,9 @@ type PluginSettings = { enabledPlugins?: Record<string, boolean> };
 /** Where Claude Code may find a marketplace plugin's files: its install paths, then its marketplace's copy. */
 export function pluginDirCandidates(id: string, installPaths: string[]): string[] {
   const [name = "", marketplace = ""] = id.split("@");
+  // An id from a repo's settings is untrusted: "x@../../victim" must not name a folder outside plugins/.
+  const oneName = (s: string) => s !== "" && s !== "." && s !== ".." && !/[\\/]/.test(s);
+  if (!oneName(name) || !oneName(marketplace)) return installPaths;
   const plugins = join(claudeDir(), "plugins");
   return [
     ...installPaths,

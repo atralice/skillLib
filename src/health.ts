@@ -532,7 +532,8 @@ export function findIssues(
         at: rows(root, restorable.map((s) => s.name)),
         fix: {
           label: "Sync the project",
-          run: () => summarize(where, "restored", syncProject(root)),
+          // Only the missing folders: an out-of-sync copy (maybe committed) is its own issue's choice.
+          run: () => summarize(where, "restored", syncProject(root, { names: restorable.map((s) => s.name) })),
         },
       });
     }
@@ -647,7 +648,8 @@ export function findIssues(
       const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "");
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
-        const r = linkAll(root, { allowTracked });
+        // Only the skills this issue lists (not one an agent already loads from a global copy).
+        const r = linkAll(root, { allowTracked, names: partial.map((s) => s.name) });
         const notes = `${r.blocked.length ? `; skipped ${r.blocked.join(", ")} (git tracks ${r.blocked.length === 1 ? "it" : "them"})` : ""}${
           r.uncommitted.length ? `; ${r.uncommitted.join(", ")} not linked into folders git tracks (not committed, so teammates would get broken links)` : ""
         }`;
@@ -1042,7 +1044,7 @@ export function usageIssues(
         }`,
         choices: [
           { label: `Turn the plugin ${p.id} off`, hint: p.scope === "project" ? `stays installed; edits ${basename(p.projectPath ?? "the repo")}'s committed .claude/settings.json` : "stays installed", run: () => orThrow(setPluginOn(p, false)) },
-          ...(p.synced || p.settingsOnly ? [] : [{ label: `Uninstall the plugin ${p.id}`, hint: "its data stays; restorable with skilllib restore", run: () => orThrow(uninstallPlugin(p)) }]),
+          ...(p.synced || p.settingsOnly ? [] : [{ label: `Uninstall the plugin ${p.id}`, hint: `its data stays; restorable with skilllib restore${p.scope === "project" ? `; edits ${basename(p.projectPath ?? "the repo")}'s committed .claude/settings.json` : ""}`, run: () => orThrow(uninstallPlugin(p)) }]),
         ],
         plugin: p.id,
         pluginAt: p.projectPath ?? null,
