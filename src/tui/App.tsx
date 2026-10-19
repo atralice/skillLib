@@ -674,6 +674,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   // Settings has no details pane: its list takes the whole height.
   const split = termRows >= 30 && place !== "settings";
   const nameW = Math.min(22, Math.max(17, Math.floor(columns * 0.22)));
+  // Your skills has the most fixed columns: under 90 its names give up 4, so the description column keeps room.
+  const libNameW = columns < 90 ? nameW - 4 : nameW;
   const dashboard = place === "projects" && open !== null;
   const chips: [Chip, string][] =
     dashboard ? CHIPS : place === "global" ? CHIPS.filter(([c]) => c !== "local") : place === "settings" ? [] : place === "health" ? CHIPS.slice(0, 1) : CHIPS.slice(0, 2); // Your skills, Plugins: All · Issues
@@ -702,7 +704,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       : place === "global"
         ? globalItems(world, nameW, ui)
         : place === "library"
-          ? libraryItems(world, nameW, ui)
+          ? libraryItems(world, libNameW, ui)
           : place === "plugins"
             ? pluginItems(world, columns, nameW, ui, pluginIssues)
           : place === "health"
@@ -1344,7 +1346,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       : place === "projects"
         ? titles([["", 2], ["Project", 18], ["Skills", 10], ["Issues", 0]])
         : place === "library"
-          ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 16], [" Uses", 6], [" Issue / description", 0]])
+          ? titles([["", 2], ["Skill", libNameW], ["Ver", 5], ["Used in", 16], [" Uses", 6], [" Issue / description", 0]])
           : place === "plugins"
             ? ((c) => titles([["", 2], ["Plugin", c.name], ["", 3], ["Scope", c.scope], ...(c.wide ? [["Brings", 13] as [string, number]] : []), ["On", 4], ...(c.wide ? [[" Uses", 6] as [string, number]] : []), [" Issue", 0]]))(pluginCols(columns, nameW))
           : place === "health"
