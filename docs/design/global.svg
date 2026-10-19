@@ -52,10 +52,10 @@
 <text x="270.9" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <rect x="287.8" y="135.0" width="16.9" height="19" fill="#2a3350"/>
 <text x="287.8" y="149.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<rect x="304.6" y="135.0" width="607.0" height="19" fill="#2a3350"/>
-<text x="304.6" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">▸ commit + 2 more · installed together 2026-09-20 (3)                   </text>
-<rect x="911.6" y="135.0" width="84.3" height="19" fill="#2a3350"/>
-<text x="911.6" y="149.0" fill="#ef6b6b" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">3 to fix  </text>
+<rect x="304.6" y="135.0" width="598.5" height="19" fill="#2a3350"/>
+<text x="304.6" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="598.5" lengthAdjust="spacingAndGlyphs">▸ commit + 2 more · installed together 2026-09-20 (3)                  </text>
+<rect x="903.1" y="135.0" width="92.7" height="19" fill="#2a3350"/>
+<text x="903.1" y="149.0" fill="#ef6b6b" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> 3 to fix  </text>
 <text x="1004.3" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="168.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">◆ web-app          </text>
@@ -63,8 +63,8 @@
 <text x="245.6" y="168.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">✕ </text>
-<text x="304.6" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">▸ ⧉ vercel plugin (3)                                                   </text>
-<text x="911.6" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">1 to fix  </text>
+<text x="304.6" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="598.5" lengthAdjust="spacingAndGlyphs">▸ ⧉ vercel plugin (3)                                                  </text>
+<text x="903.1" y="168.0" fill="#ef6b6b" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> 1 to fix  </text>
 <text x="1004.3" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="187.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  api-server       </text>
@@ -113,7 +113,7 @@
 <text x="51.7" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  blog                 </text>
 <text x="245.6" y="263.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="304.6" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">▸ claude.ai skills (2)                                                  </text>
+<text x="304.6" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="598.5" lengthAdjust="spacingAndGlyphs">▸ claude.ai skills (2)                                                 </text>
 <text x="1004.3" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>

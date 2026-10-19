@@ -41,10 +41,10 @@
 <text x="270.9" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">▌ </text>
 <rect x="287.8" y="116.0" width="16.9" height="19" fill="#2a3350"/>
 <text x="287.8" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
-<rect x="304.6" y="116.0" width="607.0" height="19" fill="#2a3350"/>
-<text x="304.6" y="130.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="607.0" lengthAdjust="spacingAndGlyphs">▸ ⧉ lean plugin (3)                                                     </text>
-<rect x="911.6" y="116.0" width="84.3" height="19" fill="#2a3350"/>
-<text x="911.6" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="84.3" lengthAdjust="spacingAndGlyphs">3 to fix  </text>
+<rect x="304.6" y="116.0" width="598.5" height="19" fill="#2a3350"/>
+<text x="304.6" y="130.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="598.5" lengthAdjust="spacingAndGlyphs">▸ ⧉ lean plugin (3)                                                    </text>
+<rect x="903.1" y="116.0" width="92.7" height="19" fill="#2a3350"/>
+<text x="903.1" y="130.0" fill="#f2c94c" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs"> 3 to fix  </text>
 <text x="1004.3" y="130.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="149.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="34.9" y="149.0" fill="#8b9dff" font-weight="bold" xml:space="preserve" textLength="92.7" lengthAdjust="spacingAndGlyphs">  Projects </text>

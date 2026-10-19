@@ -832,7 +832,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       cells: [
         { text: top ? SEV[top.severity].icon : " ", width: 2, color: top ? SEV[top.severity].color : undefined },
         { text: `${isOpen ? "▾" : "▸"} ${label} (${members.length})`, grow: true, color: color.accent },
-        { text: flagged ? `${flagged} to fix` : "", width: 10, color: top ? SEV[top.severity].color : color.faint },
+        // A leading space keeps it apart from a name cut to fit.
+        { text: flagged ? ` ${flagged} to fix` : "", width: 11, color: top ? SEV[top.severity].color : color.faint },
       ],
       detail: (width) => {
         const b = builder(label);
