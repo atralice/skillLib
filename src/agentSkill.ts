@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, unlinkSync, wri
 import { join } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { harness, type HarnessId } from "./harnesses.js";
-import { entryExists, linkDir } from "./library.js";
+import { entryExists, isLink, linkDir } from "./library.js";
 import { claudeDir, OWN_SKILL_MARKER, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 
@@ -48,7 +48,8 @@ export type AgentSkillState = "installed" | "outdated" | "missing";
 export function agentSkillState(enabled: HarnessId[] = enabledHarnesses()): AgentSkillState {
   const [primary, ...links] = agentSkillDirs(enabled);
   if (!primary || !isOurs(primary) || links.some((l) => !existsSync(join(l, "SKILL.md")))) return "missing";
-  return readFileSync(join(primary, "SKILL.md"), "utf-8") === shippedSkill() ? "installed" : "outdated";
+  // Every copy an agent reads, not just the first (a real copy can be where a link would be).
+  return [primary, ...links].every((d) => readFileSync(join(d, "SKILL.md"), "utf-8") === shippedSkill()) ? "installed" : "outdated";
 }
 
 /**
@@ -65,6 +66,8 @@ export function installAgentSkill(enabled: HarnessId[] = enabledHarnesses()): { 
   writeFileSync(join(primary, "SKILL.md"), shippedSkill());
   writeFileSync(join(primary, OWN_SKILL_MARKER), "Installed by skilllib. `skilllib agent-skill remove` removes it.\n");
   for (const link of links) {
+    // A real copy of ours where a link belongs (installed before that agent was enabled): make it the link.
+    if (entryExists(link) && !isLink(link) && isOurs(link)) rmSync(link, { recursive: true, force: true });
     if (entryExists(link)) continue;
     mkdirSync(join(link, ".."), { recursive: true });
     linkDir(primary, link);

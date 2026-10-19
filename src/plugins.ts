@@ -319,7 +319,9 @@ function whereOf(p: PluginRef): string {
  * ~/.claude/settings.json is written directly; so is any install's when the CLI doesn't run.
  */
 export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: string } {
-  const done = { ok: true, message: `${p.id} is ${on ? "on" : "off"}${whereOf(p)}${p.synced ? "" : "; Claude Code picks it up in its next session"}` };
+  // A project install's switch is the repo's .claude/settings.json, which the team shares: say git sees it.
+  const shared = p.scope === "project" && p.projectPath ? "; it's in .claude/settings.json, which git tracks, so commit it if the team should get it" : "";
+  const done = { ok: true, message: `${p.id} is ${on ? "on" : "off"}${whereOf(p)}${p.synced ? "" : "; Claude Code picks it up in its next session"}${shared}` };
   if (p.scope && p.scope !== "user" && !p.projectPath) return { ok: false, message: `${p.id}: skilllib doesn't know which project it's installed in; run \`claude plugin ${on ? "enable" : "disable"} ${p.id} --scope ${p.scope}\` there` };
   // Synced plugins aren't installed, and neither is one only turned on in your settings: `claude plugin` can't switch them.
   const bin = p.synced || p.settingsOnly ? null : claudeBinary();
@@ -331,8 +333,6 @@ export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: 
   if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}` };
   // A local install's switch is in .claude/settings.local.json: keep it out of git, as Claude Code does.
   if (p.scope === "local" && p.projectPath) return { ...done, message: done.message + ignoreLocalSettings(p.projectPath) };
-  // A project install's switch is the repo's .claude/settings.json, which the team shares.
-  if (p.scope === "project" && p.projectPath) return { ...done, message: `${done.message}; it's in .claude/settings.json, which git tracks, so commit it if the team should get it` };
   return done;
 }
 

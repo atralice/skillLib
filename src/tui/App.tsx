@@ -759,7 +759,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   }
   function choose(o: Option) {
     if (o.action) return o.action();
-    if (!o.fix) return setToast("Not in the prototype");
+    if (!o.fix) return; // every option has an action or a fix
     if (o.fix.pickRepos) {
       const name = current?.name ?? "";
       const only = o.fix.candidates?.(world);

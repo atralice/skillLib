@@ -261,7 +261,7 @@ test("a pinned skill whose folder is missing: sync restores it from the library;
   expect(readManifest(project).skills["ghost-skill"]).toBeUndefined();
 });
 
-test("a newer library version is an update fix (as in the TUI), not a sync that does nothing", () => {
+test("a newer library version is an update choice (it changes what the repo pins), not a sync that does nothing", () => {
   const project = join(tmp, "web");
   mkdirSync(join(project, ".git"), { recursive: true });
   skill(join(tmp, "src", "alpha"));
@@ -275,8 +275,9 @@ test("a newer library version is an update fix (as in the TUI), not a sync that 
   const update = issues.find((i) => i.id === `update:${project}`)!;
   expect(update.title).toBe("web: 1 skill out of date");
   expect(update.detail).toBe("alpha (v1 → v2)");
-  expect(update.choices).toBeUndefined();
-  expect(runFix(update.fix!)).toEqual({ ok: true, message: "web: updated 1 skill" });
+  // Updating changes the repo's pins and its copies: the user's call, never `doctor --fix`.
+  expect(update.fix).toBeUndefined();
+  expect(runFix(update.choices![0]!)).toEqual({ ok: true, message: "web: updated 1 skill" });
   expect(readManifest(project).skills.alpha?.version).toBe(2);
 });
 
@@ -709,4 +710,18 @@ test("a committed npx skill your library already has raises nothing more (doctor
   const before = findIssues([project], machineSkills(), new Set()).find((i) => i.id === id)!;
   expect(runFix(before.choices![0]!).ok).toBe(true);
   expect(findIssues([project], machineSkills(), new Set(["npx-one"])).some((i) => i.id === id)).toBe(false);
+});
+
+test("a kept-global skill's repo copy isn't offered for removal when an agent reads only that copy", () => {
+  setHarnesses(["claude-code", "codex"]);
+  skill(join(tmp, ".agents", "skills", "review")); // global for Codex only
+  setKeepGlobal(["review"], true);
+  skill(join(tmp, "src", "review"));
+  importSkill(join(tmp, "src", "review"));
+  const project = join(tmp, "code", "web");
+  mkdirSync(join(project, ".git"), { recursive: true });
+  addSkill(project, "review"); // Claude Code's only copy is this one
+  const twice = findIssues([project], machineSkills(), new Set(["review"])).find((i) => i.id === "twice:review");
+  expect(twice?.choices).toBeUndefined();
+  expect(twice?.detail).toContain("Claude Code");
 });

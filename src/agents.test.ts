@@ -268,3 +268,12 @@ test("outside a repo, status --json reports no project skills (the folders there
   expect(status.skills).toEqual([]);
   expect(status.global.flatMap((g: { skills: string[] }) => g.skills)).toContain("everywhere");
 });
+
+test("installed for Codex first, then Claude Code: one real copy and a link", () => {
+  setHarnesses(["codex"]);
+  expect(installAgentSkill().ok).toBe(true); // a real copy in ~/.agents/skills
+  setHarnesses(["claude-code", "codex"]);
+  expect(installAgentSkill().ok).toBe(true);
+  expect(lstatSync(join(tmp, ".agents", "skills", "skilllib")).isSymbolicLink()).toBe(true);
+  expect(agentSkillState()).toBe("installed");
+});

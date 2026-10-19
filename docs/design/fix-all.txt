@@ -1,8 +1,8 @@
-╭── ◆ skilllib ────────────╮╭── Fix automatically (3 of 3) ──────────────────────────────────────────────────────────╮
+╭── ◆ skilllib ────────────╮╭── Fix automatically (2 of 2) ──────────────────────────────────────────────────────────╮
 │   ▤ Your skills     10   ││ Decisions are never listed here: they stay with you.                                   │
 │   ◈ Global          15   ││ ▌ [x] web-app: 2 skills not usable by Codex, Claude Code → Add the links               │
-│   ⧉ Plugins         7    ││   [x] web-app: 1 skill out of date → Update to the newest versions                     │
-│   ✓ Health          28   ││   [x] web-app: 1 skill in skilllib.json not installed → Sync the project               │
+│   ⧉ Plugins         7    ││   [x] web-app: 1 skill in skilllib.json not installed → Sync the project               │
+│   ✓ Health          28   ││                                                                                        │
 │   Projects ───────────── ││                                                                                        │
 │ ▌ ◆ web-app          ✕   ││                                                                                        │
 │     api-server       ✕   ││                                                                                        │

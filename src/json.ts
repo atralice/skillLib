@@ -28,7 +28,7 @@ export type { AgentSkillState, GitState, HarnessId, SkillState, SourceKind };
 
 /**
  * - library: added from your skills with skilllib (pinned in skilllib.json)
- * - repo:    the team's: committed to git (any skill folder), or in .agents/skills
+ * - repo:    the team's: committed to git (any skill folder), or in .agents/skills or .grok/skills
  * - local:   only on this machine: not committed, not managed by skilllib
  */
 export type ProjectSource = "library" | "repo" | "local";

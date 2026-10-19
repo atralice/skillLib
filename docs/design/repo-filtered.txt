@@ -16,8 +16,8 @@
 │     e2e-tests            ││ Component patterns for React 19: composition, server components, suspense boundaries.  │
 │     infra                ││                                                                                        │
 │     landing              ││ ⚠ react-patterns: also in the Cursor plugin react-kit  · your call                     │
-│     marketing-site       ││ ⚠ web-app: 1 skill out of date                                                         │
-│     playground           ││     ★ Update to the newest versions                                                    │
+│     marketing-site       ││ ⚠ web-app: 1 skill out of date  · your call                                            │
+│     playground           ││       Update to the newest versions                                                    │
 │     scripts              ││                                                                                        │
 │     status-page          ││ Actions  Update to v2 · Edit in library · Other versions… · Remove from repo           │
 │    ───────────────────── ││          Review prompt                                                                 │

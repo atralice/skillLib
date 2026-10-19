@@ -232,7 +232,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
     }
     for (const sub of subs) {
       if (existsSync(join(sub, ".git"))) continue;
-      for (const [skillsDir, readers] of NESTED_READERS) {
+      for (const [skillsDir] of NESTED_READERS) {
         const location = relative(root, join(sub, skillsDir)).split(sep).join("/");
         for (const path of skillDirsIn(join(sub, skillsDir))) {
           // A link to a skill elsewhere in the repo is that skill, already reported.
@@ -246,7 +246,10 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
             latest: latestVersion(name)?.version ?? null,
             location,
             path,
-            visibility: enabled.map((id) => ({ id, paths: readers.includes(id) ? 1 : 0 })),
+            // Its own folder's readers, plus any that reach it through a link in another of the package's folders.
+            visibility: ((all) => enabled.map((id) => ({ id, paths: all.includes(id) ? 1 : 0 })))(
+              NESTED_READERS.filter(([dir]) => realpathOrNull(join(sub, dir, name)) === realpathOrNull(path)).flatMap(([, r]) => r),
+            ),
           });
         }
       }

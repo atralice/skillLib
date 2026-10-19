@@ -57,8 +57,9 @@ export function readManifest(root: string): Manifest {
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path} isn't a skilllib.json (it should hold an object with "skills")`);
   const skills = Object.fromEntries(
     Object.entries(data.skills ?? {}).flatMap(([name, value]): [string, Dependency][] => {
-      // Registry-era refs ("@owner/name": "^1.0.0") don't map to the library.
-      if (name.startsWith("@")) return [];
+      // Registry-era refs ("@owner/name": "^1.0.0") don't map to the library, and a name that isn't one folder
+      // name (".", "..", a path) can't be a skill: reading on would copy outside the skill's folder.
+      if (name.startsWith("@") || !name || name === "." || name === ".." || /[\\/]/.test(name)) return [];
       // 0.3 manifests stored just the hash.
       if (typeof value === "string") return [[name, { version: versionForHash(name, value)?.version ?? 0, hash: value }]];
       if (value && typeof value === "object" && "hash" in value) {

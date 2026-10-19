@@ -1,11 +1,11 @@
-import { existsSync, lstatSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
-import { grokDir, GROK_SKILLS_DIR, libraryDir, realPath as realPathOf } from "./paths.js";
+import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { skillDirsIn, treeHash } from "./skills.js";
 import { readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
@@ -147,9 +147,10 @@ function brokenLinksIn(root: string): Issue[] {
       if (!isLink(path) || existsSync(path) || (dir !== GROK_SKILLS_DIR && hasCopy(name))) return [];
       const remove: Choice = {
         label: "Remove the link",
+        hint: "restorable with skilllib restore",
         run: () => {
-          unlinkSync(path);
-          return `Removed the broken link ${dir}/${name} in ${where}`;
+          stash(path, "tidy-backup");
+          return `Removed the broken link ${dir}/${name} in ${where} (restorable with skilllib restore)`;
         },
       };
       git ??= gitInfo(root);
@@ -553,10 +554,14 @@ export function findIssues(
         title: `${where}: ${plural(behind.length, "skill")} out of date`,
         detail: behind.map((s) => `${s.name} (v${s.version} → v${s.latest})`).join(", "),
         at: rows(root, behind.map((s) => s.name)),
-        fix: {
-          label: "Update to the newest versions",
-          run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
-        },
+        // It changes what the repo pins and the copies its agents load (often committed): a choice, never `doctor --fix`.
+        choices: [
+          {
+            label: "Update to the newest versions",
+            hint: gitInfo(root)?.of(MANIFEST_FILE) === "committed" ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+            run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
+          },
+        ],
       });
 
     // One real copy per skill, plus only the links your agents need.
@@ -837,23 +842,30 @@ export function findIssues(
     // Each repo's row, and Global's.
     const at = [...copies.flatMap((c) => rows(c.root, [name])), ...rows(null, [name])];
     if (kept.has(name)) {
-      // You keep it global on purpose: the project copies are the extra ones (Claude Code runs the global one anyway).
-      const removeWheres = removable.map((r) => basename(r)).join(", ");
+      // You keep it global on purpose: a project copy is extra where every agent that reads it also loads the
+      // global one. Where one agent has only the repo's copy, removing it would take the skill away from it.
+      const globalLoaders = new Set(globalCopies.filter((m) => m.name === name).flatMap((m) => m.harnesses));
+      const onlyHere = (root: string) => visibilityOf(root, name).filter((v) => v.paths > 0 && !globalLoaders.has(v.id)).map((v) => harness(v.id).name);
+      const needed = removable.filter((root) => onlyHere(root).length);
+      const extra = removable.filter((root) => !onlyHere(root).length);
+      const removeWheres = extra.map((r) => basename(r)).join(", ");
       issues.push({
         id: `twice:${name}`,
         severity: "suggestion",
         title: `${name}: in ${wheres}, and you keep it global`,
-        detail: `The global copy already loads there, so the project copies are extra. Claude Code runs the global one anyway.${
+        detail: `${extra.length ? `The global copy already loads in ${removeWheres} for every agent that reads the project copy, so those are extra.` : ""}${
+          needed.length ? ` In ${needed.map((r) => `${basename(r)} (${onlyHere(r).join(", ")})`).join(", ")}, some agents read only the repo's copy: keep it there, or link the global one for them.` : ""
+        }${
           repoOwn.length ? ` ${repoOwn.join(", ")} ${repoOwn.length === 1 ? "has its own copy" : "have their own copies"}: remove ${repoOwn.length === 1 ? "it" : "them"} in the repo, or stop keeping ${name} global.` : ""
         }`,
         at,
-        choices: removable.length
+        choices: extra.length
           ? [
               {
                 label: `Remove the copies in ${removeWheres}`,
                 hint: "the global copy stays",
                 run: () => {
-                  const removed = removable.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
+                  const removed = extra.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
                   if (!removed.length) throw new Error(`${name}: removed from no project (local edits?)`);
                   return `${name}: removed from ${removed.join(", ")}; the global copy stays`;
                 },
