@@ -403,7 +403,7 @@ The repo commands (`status`, `add`, `remove`, `sync`, `outdated`, `update`, `lin
 
 Flags: `--force` (overwrite local edits, backed up to `~/.skilllib/edit-backup`), `--allow-tracked` (link into git-tracked folders; skills git doesn't share are still left out), `--days N`, `--json`. For `tidy`: `--dry-run` (preview), `--allow-git` (also change committed files), `<name> --keep <folder>` (the copy that wins when copies differ).
 
-A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder. What it did do is still done, and listed. An unknown or misspelled flag is an error too, so a typo never runs silently. With `--json`, a failure prints `{"error": "…"}` on stdout as well as the message on stderr.
+A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, an unknown `tidy` name or `--keep` folder, or (with `--all`, and `projects`) a repo left out because its `skilllib.json` can't be read. What it did do is still done, and listed. An unknown or misspelled flag is an error too, so a typo never runs silently. With `--json`, a failure prints `{"error": "…"}` on stdout as well as the message on stderr.
 
 **`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move` and `agent-skill`. The output is shaped to keep agents fast and cheap:
 

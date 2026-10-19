@@ -443,6 +443,16 @@ describe("round 4", () => {
     expect(projects.err).toContain("isn't valid JSON");
   });
 
+  test("list and show keep working in every repo while another repo's skilllib.json is broken", () => {
+    const bad = repo("bad");
+    const good = repo("good");
+    cli(tmp, "scan", join(tmp, "code"));
+    writeFileSync(join(bad, "skilllib.json"), "<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> other\n");
+    expect(cli(good, "list", "--json").code).toBe(0);
+    expect(cli(good, "list").code).toBe(0);
+    expect(JSON.parse(cli(good, "show", "alpha", "--json").out).name).toBe("alpha");
+  });
+
   test("add --force never replaces a copy the repo commits", () => {
     const web = repo("web");
     mkdirSync(join(web, ".claude", "skills", "alpha"), { recursive: true });

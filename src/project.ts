@@ -153,3 +153,15 @@ export function readableRoots(roots: string[]): { readable: string[]; unreadable
   });
   return { readable, unreadable };
 }
+
+/**
+ * A repo's pins, for code that looks across every repo (who uses a skill): a skilllib.json that can't be read
+ * (a merge conflict) counts as none, so one repo never breaks the others. doctor reports it (manifest:).
+ */
+export function pinsIn(root: string): Manifest["skills"] {
+  try {
+    return readManifest(root).skills;
+  } catch {
+    return {};
+  }
+}

@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
-import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
+import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { tildify } from "./output.js";
@@ -649,7 +649,7 @@ export function removeUntracked(root: string, name: string, path: string): strin
 }
 
 export function projectsUsing(name: string): string[] {
-  return knownProjects().filter((p) => name in readManifest(p).skills);
+  return knownProjects().filter((p) => name in pinsIn(p));
 }
 
 /** Removes a skill from the library by moving it to ~/.skilllib/trash. Refuses while projects still use it. */

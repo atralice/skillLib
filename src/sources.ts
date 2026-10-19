@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync } from "node:fs";
 import { harness, HARNESSES, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses } from "./config.js";
-import { basename, join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify as homeRelative } from "./output.js";
@@ -324,6 +325,10 @@ export function recordOrigin(name: string, origin: string) {
 
 /** Origin label for a folder being imported into the library. */
 export function originFor(dir: string): string {
+  // A temporary folder (a clone made just to import from) is gone soon: it isn't where the skill came from.
+  const under = (path: string, folder: string) => path.startsWith((realpathOrNull(folder) ?? folder) + sep);
+  const real = realpathOrNull(dir) ?? dir;
+  if (under(real, tmpdir()) && !under(real, userHome())) return "";
   const match = machineSkills().find((s) => resolve(s.path) === resolve(dir));
   if (match) return match.kind === "global" ? "global folder" : `${match.kind}: ${match.origin}`;
   const project = dir.split(/[\\/]\.(?:claude|agents|grok|cursor|codex)[\\/]skills[\\/]/)[0];
