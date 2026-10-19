@@ -6,7 +6,7 @@ A reliability release from many rounds of review. Nothing new to learn; skilllib
 
 ### Safer global skills
 * `global move`, doctor's "Stop loading it globally" and the app's Delete / Move to repos never take a global skill away from an agent that still needs it in any repo you have, including a repo that reaches it through a link, a skills folder linked to a shared folder of yours (`~/devskills`), or a monorepo package that pins it. When one would, skilllib refuses and says what to change, or that `skilllib global keep` keeps it.
-* Moving or deleting one global row now covers every global copy of that skill; copies that differ must be reconciled first (`skilllib tidy --global`).
+* Moving one global row now covers every global copy of that skill; copies that differ must be reconciled first (`skilllib tidy --global`). Deleting one removes that copy and the links to it, and says where the skill still loads.
 * Package links a move leaves pointing at nothing are named (`left` in `global move --json`).
 
 ### Never half done

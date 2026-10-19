@@ -137,6 +137,8 @@ function conflictIssue(c: Conflict): Issue {
     at: rows(c.root, [c.name]),
     choices: winners.flatMap((x): Choice[] => {
       const plan = planFor(x.dir);
+      // Keeping a copy that changes nothing isn't a choice: it would fail.
+      if (!plan?.steps.length) return [];
       const visible = plan ? gitVisibleSteps(plan).map((s) => describeStep(s, c.root)) : [];
       const label = `Keep the ${folderLabel(c.root, x.dir)} copy`;
       if (!visible.length) return [{ label, hint: x.dir === c.managed ? "skilllib's version" : "the others become links to it", run: keep(x.dir, "go") }];

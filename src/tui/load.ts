@@ -502,12 +502,14 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     replacePlugin: (p, repos) => {
       const id = p.id;
-      // A different library skill by the same name stops it, before anything is copied in.
+      // Your own copy wins, as when doctor removes a plugin: a different one in your library or your global skills
+      // stops it, before anything is copied in.
       const clashes = p.skills.filter((s) => {
-        const mine = treeHash(librarySkillDir(s.name));
-        return mine !== null && mine !== treeHash(s.path);
+        const theirs = treeHash(s.path);
+        const mine = [librarySkillDir(s.name), ...machine.filter((m) => m.movable && m.name === s.name).map((m) => m.path)].map(treeHash);
+        return mine.some((h) => h !== null && h !== theirs);
       });
-      if (clashes.length) return failed(`${id} kept: your library has different ${clashes.map((s) => s.name).join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
+      if (clashes.length) return failed(`${id} kept: you have different ${clashes.map((s) => s.name).join(", ")} (in your library or global skills); keep yours, or update or delete ${clashes.length === 1 ? "it" : "them"} first`);
       // A repo that can't take one of them (its own different copy, the team's committed one, a folder that isn't
       // the repo's) stops it too, before anything is copied in: never half done.
       const cant = repos.flatMap((repo) =>

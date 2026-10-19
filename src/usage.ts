@@ -83,7 +83,15 @@ function transcriptFiles(sinceMs: number): string[] {
     return list(dir)
       .filter((f) => f.endsWith(".jsonl"))
       .map((f) => join(dir, f))
-      .filter((f) => (statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? 0) >= sinceMs);
+      // Only plain files: a link that loops (ELOOP) or a FIFO named *.jsonl (reading it would hang) is skipped.
+      .filter((f) => {
+        try {
+          const st = statSync(f);
+          return st.isFile() && st.mtimeMs >= sinceMs;
+        } catch {
+          return false;
+        }
+      });
   });
 }
 

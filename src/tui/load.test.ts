@@ -314,9 +314,18 @@ test("replacing a plugin whose skill your library has differently changes nothin
   importSkill(join(tmp, "src", "lint"));
   const w = loadWorld();
   const r = withClaude(false, () => replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, ["app"]));
-  expect(r).toEqual(failed("tools@mk kept: your library has different lint; update or delete it first"));
+  expect(r).toEqual(failed("tools@mk kept: you have different lint (in your library or global skills); keep yours, or update or delete it first"));
   // Nothing copied in before it said no.
   expect(loadWorld().library.map((l) => l.name)).toEqual(["lint"]);
+});
+
+test("replacing a plugin whose skill you have differently in your global skills changes nothing: yours wins", () => {
+  fakePlugin();
+  writeSkill(join(tmp, ".claude", "skills", "lint"), "mine");
+  const w = loadWorld();
+  const r = withClaude(false, () => replacePluginFix(w.plugins.find((p) => p.id === "tools@mk")!).pickRepos!(w, []));
+  expect(r).toEqual(failed("tools@mk kept: you have different lint (in your library or global skills); keep yours, or update or delete it first"));
+  expect(loadWorld().library).toEqual([]);
 });
 
 test.skipIf(process.platform === "win32")("a plugin only turned on in your settings is turned off by Replace, never sent to `claude plugin`", () => {
