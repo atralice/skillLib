@@ -29,14 +29,18 @@ export function isSkillDir(dir: string): boolean {
   return existsSync(join(dir, "SKILL.md"));
 }
 
-function listFiles(dir: string): string[] {
+function listFiles(dir: string, seen = new Set<string>()): string[] {
+  // A folder reached twice (a link back up, `self -> .`) is read once: no loop.
+  const real = realpathSync(dir);
+  if (seen.has(real)) return [];
+  seen.add(real);
   return readdirSync(dir)
     .filter((entry) => !IGNORED.has(entry))
     .flatMap((entry) => {
       const full = join(dir, entry);
       // A link to nothing has no content: skip it rather than fail on the whole skill.
       const st = statSync(full, { throwIfNoEntry: false });
-      return !st ? [] : st.isDirectory() ? listFiles(full) : [full];
+      return !st ? [] : st.isDirectory() ? listFiles(full, seen) : [full];
     });
 }
 
@@ -67,7 +71,9 @@ export function copySkill(from: string, to: string) {
   const source = realpathSync(from);
   rmSync(to, { recursive: true, force: true });
   // existsSync: a link to nothing (dereferenced, there's nothing to copy) is left out.
-  cpSync(source, to, { recursive: true, dereference: true, filter: (src) => !IGNORED.has(basename(src)) && existsSync(src) });
+  // A link back to the skill or above it (`self -> .`) would copy forever: it's left out.
+  const loops = (src: string) => src !== source && ((r) => r === source || source.startsWith(r + sep))(realpathSync(src));
+  cpSync(source, to, { recursive: true, dereference: true, filter: (src) => !IGNORED.has(basename(src)) && existsSync(src) && !loops(src) });
 }
 
 /** Skill folders directly inside `dir` (folders containing SKILL.md). */

@@ -41,3 +41,18 @@ test("covers extra folders, such as a monorepo package's skills", () => {
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   expect(gitInfo(repo, ["packages/web/.claude/skills"])!.of("packages/web/.claude/skills/nested")).toBe("committed");
 });
+
+test("a project inside a repo (a nested skilllib.json) sees what git tracks", () => {
+  const repo = mkdtempSync(join(tmpdir(), "skilllib-git-nested-"));
+  const project = join(repo, "packages", "web");
+  mkdirSync(join(project, ".agents", "skills", "team"), { recursive: true });
+  writeFileSync(join(project, ".agents", "skills", "team", "SKILL.md"), "x");
+  writeFileSync(join(project, "skilllib.json"), "{}");
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "x");
+  writeFileSync(join(project, ".agents", "skills", "team", "SKILL.md"), "edited");
+  expect(gitInfo(project)?.of(".agents/skills/team")).toBe("changed");
+  rmSync(repo, { recursive: true, force: true });
+});

@@ -30,7 +30,7 @@ import { libraryFor, statusIssues, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
-import { addRoot, allowTrackedLinks, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
+import { addRoot, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
 import { findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
@@ -365,7 +365,10 @@ export function projects(args: Args) {
     roots.map((root) => {
       const skills = projectStatus(root);
       const managed = skills.filter((s) => s.managed);
-      const attention = skills.filter((s) => s.state !== "ok" && s.state !== "local only").length;
+      // The team's committed skills are fine as they are: only what needs a decision counts.
+      const teamState = teamStateIn(root);
+      const usual = new Set(["ok", "local only", "repo skill", "repo skill, in library", "from npx skills"]);
+      const attention = skills.filter((s) => !usual.has(teamState(s))).length;
       return {
         Project: basename(root),
         Path: dim(tildify(root)),
@@ -382,8 +385,7 @@ export function add(args: Args) {
     throw new Error("Usage: skilllib add <skill-name>... [--force]");
   }
   const root = requireProject();
-  if (args.allowTracked) allowTrackedLinks(root);
-  printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force })), args);
+  printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force, allowTracked: args.allowTracked })), args);
   rememberProjects([root]);
 }
 
@@ -399,7 +401,6 @@ export function remove(args: Args) {
 function changeEach(args: Args, change: (root: string) => Change[], nothing: (root: string) => void): string[] {
   const roots = projectsFor(args);
   const results = roots.map((root): AllChangesJson[number] => {
-    if (args.allowTracked) allowTrackedLinks(root);
     const changes = change(root);
     if (changes.some(incomplete)) process.exitCode = 1;
     if (!args.json) {
@@ -418,7 +419,7 @@ export function sync(args: Args) {
   if (args.positional.length) throw new Error(`sync takes no skill names: it installs exactly what skilllib.json pins. To add a skill: skilllib add ${args.positional.join(" ")}`);
   const roots = changeEach(
     args,
-    (root) => syncProject(root, { force: args.force }),
+    (root) => syncProject(root, { force: args.force, allowTracked: args.allowTracked }),
     (root) => (existsSync(join(root, MANIFEST_FILE)) ? success("Installed versions match skilllib.json") : info(dim("No skilllib.json: nothing to sync"))),
   );
   if (!args.all) rememberProjects(roots);
@@ -430,7 +431,7 @@ export function update(args: Args) {
   changeEach(
     args,
     (root) => {
-      const changes = updateProject(root, names, { force: args.force });
+      const changes = updateProject(root, names, { force: args.force, allowTracked: args.allowTracked });
       // A name this project doesn't track isn't "on the latest version" (with --all, most projects lack it).
       if (!args.all) for (const name of names ?? []) if (!(name in readManifest(root).skills)) changes.push({ name, action: "skipped", reason: "not managed by skilllib in this project" });
       return changes;
@@ -786,8 +787,8 @@ export function harnessesCommand(args: Args) {
 export function link(args: Args) {
   const roots = projectsFor(args);
   for (const root of roots) {
-    if (args.allowTracked) allowTrackedLinks(root);
-    const res = linkAll(root);
+    // --allow-tracked is for this run only; the app's "Add links everywhere" is what remembers the repo.
+    const res = linkAll(root, { allowTracked: args.allowTracked });
     const label = args.all ? `${basename(root)}: ` : "";
     if (res.linked.length) success(`${label}linked ${res.linked.length} skill(s) for your other agents`);
     else if (!args.all && !res.blocked.length && !res.uncommitted.length) success("Every skill here is already usable by all your agents");

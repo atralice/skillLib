@@ -115,7 +115,8 @@ function conflictIssue(c: Conflict): Issue {
       const label = `Keep the ${folderLabel(c.root, x.dir)} copy`;
       if (!visible.length) return [{ label, hint: x.dir === c.managed ? "skilllib's version" : "the others become links to it", run: keep(x.dir, "go") }];
       return [
-        { label: `${label}, but keep git as it is`, hint: `skips what git would see: ${visible.join(", ")}`, run: keep(x.dir, "keep") },
+        // "Keep git as it is" only when it leaves something to do.
+        ...(visible.length < (plan?.steps.length ?? 0) ? [{ label: `${label}, but keep git as it is`, hint: `skips what git would see: ${visible.join(", ")}`, run: keep(x.dir, "keep") }] : []),
         { label: `${label}, and change what git tracks`, hint: `git will see: ${visible.join(", ")}`, run: keep(x.dir, "go") },
       ];
     }),

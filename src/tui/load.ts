@@ -497,9 +497,13 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
       return r.ok ? r.message : failed(r.message);
     },
     deleteLibrary: (name) => {
-      // Every repo that tracks it, hidden ones too; each copy (edits included) goes to the backups first.
+      // The preview names the repos the app shows: a hidden one that tracks it isn't changed behind your back.
+      const using = projectsUsing(name);
+      const hidden = using.filter((root) => ![...roots.values()].includes(root));
+      if (hidden.length) return failed(`${name} is also in ${hidden.map((r) => basename(r)).join(", ")}, which ${hidden.length === 1 ? "is" : "are"} hidden: unhide ${hidden.length === 1 ? "it" : "them"} (Settings) to delete it everywhere`);
+      // Each copy (edits included) goes to the backups first.
       const from: string[] = [];
-      for (const root of projectsUsing(name)) {
+      for (const root of using) {
         const s = projectStatus(root).find((x) => x.name === name && x.managed);
         if (s && existsSync(s.path)) removeUntracked(root, name, s.path);
         removeSkill(root, name, { force: true });

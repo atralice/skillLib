@@ -613,3 +613,10 @@ test("one global folder reached by two paths is one folder: listed once, never t
     rmSync(link, { force: true, recursive: false });
   }
 });
+
+test("--allow-tracked is for that command only: nothing is remembered", () => {
+  const web = join(tmp, "code", "flagged");
+  mkdirSync(join(web, ".git"), { recursive: true });
+  cli(web, "add", "alpha", "--allow-tracked");
+  expect(readConfig().agentsDirOk ?? []).toEqual([]);
+});

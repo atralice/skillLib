@@ -317,18 +317,13 @@ export function linkEverywhere(root: string, name: string, location: string, { a
 }
 
 /**
- * Removes symlinks to this skill in the project's harness folders. Never touches a real folder.
- * A link in .grok/skills stays unless it already dangles, or it points at `removing` (the copy
- * about to go away). Leaving that link would make Grok load a path that no longer exists.
+ * Removes the links to a skill that point at nothing, in every repo skill folder: run after its copy was
+ * moved away (removeUntracked backs it up first). A link to another copy (the team's, say) stays.
  */
-export function unlinkEverywhere(root: string, name: string, removing?: string): string[] {
-  const gone = removing ? realpathOrNull(removing) : null;
+export function unlinkEverywhere(root: string, name: string): string[] {
   return ALL_PROJECT_DIRS.filter((dir) => {
     const link = join(root, dir, name);
-    if (!isLink(link)) return false;
-    // Only links to nothing or to the copy being removed: one to another copy (the team's, say) stays.
-    const target = realpathOrNull(link);
-    if (target !== null && target !== gone) return false;
+    if (!isLink(link) || realpathOrNull(link) !== null) return false;
     unlinkSync(link);
     return true;
   });
@@ -399,6 +394,8 @@ export function addSkill(
   name: string,
   { force = false, version, allowTracked = false }: { force?: boolean; version?: number; allowTracked?: boolean } = {},
 ): Change {
+  // A skill's name is one folder name: never ".", "..", empty, or a path.
+  if (!name || name === "." || name === ".." || /[\\/]/.test(name)) return { name, action: "skipped", reason: "not a skill name" };
   const target = version === undefined ? latestVersion(name) : getVersion(name, version);
   if (!target) return { name, action: "skipped", reason: version === undefined ? "not in the library" : `version ${version} doesn't exist` };
 
@@ -505,12 +502,12 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * restores missing folders and reverts nothing that was edited (forced, it
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
-export function syncProject(root: string, { force = false } = {}): Change[] {
-  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force }));
+export function syncProject(root: string, { force = false, allowTracked = false } = {}): Change[] {
+  return Object.keys(readManifest(root).skills).flatMap((name) => syncSkill(root, name, { force, allowTracked }));
 }
 
 /** `syncProject` for one skill: nothing when it's already as pinned. */
-function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
+function syncSkill(root: string, name: string, { force = false, allowTracked = false } = {}): Change[] {
   const dep = readManifest(root).skills[name];
   if (!dep) return [];
   const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
@@ -523,7 +520,7 @@ function syncSkill(root: string, name: string, { force = false } = {}): Change[]
   if (local !== null && local !== dep.hash && !force) return [{ name, action: "skipped", reason: "has local edits (use --force to reset them)" }];
   const version = pinnedVersion(name, dep);
   if (typeof version === "string") return [{ name, action: "skipped", reason: version }];
-  const change = addSkill(root, name, { force: true, version });
+  const change = addSkill(root, name, { force: true, version, allowTracked });
   return [{ ...change, action: local === null ? "installed" : change.action }];
 }
 
@@ -564,7 +561,7 @@ export function discardEdits(root: string, name: string): Change {
 }
 
 /** Moves skills (default: all) to the newest library version, keeping local edits unless forced. */
-export function updateProject(root: string, names?: string[], { force = false } = {}): Change[] {
+export function updateProject(root: string, names?: string[], { force = false, allowTracked = false } = {}): Change[] {
   const { skills } = readManifest(root);
   return Object.keys(skills)
     .filter((name) => !names || names.includes(name))
@@ -576,7 +573,7 @@ export function updateProject(root: string, names?: string[], { force = false } 
       if (dep.hash === latest.hash && local === latest.hash) return [];
       // Already on the newest version: local edits are `sync --force`'s business, not an update's.
       if (dep.hash === latest.hash && local !== null && !force) return [];
-      const change = addSkill(root, name, { force });
+      const change = addSkill(root, name, { force, allowTracked });
       return change.action === "skipped" || change.from !== change.to || local !== latest.hash ? [change] : [];
     });
 }
@@ -647,7 +644,7 @@ export function stash(dir: string, bucket: string): string {
 export function removeUntracked(root: string, name: string, path: string): string {
   // The backup first: when the copy is itself a link, removing links first would take it away.
   const to = stash(path, "trash");
-  unlinkEverywhere(root, name, to);
+  unlinkEverywhere(root, name);
   return to;
 }
 
