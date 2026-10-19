@@ -40,7 +40,7 @@ export type StatusSkillGroup = {
   /** Folder with the real copy, when it isn't .claude/skills. */
   dir?: string;
   version?: number;
-  /** Only when it isn't "ok". */
+  /** Only when it isn't the usual one: "ok", "local only", or a repo skill's. */
   state?: SkillState;
   /** Newer library version, when there is one. */
   latest?: number;

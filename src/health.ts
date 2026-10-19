@@ -309,20 +309,30 @@ export function findIssues(
   const nested = new Map(projects.map((root) => [root, nestedOf(root)]));
 
   for (const skill of machine.filter((m) => m.broken)) {
+    // What it reaches: nothing, a file, or a folder with no SKILL.md (a collection Cursor may still search inside):
+    // only the first two are removed by themselves.
+    const reaches = isDir(skill.path) ? "folder" : existsSync(skill.path) ? "file" : "nothing";
+    const remove: Choice = {
+      label: "Remove the link",
+      hint: "restorable with skilllib restore",
+      run: () => {
+        const r = unloadGlobal(skill.path);
+        if (!r.ok) throw new Error(`${skill.name}: ${r.reason}`);
+        return `Removed broken link ${skill.name}`;
+      },
+    };
     issues.push({
       id: `broken:${skill.path}`,
       severity: "problem",
       title: `${skill.name}: broken link in ${tildify(dirname(skill.path))}`,
-      detail: "It points at a folder that no longer exists, so it loads nothing.",
+      detail:
+        reaches === "nothing"
+          ? "It points at a folder that no longer exists, so it loads nothing."
+          : reaches === "file"
+            ? "It points at a file, not a skill folder, so it loads nothing."
+            : "It points at a folder with no SKILL.md: most agents load nothing from it (Cursor may find skills deeper inside).",
       at: rows(null, [skill.name]),
-      fix: {
-        label: "Remove the link",
-        run: () => {
-          const r = unloadGlobal(skill.path);
-          if (!r.ok) throw new Error(`${skill.name}: ${r.reason}`);
-          return `Removed broken link ${skill.name}`;
-        },
-      },
+      ...(reaches === "folder" ? { choices: [remove] } : { fix: remove }),
     });
   }
 
@@ -433,14 +443,15 @@ export function findIssues(
           : "",
         others ? `Turning it off or removing it copies its other ${others === 1 ? "skill" : `${others} skills`} into Your skills first, so nothing is lost.` : "",
         plugin.extras.length
-          ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
+          ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced || plugin.settingsOnly ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
           : "",
         plugin.synced ? "It's synced from claude.ai, so it can only be turned off here." : "",
+        plugin.settingsOnly ? "It's only turned on in your settings, not installed, so it can only be turned off here." : "",
         inRepos.length ? `Or keep it and turn it off only in ${inRepos.map(([root]) => basename(root)).join(", ")}.` : "",
       ]
         .filter(Boolean)
         .join(" "),
-      choices: [...(plugin.synced ? [off] : plugin.extras.length ? [off, remove] : [remove, off]), ...inRepos.flatMap(([root, d]) => repoChoices(plugin, root, d))],
+      choices: [...(plugin.synced || plugin.settingsOnly ? [off] : plugin.extras.length ? [off, remove] : [remove, off]), ...inRepos.flatMap(([root, d]) => repoChoices(plugin, root, d))],
       // Global's rows (yours and the plugin's), and the repos where both load.
       at: [...rows(null, dupes), ...[...inRepos, ...cursorRepos].flatMap(([root, d]) => rows(root, d))],
       plugin: plugin.id,

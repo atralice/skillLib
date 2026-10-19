@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
@@ -570,8 +570,6 @@ const NESTED_READERS: [string, HarnessId[]][] = [
   [".grok/skills", ["grok"]],
 ];
 
-/** Folders never searched for nested skills: dependencies and build output. */
-const NESTED_SKIP = new Set(["node_modules", "dist", "build", "out", "vendor", "target", "coverage"]);
 
 /**
  * Skill folders below a repo's root, as monorepos have (packages/web/.claude/skills).
@@ -626,7 +624,7 @@ export function packageDirs(root: string, depth = PACKAGE_DEPTH): string[] {
     let subs: string[] = [];
     try {
       subs = readdirSync(dir, { withFileTypes: true })
-        .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !NESTED_SKIP.has(d.name))
+        .filter((d) => d.isDirectory() && !d.name.startsWith(".") && !BUILD_DIRS.has(d.name))
         .map((d) => join(dir, d.name));
     } catch {
       return;

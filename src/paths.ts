@@ -18,7 +18,8 @@ export function realPath(path: string): string {
 
 /** Where skilllib keeps its state. Override with SKILLLIB_HOME. */
 export function skilllibHome(): string {
-  return process.env.SKILLLIB_HOME ?? join(userHome(), ".skilllib");
+  // An empty one is unset (as CODEX_HOME and GROK_HOME are): never the folder you're in.
+  return process.env.SKILLLIB_HOME?.trim() || join(userHome(), ".skilllib");
 }
 
 /** The skill library: one folder per skill. */
@@ -28,7 +29,7 @@ export function libraryDir(): string {
 
 /** Claude Code's config dir, honoring CLAUDE_CONFIG_DIR like Claude Code does. */
 export function claudeDir(): string {
-  return process.env.CLAUDE_CONFIG_DIR ?? join(userHome(), ".claude");
+  return process.env.CLAUDE_CONFIG_DIR?.trim() || join(userHome(), ".claude");
 }
 
 /** Grok's config dir, honoring GROK_HOME like Grok does (it treats an empty one as unset). */
@@ -115,3 +116,6 @@ export function writeState(path: string, data: unknown) {
     throw err;
   }
 }
+
+/** Folders never searched for skills or repos: dependencies and build output. */
+export const BUILD_DIRS = new Set(["node_modules", "dist", "build", "out", "vendor", "target", "coverage"]);

@@ -41,7 +41,7 @@ function skillExcerpt(dir: string, chars: number): { text: string; files: number
   const file = join(dir, "SKILL.md");
   if (!existsSync(file)) return { text: "(SKILL.md not found)", files: 0, size: 0 };
   // Drop the frontmatter: name and description are already listed above.
-  const content = readFileSync(file, "utf-8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+  const content = readFileSync(file, "utf-8").replace(/^\uFEFF/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
   let files = 0;
   try {
     files = readdirSync(dir, { recursive: true, withFileTypes: true }).filter((d) => d.isFile()).length;

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { ALL_PROJECT_DIRS } from "./harnesses.js";
 import { MANIFEST_FILE } from "./paths.js";
 
@@ -43,8 +43,28 @@ export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null 
     if (!existsSync(join(root, ".git"))) return null;
     inRepo = "";
   }
-  const dirs = [...ALL_PROJECT_DIRS, MANIFEST_FILE, ...extraDirs].filter((d) => existsSync(join(root, d)));
+  // Each folder at its real place in the repo: git lists nothing through a folder that's a link (.agents/skills → .claude/skills),
+  // so a link's skills are asked where they really are. One that leads out of the repo has no state here.
+  const real = (p: string) => {
+    try {
+      return realpathSync.native(p);
+    } catch {
+      return p;
+    }
+  };
+  const realRoot = real(root);
+  const places = new Map(
+    [...new Set([...ALL_PROJECT_DIRS, MANIFEST_FILE, ...extraDirs])]
+      .filter((d) => existsSync(join(root, d)))
+      .map((d) => [d, relative(realRoot, real(join(root, d))).split(sep).join("/")] as const)
+      .filter(([, place]) => place !== "" && place !== ".." && !place.startsWith("../") && !isAbsolute(place)),
+  );
+  const dirs = [...new Set(places.values())];
   if (dirs.length === 0) return { of: () => "new" };
+  const placeOf = (rel: string) => {
+    const dir = [...places.keys()].find((d) => rel === d || rel.startsWith(d + "/"));
+    return dir === undefined ? rel : places.get(dir)! + rel.slice(dir.length);
+  };
 
   const tracked = (git(root, ["ls-files", "-z", "--", ...dirs]) ?? "").split("\0").filter(Boolean);
   const dirty = (git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...dirs]) ?? "")
@@ -67,7 +87,7 @@ export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null 
   const under = (list: string[], rel: string) => list.some((p) => p === rel || p.startsWith(rel + "/"));
   return {
     of: (relPath: string) => {
-      const rel = relPath.replace(/\/+$/, "");
+      const rel = placeOf(relPath.replace(/\/+$/, ""));
       if (under(tracked, rel)) return under(dirty, rel) ? "changed" : "committed";
       return isIgnored(rel) ? "ignored" : "new";
     },

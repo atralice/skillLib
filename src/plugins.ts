@@ -61,6 +61,8 @@ export function claudePlugins(machine: SourcedSkill[], root?: string): ClaudePlu
       scope: synced ? null : (entry?.scope ?? "user"),
       ...(entry?.projectPath ? { projectPath: entry.projectPath } : {}),
       synced,
+      // Turned on in your settings with no install record (as installedPlugins finds it).
+      ...(!synced && !entries.length ? { settingsOnly: true as const } : {}),
       skills,
       extras: extrasOf(dirname(dirname(skills[0]!))),
     };
@@ -292,7 +294,7 @@ function ignoreLocalSettings(root: string): string {
  */
 export function turnOffIn(plugin: ClaudePlugin, root: string): { ok: boolean; message: string } {
   const done = `${plugin.id} turned off in ${basename(root)}; other repos keep it`;
-  const bin = plugin.synced ? null : claudeBinary();
+  const bin = plugin.synced || plugin.settingsOnly ? null : claudeBinary();
   if (!bin) {
     const r = setPluginIn(join(root, ".claude", "settings.local.json"), plugin.id, false);
     return r.ok ? { ok: true, message: `${done} (in .claude/settings.local.json${ignoreLocalSettings(root)})` } : { ok: false, message: `${plugin.id}: ${r.reason}` };
@@ -386,12 +388,13 @@ type Removed = { id: string; scope: string; projectPath?: string; on?: boolean; 
  * "delete" uninstalls it (restorable with skilllib restore); "off" only disables it.
  */
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
+  if (plugin.settingsOnly && how === "delete") return { ok: false, message: `${plugin.id} isn't installed, only turned on in your settings: turn it off instead` };
   if (plugin.scope && plugin.scope !== "user" && !plugin.projectPath) {
     return { ok: false, message: `${plugin.id}: installed for one project; run \`claude plugin ${how === "delete" ? "uninstall" : "disable"} ${plugin.id} --scope ${plugin.scope}\` there` };
   }
   // Check the CLI works before changing anything. Without it, a user install can still be turned off
   // in ~/.claude/settings.json (as a synced plugin is); uninstalling needs the CLI.
-  const viaSettings = plugin.synced || (!claudeBinary() && how === "off" && !plugin.projectPath);
+  const viaSettings = plugin.synced || plugin.settingsOnly || (!claudeBinary() && how === "off" && !plugin.projectPath);
   if (!viaSettings && !claudeBinary()) {
     return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   }
@@ -401,7 +404,7 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
   const imported = plugin.skills.filter((dir) => !yours.has(basename(dir)) && latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];
   const r = viaSettings
-    ? // Synced plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
+    ? // Synced and settings-only plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
       setPluginIn(join(claudeDir(), "settings.json"), plugin.id, false)
     : // --keep-data, as uninstallPlugin: its saved data stays, so a restore brings it back as it was.
       claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...(how === "delete" ? ["--keep-data"] : []), ...scope], plugin.projectPath);

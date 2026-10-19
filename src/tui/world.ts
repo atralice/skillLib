@@ -323,6 +323,11 @@ export function project(w: World, name: string): Project {
   return w.projects.find((p) => p.name === name)!;
 }
 
+/** The name a copy's uses are recorded under: Claude Code records a plugin's skill as "plugin:skill". */
+export function usesKey(m: Pick<MachineSkill, "name" | "source" | "where">): string {
+  return m.source === "plugin" ? `${m.where.split("@")[0]}:${m.name}` : m.name;
+}
+
 export function totalUses(w: World, name: string): number {
   return Object.values(w.usage).reduce((n, u) => n + (u[name] ?? 0), 0);
 }
@@ -348,7 +353,7 @@ export function usable(w: World, projectName: string): Usable[] {
   const uses = (n: string) => w.usage[projectName]?.[n] ?? 0;
   return [
     ...p.skills.map((s): Usable => ({ name: s.name, source: s.source, where: s.dir, agents: s.agents, uses: uses(s.name), local: s })),
-    ...machineIn(w, p).map((m): Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: uses(m.name), machine: m })),
+    ...machineIn(w, p).map((m): Usable => ({ name: m.name, source: m.source, where: m.where, agents: m.agents, uses: uses(usesKey(m)), machine: m })),
   ];
 }
 
@@ -522,7 +527,8 @@ export function replacePluginFix(p: Plugin): Fix {
           ? `then turns ${p.id} off in ~/.claude/settings.json. It isn't installed, only turned on there, so there's nothing to uninstall.`
           : `then uninstalls ${p.id}${p.repo ? ` from ${p.repo}` : ""} (its saved data is kept).`,
       p.parts.length ? `It also brings ${p.parts.join(", ")}: those ${offOnly ? "stop" : "go"} too.` : "",
-      offOnly ? "Turn it back on from Plugins." : "Settings › Backups reinstalls it.",
+      // A plugin only turned on in settings isn't listed in Plugins once it's off: say where it comes back.
+      offOnly ? (p.settingsOnly ? "Turn it back on with /plugin in Claude Code." : "Turn it back on from Plugins.") : "Settings › Backups reinstalls it.",
     ]
       .filter(Boolean)
       .join(" "),

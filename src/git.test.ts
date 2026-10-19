@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitInfo } from "./git.js";
@@ -54,5 +54,19 @@ test("a project inside a repo (a nested skilllib.json) sees what git tracks", ()
   git("commit", "-qm", "x");
   writeFileSync(join(project, ".agents", "skills", "team", "SKILL.md"), "edited");
   expect(gitInfo(project)?.of(".agents/skills/team")).toBe("changed");
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test.skipIf(process.platform === "win32")("a skills folder that links to another folder in the repo is asked where it really is", () => {
+  const repo = mkdtempSync(join(tmpdir(), "skilllib-git-linked-"));
+  mkdirSync(join(repo, "shared", "skills", "team"), { recursive: true });
+  writeFileSync(join(repo, "shared", "skills", "team", "SKILL.md"), "x");
+  mkdirSync(join(repo, ".claude"));
+  symlinkSync("../shared/skills", join(repo, ".claude", "skills"));
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  git("add", ".");
+  git("commit", "-qm", "x");
+  expect(gitInfo(repo)?.of(".claude/skills/team")).toBe("committed");
   rmSync(repo, { recursive: true, force: true });
 });

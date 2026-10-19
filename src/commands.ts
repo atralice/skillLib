@@ -213,7 +213,13 @@ export async function status(args: Args) {
     const root = findProjectRoot();
     const usage = await usageBySkill(args.days, root);
     json("status", usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
-    if (projectHere()) rememberProjects([root]);
+    // Remembering the repo is a convenience: a skilllib folder an agent's sandbox can't write must not add a second
+    // JSON document (an error) after the one printed.
+    try {
+      if (projectHere()) rememberProjects([root]);
+    } catch {
+      // next time
+    }
     return;
   }
   const root = requireProject();

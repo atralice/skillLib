@@ -17,6 +17,13 @@ function skill(dir: string, body = "x") {
   writeFileSync(join(dir, "SKILL.md"), `---\ndescription: d\n---\n${body}\n`);
 }
 
+/** Records user installs of marketplace plugins (else they're only turned on in settings). */
+function installed(...ids: string[]) {
+  mkdirSync(join(tmp, ".claude", "plugins"), { recursive: true });
+  const entry = (id: string) => [{ scope: "user", installPath: join(tmp, ".claude", "plugins", "marketplaces", id.split("@")[1]!, "plugins", id.split("@")[0]!) }];
+  writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: Object.fromEntries(ids.map((id) => [id, entry(id)])) }));
+}
+
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), "skilllib-plugins-"));
   process.env.HOME = tmp;
@@ -53,6 +60,7 @@ test("a plugin installed for one project isn't touched from somewhere else", () 
 });
 
 test("a plugin that repeats a skill only in Your skills is a suggestion that doesn't claim both load", () => {
+  installed("pt@mk");
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
   skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
   skill(join(tmp, "src", "alpha"));
@@ -66,6 +74,7 @@ test("a plugin that repeats a skill only in Your skills is a suggestion that doe
 });
 
 test("when claude can't run, nothing changes and the fix reports a failure", () => {
+  installed("pt@mk");
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
   skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
   skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "beta"));
@@ -110,6 +119,7 @@ test("a repo's Claude Code settings turn a plugin on or off just there", () => {
   const mk = (name: string, skillName: string) => skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", name, "skills", skillName));
   mk("everywhere", "alpha");
   mk("here", "beta");
+  installed("everywhere@mk", "here@mk");
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "everywhere@mk": true } }));
   const web = join(tmp, "web");
   const api = join(tmp, "api");
@@ -139,6 +149,7 @@ test("a repo's Claude Code settings turn a plugin on or off just there", () => {
 });
 
 test.skipIf(process.platform === "win32")("turning a plugin off in one repo runs `claude plugin disable --scope local` there", () => {
+  installed("pt@mk");
   mkdirSync(join(tmp, ".local", "bin"), { recursive: true });
   writeFileSync(
     join(tmp, ".local", "bin", "claude"),
@@ -217,6 +228,7 @@ test("with Cursor, a plugin a repo turned off still collides there: Cursor lists
 });
 
 test("a nested .claude/skills copy of a plugin's skill counts, and is never offered for removal", () => {
+  installed("pt@mk");
   skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
   writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
   const mono = join(tmp, "mono");
@@ -502,4 +514,19 @@ test("removing your copy for a plugin isn't offered when git commits it, or when
   const both = join(tmp, "both");
   addSkill(both, "alpha");
   expect(labels(both)).not.toContain("Remove your alpha from both");
+});
+
+test("a plugin only turned on in your settings is never offered for removal, and is turned off in settings", () => {
+  skill(join(tmp, ".claude", "plugins", "marketplaces", "mk", "plugins", "pt", "skills", "alpha"));
+  writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+  const web = join(tmp, "web");
+  skill(join(web, ".claude", "skills", "alpha"));
+
+  const issue = findIssues([web], machineSkills(), new Set()).find((i) => i.id === "plugin:pt@mk")!;
+  expect(issue.detail).toContain("only turned on in your settings");
+  expect(issue.choices?.map((c) => c.label)).toEqual(["Turn the plugin pt@mk off", "Turn the plugin pt@mk off in web only"]);
+  expect(runFix(issue.choices![1]!)).toMatchObject({ ok: true });
+  expect(JSON.parse(readFileSync(join(web, ".claude", "settings.local.json"), "utf-8")).enabledPlugins).toEqual({ "pt@mk": false });
+  expect(runFix(issue.choices![0]!)).toMatchObject({ ok: true });
+  expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins).toEqual({ "pt@mk": false });
 });

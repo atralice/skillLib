@@ -2,7 +2,7 @@
  * The TUI's World from disk: your repos, library and global skills, with ops that call
  * library.ts and config.ts. Usage comes separately (loadUsage): reading transcripts is slow.
  */
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "../agentSkill.js";
@@ -12,6 +12,7 @@ import { copyText } from "../review.js";
 import { gitInfo, relativeTo } from "../git.js";
 import { findIssues, usageIssues } from "../health.js";
 import {
+  addRefusal,
   addSkill,
   blindSaid,
   blindWithoutGlobal,
@@ -40,6 +41,7 @@ import {
   type Change,
   type LinkResult,
   type ProjectSkill,
+  trackBlocker,
 } from "../library.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
@@ -499,6 +501,12 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
         return mine !== null && mine !== treeHash(s.path);
       });
       if (clashes.length) return failed(`${id} kept: your library has different ${clashes.map((s) => s.name).join(", ")}; update or delete ${clashes.length === 1 ? "it" : "them"} first`);
+      // A repo that can't take one of them (its own different copy, the team's committed one, a folder that isn't
+      // the repo's) stops it too, before anything is copied in: never half done.
+      const cant = repos.flatMap((repo) =>
+        p.skills.flatMap((s) => ((why) => (why ? [`${s.name} in ${repo}: ${why.replace(/ \(use --force[^)]*\)$/, "")}`] : []))(trackBlocker(rootOf(repo), s.name) ?? addRefusal(rootOf(repo), s.name, treeHash(s.path) ?? ""))),
+      );
+      if (cant.length) return failed(`${id} kept, nothing changed: ${cant.join("; ")}`);
       // Copies in, recording the plugin as their origin.
       const imported = p.skills.map((s) => ({ name: s.name, status: importSkill(s.path).status }));
       // Skills you already had keep the origin they have.
@@ -592,8 +600,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     unhide: (path) => (setHidden(path, false), `${tildify(path)} is back in the list`),
     openFolder: (path) => {
       const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-      spawn(cmd, [path], { detached: true, stdio: "ignore" }).unref();
-      return `Opened ${tildify(path)}`;
+      // A missing opener (no xdg-open on a bare Linux) is said, never a crash.
+      const r = spawnSync(cmd, [path], { stdio: "ignore", timeout: 10_000 });
+      return r.error || (r.status !== 0 && process.platform !== "win32") ? failed(`Couldn't open ${tildify(path)} (${cmd} ${r.error ? "isn't available" : "failed"})`) : `Opened ${tildify(path)}`;
     },
     copy: (text, what) => {
       const r = copyText(text);
