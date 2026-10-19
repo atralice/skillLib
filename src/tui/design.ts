@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 type Screen = { name: string; steps: string[]; size?: string };
 
 /** Keys as snapshot.tsx takes them. From the start, the Places pane is focused on the repo you're in (web-app). */
-export const SCREENS: Screen[] = [
+const SCREENS: Screen[] = [
   { name: "start", steps: [] },
   { name: "repo", steps: ["enter"] },
   { name: "repo-details", steps: ["enter", "right", "down"] },
@@ -47,7 +47,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 /** A frame of 24-bit ANSI text as an SVG terminal window. */
-export function ansiToSvg(frame: string, title = "skilllib"): string {
+function ansiToSvg(frame: string, title = "skilllib"): string {
   const lines = frame.replace(/\n+$/, "").split("\n");
   const cols = Math.max(...lines.map((l) => [...strip(l)].length));
   const W = Math.round(X0 * 2 + cols * CW), H = Math.round(Y0 + lines.length * LH + 12);

@@ -105,7 +105,7 @@ export function knownProjects(): string[] {
  * not a project of its own. Agents create them constantly; remembering each would flood
  * projects and doctor.
  */
-export function isAgentWorktree(path: string): boolean {
+function isAgentWorktree(path: string): boolean {
   return /[\\/]\.claude[\\/]worktrees[\\/]/.test(path);
 }
 
@@ -114,7 +114,7 @@ export function isAgentWorktree(path: string): boolean {
  * drive, macOS /var → /private/var) is otherwise recorded twice, by scan and by commands run in it (#52).
  * Keeps the path you know, the one through the symlink.
  */
-export function onePerFolder(paths: string[]): string[] {
+function onePerFolder(paths: string[]): string[] {
   const byReal = new Map<string, string>();
   for (const p of paths) {
     const real = realPath(p);

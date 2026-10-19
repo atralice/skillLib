@@ -57,7 +57,7 @@ import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type Sourc
 import { scanUsage } from "../usage.js";
 import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
 import { failed, followUp, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
-import { tildify as homeRelative } from "../output.js";
+import { localStamp, tildify as homeRelative } from "../output.js";
 
 /** Home-relative path for labels. */
 export function tildify(p: string): string {
@@ -121,8 +121,7 @@ function otherCopies(root: string, name: string, dir: string): string[] {
 function installedAt(path: string): string | undefined {
   try {
     const st = lstatSync(path);
-    const at = st.birthtimeMs > 0 ? st.birthtime : st.mtime;
-    return new Date(at.getTime() - at.getTimezoneOffset() * 60_000).toISOString().slice(0, 16).replace("T", " ");
+    return localStamp((st.birthtimeMs > 0 ? st.birthtime : st.mtime).getTime());
   } catch {
     return undefined;
   }

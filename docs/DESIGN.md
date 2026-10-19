@@ -316,7 +316,7 @@ Text on an `accent` background (the selected tab, the top bar's place) is `#0B10
 | `src/tui/snapshot.tsx` | Renders the app headless: `SIZE=118x30 STEPS='["enter","#a"]' npx tsx src/tui/snapshot.tsx` (`REAL=1` reads your machine instead) |
 | `src/tui/design.ts` | The screens in this doc (`SCREENS`), and the ANSI → SVG conversion |
 
-The contract between screens and data is `World` and its `Ops`. An op returns a message, or a message plus a follow-up fix (`{ message, then }`). The screens never touch the disk.
+The contract between screens and data is `World` and its `Ops`. An op returns a message, or a message plus a follow-up fix (`{ message, then }`). The screens don't change the disk themselves: every change goes through an op. (They only check a file exists before opening it in `$EDITOR`.)
 
 ---
 

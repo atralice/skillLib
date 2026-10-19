@@ -2,7 +2,7 @@
  * Renders the TUI headless on sample data and prints screens, for checking layouts without a terminal.
  * SIZE=120x34 STEPS='["#start","down","enter","#detail"]' npx tsx src/tui/snapshot.tsx
  * RAW=1 keeps colors (add FORCE_COLOR=3 when not in a terminal).
- * Steps are space-separated keys (down up left right enter esc tab stab space bs ctrlz, or literal text); "#name" prints the screen.
+ * Steps are space-separated keys (down up left right enter esc tab stab space bs, or literal text); "#name" prints the screen.
  */
 import { EventEmitter } from "node:events";
 import { render } from "ink";
@@ -23,7 +23,7 @@ const out = new Out(), inp = new In();
 // REAL=1 reads this machine instead: confirming a fix changes the disk, so point HOME, SKILLLIB_HOME and CLAUDE_CONFIG_DIR at a sandbox.
 const sample = sampleWorld();
 render(process.env.REAL ? <App initial={loadWorld()} reload={loadWorld} loadUsage={loadUsage} /> : <App initial={sample} reload={() => ({ ...sample })} />, { stdout: out as any, stdin: inp as any, debug: true, exitOnCtrlC: false, patchConsole: false });
-const keys: Record<string, string> = { down: "\u001B[B", up: "\u001B[A", enter: "\r", esc: "\u001B", tab: "\t", stab: "\u001B[Z", space: " ", bs: "\u007F", ctrlz: "\u001A", left: "\u001B[D", right: "\u001B[C" };
+const keys: Record<string, string> = { down: "\u001B[B", up: "\u001B[A", enter: "\r", esc: "\u001B", tab: "\t", stab: "\u001B[Z", space: " ", bs: "\u007F", left: "\u001B[D", right: "\u001B[C" };
 const strip = (s: string) => s.replace(/\u001B\[[0-9;?]*[A-Za-z]/g, "").replace(/\u001B\][^\u0007]*\u0007/g, "");
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 await wait(300);

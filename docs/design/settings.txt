@@ -11,20 +11,20 @@
 │     billing              ││   + Add a folder…                                                                      │
 │     blog                 ││   Backups ──────────────────────────────────────────────────────────────────────────── │
 │     cli-tools            ││   No backups yet                    anything skilllib removes lands here               │
-│     dotfiles             │╰────────────────────────────────────────────────────────────────────────────────────────╯
-│     design-system        │
-│     e2e-tests            │
-│     infra                │
-│     landing              │
-│     marketing-site       │
-│     playground           │
-│     scripts              │
-│     status-page          │
-│    ───────────────────── │
-│ ▌ ⚙ Settings             │
-│   ? Help                 │
-│                          │
-│                          │
-│                          │
-╰──────────────────────────╯
+│     dotfiles             ││                                                                                        │
+│     design-system        ││                                                                                        │
+│     e2e-tests            ││                                                                                        │
+│     infra                ││                                                                                        │
+│     landing              ││                                                                                        │
+│     marketing-site       ││                                                                                        │
+│     playground           ││                                                                                        │
+│     scripts              ││                                                                                        │
+│     status-page          ││                                                                                        │
+│    ───────────────────── ││                                                                                        │
+│ ▌ ⚙ Settings             ││                                                                                        │
+│   ? Help                 ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+│                          ││                                                                                        │
+╰──────────────────────────╯╰────────────────────────────────────────────────────────────────────────────────────────╯
                                                                                     enter toggle · ← sidebar · ? keys

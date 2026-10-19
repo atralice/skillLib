@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { basename, dirname, join, resolve } from "node:path";
 import { importSkill, type Backup } from "./library.js";
 import { claudeDir, readJson, readState, skilllibHome, userHome, writeState } from "./paths.js";
+import { localStamp } from "./output.js";
 import { skillDirsIn } from "./skills.js";
-import { enabledPlugins, installedPluginsJson, pluginDirCandidates, type InstallEntry, type SourcedSkill } from "./sources.js";
+import { enabledPlugins, installedPluginsJson, machineSkills, pluginDirCandidates, type InstallEntry, type SourcedSkill } from "./sources.js";
 import { latestVersion } from "./versions.js";
 
 /** Which install of a Claude Code plugin to act on. */
@@ -251,7 +252,7 @@ function setPluginIn(file: string, id: string, on: boolean): { ok: true } | { ok
  * ignore it when it creates the file; when skilllib writes it, skilllib does: a line in the repo's
  * .git/info/exclude, which is local too (never committed). Says how it stands, for the message.
  */
-export function ignoreLocalSettings(root: string): string {
+function ignoreLocalSettings(root: string): string {
   const file = ".claude/settings.local.json";
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   try {
@@ -377,8 +378,8 @@ function removedFile(): string {
 type Removed = { id: string; scope: string; projectPath?: string; on?: boolean; at: string };
 
 /**
- * Keeps your skills and removes the plugin that duplicates them. Every skill
- * it ships is copied into Your skills first, so nothing it brought is lost.
+ * Keeps your skills and removes the plugin that duplicates them. Its other skills (ones you don't already
+ * have, in your library or your global folders) are copied into Your skills first, so nothing it brought is lost.
  * "delete" uninstalls it (restorable with skilllib restore); "off" only disables it.
  */
 export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok: boolean; message: string } {
@@ -392,7 +393,9 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
     return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   }
   const wasOn = enabledPlugins(plugin.projectPath)[plugin.id] === true;
-  const imported = plugin.skills.filter((dir) => latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
+  // Your own copy wins: the plugin's version of a skill you have never goes into your library.
+  const yours = new Set(machineSkills().filter((m) => m.movable).map((m) => m.name));
+  const imported = plugin.skills.filter((dir) => !yours.has(basename(dir)) && latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
   const scope = plugin.scope ? ["--scope", plugin.scope] : [];
   const r = viaSettings
     ? // Synced plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
@@ -406,20 +409,20 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
-export function recordRemovedPlugin(id: string, scope: string, projectPath?: string, on = true) {
+function recordRemovedPlugin(id: string, scope: string, projectPath?: string, on = true) {
   const list = readState<Removed[]>(removedFile()) ?? [];
   mkdirSync(skilllibHome(), { recursive: true });
   writeState(removedFile(), [...list, { id, scope, ...(projectPath ? { projectPath } : {}), on, at: new Date().toISOString() }]);
 }
 
-/** Plugins skilllib removed, as Health backups. */
+/** Plugins skilllib removed, as Settings › Backups does. */
 export function pluginBackups(): Backup[] {
   return (readState<Removed[]>(removedFile()) ?? []).map((r) => ({
     name: r.id,
     kind: "plugin",
     // Project and local installs go back into their project.
     path: r.projectPath ? `${r.scope}:${r.projectPath}` : r.scope,
-    movedAt: r.at.slice(0, 16).replace("T", " "),
+    movedAt: localStamp(Date.parse(r.at)),
     from: r.id,
   }));
 }

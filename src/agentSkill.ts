@@ -12,7 +12,7 @@ import { tildify } from "./output.js";
  * installed globally, since it's about every repo. It ships in the package
  * (skills/skilllib) and is refreshed when skilllib is upgraded.
  */
-export const AGENT_SKILL_NAME = "skilllib";
+const AGENT_SKILL_NAME = "skilllib";
 
 /** SKILL.md as shipped: ../skills from src/ (dev) and from dist/ (published). */
 function shippedSkill(): string {

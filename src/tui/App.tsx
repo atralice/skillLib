@@ -480,7 +480,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
         { text: sev ? sev.icon : " ", width: 2, color: sev?.color },
         { text: clip(l.name, nameW), width: nameW },
         { text: `v${l.latest}`, width: 5, color: color.accent },
-        { text: `${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? ` (${behind} behind)` : ""}`, width: 18, color: behind ? color.yellow : color.muted },
+        { text: clip(`${repos.length} repo${repos.length === 1 ? "" : "s"}${behind ? `, ${behind} behind` : ""}`, 16), width: 16, color: behind ? color.yellow : color.muted },
         { text: usesText(uses), width: 6, color: color.muted },
         { text: " " + (issues[0]?.short ?? w.descriptions[l.name] ?? ""), grow: true, color: sev ? sev.color : color.faint },
       ],
@@ -671,7 +671,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   const order = useRef<{ key: string; keys: string[] }>({ key: "", keys: [] });
 
   /** Tall enough to show details under the list; shorter terminals open them on enter. */
-  const split = termRows >= 30;
+  // Settings has no details pane: its list takes the whole height.
+  const split = termRows >= 30 && place !== "settings";
   const nameW = Math.min(22, Math.max(17, Math.floor(columns * 0.22)));
   const dashboard = place === "projects" && open !== null;
   const chips: [Chip, string][] =
@@ -1343,7 +1344,7 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       : place === "projects"
         ? titles([["", 2], ["Project", 18], ["Skills", 10], ["Issues", 0]])
         : place === "library"
-          ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 18], [" Uses", 6], [" Issue / description", 0]])
+          ? titles([["", 2], ["Skill", nameW], ["Ver", 5], ["Used in", 16], [" Uses", 6], [" Issue / description", 0]])
           : place === "plugins"
             ? ((c) => titles([["", 2], ["Plugin", c.name], ["", 3], ["Scope", c.scope], ...(c.wide ? [["Brings", 13] as [string, number]] : []), ["On", 4], ...(c.wide ? [[" Uses", 6] as [string, number]] : []), [" Issue", 0]]))(pluginCols(columns, nameW))
           : place === "health"

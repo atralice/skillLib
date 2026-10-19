@@ -16,7 +16,7 @@ const BUILTIN_COMMANDS = new Set([
 ]);
 
 /** Skill folder name for a path inside some `.claude/skills/<name>/` or `.agents/skills/<name>/`, if any. */
-export function skillNameFromPath(filePath: string): string | null {
+function skillNameFromPath(filePath: string): string | null {
   const match = filePath.replace(/\\/g, "/").match(/\/\.(?:claude|agents)\/skills\/([^/]+)\//);
   return match ? match[1]! : null;
 }

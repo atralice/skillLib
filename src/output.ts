@@ -93,3 +93,9 @@ export function table(rows: Record<string, string>[]) {
   info(dim(keys.map((k, i) => pad(k, widths[i]!)).join("  ")));
   for (const row of rows) info(keys.map((k, i) => pad(row[k] ?? "", widths[i]!)).join("  ").trimEnd());
 }
+
+/** A time as "2026-09-25 20:55", in local time (backups and installs are named in UTC). */
+export function localStamp(ms: number): string {
+  const at = new Date(ms);
+  return new Date(ms - at.getTimezoneOffset() * 60_000).toISOString().slice(0, 16).replace("T", " ");
+}
