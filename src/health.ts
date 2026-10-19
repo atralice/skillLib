@@ -3,7 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
 import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
-import { addSkill, blockerSaid, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
+import { addSkill, blindWithoutGlobal, blockerSaid, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
@@ -176,7 +176,7 @@ function brokenLinksIn(root: string): Issue[] {
           id: `broken:${root}:${dir}/${name}`,
           severity: "problem",
           title: `${name}: broken link in ${where}/${dir}`,
-          detail: `It points at a folder that no longer exists, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}`,
+          detail: `It points at ${existsSync(path) ? "a file, not a skill folder" : "a folder that no longer exists"}, so it loads nothing.${tracked ? " Git tracks the link, so removing it shows in git status." : ""}`,
           at: rows(root, [name]),
           ...(tracked ? { choices: [remove] } : { fix: remove }),
         },
@@ -664,7 +664,11 @@ export function findIssues(
 
     // Skills some of your agents can't reach here: links fix that (nothing is copied or moved). An agent that
     // already loads a global copy by that name isn't missing it: a link would make it load twice (that's twice:).
-    const loadsGlobally = (name: string, id: HarnessId) => globalCopies.some((m) => m.name === name && m.harnesses.includes(id));
+    // Only the same content: an agent running a different global copy than the repo's pins still lacks the repo's.
+    const loadsGlobally = (name: string, id: HarnessId) => {
+      const here = status.find((s) => s.name === name);
+      return globalCopies.some((m) => m.name === name && m.harnesses.includes(id) && (!here || treeHash(m.path) === treeHash(here.path)));
+    };
     const blindHere = status
       .filter((s) => s.state !== "folder missing" && s.visibility.some((v) => v.paths === 0 && !loadsGlobally(s.name, v.id)))
       .map((s) => ({ s, would: linkEverywhere(root, s.name, s.location, { dryRun: true }) }));
@@ -687,7 +691,7 @@ export function findIssues(
         severity: out ? "suggestion" : "problem",
         title: out ? `${where}: ${blocker} links out of the repo` : `${where}: ${blocker} isn't a folder`,
         detail: out
-          ? `${blockerSaid(root, blocker)}. ${who} load what's there, but skilllib treats it as outside ${where}: it adds, links and removes nothing there.`
+          ? `${blockerSaid(root, blocker)}. ${who} ${who.includes(",") || who.includes(" and ") ? "load" : "loads"} what's there, but skilllib treats it as outside ${where}: it adds, links and removes nothing there.`
           : `${blockerSaid(root, blocker)}: ${who} can't load skills from ${where}, and skilllib adds none there. Move it out of the way, then run skilllib link.`,
         at: rows(root, []),
       });
@@ -1005,15 +1009,11 @@ export function findIssues(
                 // Only when every agent that loads the global copy still has it in each repo: one that sees just the global
                 // copy would lose it. An agent that never read the global copy (Codex and ~/.claude/skills) loses nothing.
                 // (A nested copy loads where it lives, in its package: no link at the repo root is needed there.)
-                const readers = new Set(machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses));
                 // Every repo that holds it, not only those listed here: where an agent couldn't see the repo's copy (a link git
                 // held back, a file in the way), the global copy was what it ran, so the repo isn't "also" loading it.
-                const holders = new Set([
-                  ...copies.filter((c) => !c.nested).map((c) => c.root),
-                  ...projects.filter((r) => statuses.get(r)!.some((s) => s.name === name && s.state !== "folder missing")),
-                ]);
-                const blind = [...holders].flatMap((root) => visibilityOf(root, name).flatMap((v) => (v.paths === 0 && readers.has(v.id) ? [`${harness(v.id).name} in ${basename(root)}`] : [])));
-                if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; link the repo copies first (skilllib link)`);
+                const readers = machine.filter((x) => x.name === name && x.movable).flatMap((x) => x.harnesses);
+                const blind = blindWithoutGlobal(name, readers, projects).map((b) => `${harness(b.id).name} in ${basename(b.root)}`);
+                if (blind.length) throw new Error(`${name}: ${blind.join(", ")} ${blind.length === 1 ? "only sees" : "only see"} the global copy; make the repo's copy reach ${blind.length === 1 ? "it" : "them"} first (skilllib doctor says what's in the way)`);
                 if (!libraryNames.has(name)) importSkill(movable.path);
                 for (const m of machine.filter((x) => x.name === name && x.movable)) {
                   const r = unloadGlobal(m.path, m.links);
@@ -1092,7 +1092,8 @@ export function usageIssues(
     const unused = statusOf(root).filter((s) => s.state !== "folder missing" && uses.inProject(root, s.name) === 0 && addedAt(s.path) <= since);
     if (!unused.length) continue;
     // Edited copies stay (removing them is remove --force's call): offering them would be a choice that can't succeed.
-    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited"));
+    // A pin from another library ("not in library") may differ from its copy too: remove refuses that without --force.
+    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library");
     issues.push({
       id: `unused:${root}`,
       severity: "suggestion",

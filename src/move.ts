@@ -1,5 +1,7 @@
 import { basename } from "node:path";
-import { addSkill, importSkill, inTheWaySaid, unloadGlobal, visibilityOf, type Change } from "./library.js";
+import { addSkill, blindWithoutGlobal, importSkill, inTheWaySaid, unloadGlobal, visibilityOf, type Change } from "./library.js";
+import { realPath } from "./paths.js";
+import { knownProjects } from "./project.js";
 import { harness } from "./harnesses.js";
 import { treeHash } from "./skills.js";
 import { recordOrigin, type SourcedSkill } from "./sources.js";
@@ -37,6 +39,17 @@ export function moveGlobalSkills(
     if (new Set(copies.map((m) => treeHash(m.path))).size > 1)
       return { name, moved: false, reason: `your global copies of ${name} differ; nothing moved (keep one first: skilllib tidy --global)`, changes: [] };
     // Your library already has a different skill by that name: moving this one would swap in the other.
+    // Only agents that load a global copy can lose it (Codex never reads ~/.claude/skills). In a repo you're not moving it
+    // to that holds it, one that only ever saw the global copy would lose it: checked before anything changes.
+    const readers = new Set(copies.flatMap((m) => m.harnesses));
+    const elsewhere = blindWithoutGlobal(name, readers, knownProjects().filter((p) => !roots.some((r) => realPath(r) === realPath(p))));
+    if (elsewhere.length)
+      return {
+        name,
+        moved: false,
+        reason: `${elsewhere.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ")} only ${elsewhere.length === 1 ? "sees" : "see"} the global copy; nothing moved (make the repo's copy reach ${elsewhere.length === 1 ? "it" : "them"} first: skilllib doctor says what's in the way)`,
+        changes: [],
+      };
     const imported = importSkill(copies[0]!.path).status;
     if (imported === "exists")
       return { name, moved: false, reason: `your library has a different ${name}; nothing moved (update your library from this copy first)`, changes: [] };
@@ -50,8 +63,6 @@ export function moveGlobalSkills(
     if (skipped.length) return { name, moved: false, reason: `not added to ${skipped.map(([r, c]) => `${label(r)} (${why(c.reason)})`).join(", ")}, so it still loads globally${kept}`, changes };
     // A link kept out (git tracks the folder, or something is in the way), so an agent you use couldn't see it
     // there: keep the global copy until that's sorted. Checked in every repo, whatever add said.
-    // Only agents that load a global copy can lose it (Codex never reads ~/.claude/skills), as doctor's "Stop loading it globally".
-    const readers = new Set(copies.flatMap((m) => m.harnesses));
     const blindAt = (root: string) => visibilityOf(root, name).filter((v) => v.paths === 0 && readers.has(v.id));
     const blindIn = changes.filter(([root]) => blindAt(root).length);
     const blind = blindIn.flatMap(([root]) => blindAt(root).map((v) => `${harness(v.id).name} in ${label(root)}`));

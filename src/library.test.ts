@@ -8,7 +8,7 @@ import { moveGlobalSkills } from "./move.js";
 import { planProjectTidy } from "./tidy.js";
 import { forgetLatest, latestVersion, versionHistory } from "./versions.js";
 import { copySkill, readSkillInfo, treeHash } from "./skills.js";
-import { readManifest } from "./project.js";
+import { readManifest, rememberProjects } from "./project.js";
 import { setHarnesses } from "./config.js";
 import { tildify } from "./output.js";
 import { execFileSync } from "node:child_process";
@@ -1001,4 +1001,30 @@ test("global move only waits for agents that load the global copy", () => {
   expect(mv).toMatchObject({ moved: true });
   // Held back: git tracks .agents/skills and doesn't share the .claude copy, so a link there would break for teammates.
   expect(mv!.changes[0]![1].uncommitted).toEqual([".agents/skills"]);
+});
+
+test("global move never unloads a skill an agent in another repo only ever saw globally", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  // In app1, git tracks .claude/skills and the copy isn't committed: Claude Code there runs the global copy.
+  const app1 = join(tmp, "app1");
+  writeSkill(join(app1, ".claude", "skills", "team"), "team");
+  execFileSync("git", ["init", "-q"], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });
+  expect(addSkill(app1, "alpha").uncommitted).toEqual([".claude/skills"]);
+  rememberProjects([app1, project]);
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
+  expect(mv).toMatchObject({ moved: false, changes: [] });
+  expect(mv!.reason).toStartWith("Claude Code in app1 only sees the global copy; nothing moved");
+  expect(existsSync(join(tmp, ".claude", "skills", "alpha", "SKILL.md"))).toBe(true);
+  expect(readManifest(project).skills).toEqual({});
+});
+
+test("a pin from another library whose copy differs: sync and remove say what it is, not 'local edits'", () => {
+  addSkill(project, "alpha");
+  writeSkill(local("alpha"), "theirs");
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: { alpha: { version: 3, hash: "0000000000000000" } } }));
+  expect(syncProject(project)[0]!.reason).not.toContain("--force");
+  expect(removeSkill(project, "alpha").reason).toBe("doesn't match what skilllib.json pins, and your library has neither (use --force to remove it; it's backed up first)");
 });
