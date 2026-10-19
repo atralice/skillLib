@@ -2,37 +2,43 @@
 
 ## [1.11.4](https://github.com/atralice/skillLib/compare/v1.11.3...v1.11.4) (2026-10-19)
 
+A reliability release from many rounds of review. Nothing new to learn; skilllib is now much harder to make lose a skill, leave a change half done, or write somewhere it shouldn't.
 
-### Bug Fixes
+### Safer global skills
+* `global move`, doctor's "Stop loading it globally" and the app's Delete / Move to repos never take a global skill away from an agent that still needs it in any repo you have, including a repo that reaches it through a link, a skills folder linked to a shared folder of yours (`~/devskills`), or a monorepo package that pins it. When one would, skilllib refuses and says what to change, or that `skilllib global keep` keeps it.
+* Moving or deleting one global row now covers every global copy of that skill; copies that differ must be reconciled first (`skilllib tidy --global`).
+* Package links a move leaves pointing at nothing are named (`left` in `global move --json`).
 
-* pre-release re-check findings ([#107](https://github.com/atralice/skillLib/issues/107)) ([b910b9c](https://github.com/atralice/skillLib/commit/b910b9c8d1b89f54a58eb2e4e60e9643b5e8dff2))
-* pre-release regression findings (linked skills folders, apply hint, restore --json) ([#106](https://github.com/atralice/skillLib/issues/106)) ([100eb16](https://github.com/atralice/skillLib/commit/100eb1615a9cf8322e253fb1de459f8dc06ecda1))
-* pre-release review, part 1 ([#104](https://github.com/atralice/skillLib/issues/104)) ([b831ffe](https://github.com/atralice/skillLib/commit/b831ffed84ae96e2f172560016e9a998df884f1e))
-* pre-release review, part 2 ([#105](https://github.com/atralice/skillLib/issues/105)) ([b9df4cf](https://github.com/atralice/skillLib/commit/b9df4cfce5425402884cacb9e3ce12b2941bfc4d))
-* round 10: git safeguards in nested projects; one-command --allow-tracked ([#80](https://github.com/atralice/skillLib/issues/80)) ([aecc0b1](https://github.com/atralice/skillLib/commit/aecc0b1e1cc85426915610978b1c26d08eea582a))
-* round 11 of the review ([#81](https://github.com/atralice/skillLib/issues/81)) ([00abd9e](https://github.com/atralice/skillLib/commit/00abd9ef4a3d77377d12678d3cad1965e1f0303f))
-* round 12 of the review ([#82](https://github.com/atralice/skillLib/issues/82)) ([aa6ca03](https://github.com/atralice/skillLib/commit/aa6ca034fd81828440e96abd2fad03bebb0567df))
-* round 13 of the review ([#83](https://github.com/atralice/skillLib/issues/83)) ([49e82b0](https://github.com/atralice/skillLib/commit/49e82b0dbdeab8d569a0230bdbcd7169e3e8bf6c))
-* round 14 of the review ([#84](https://github.com/atralice/skillLib/issues/84)) ([d8850d0](https://github.com/atralice/skillLib/commit/d8850d02a9b50e179fded053e14df159b33fcb09))
-* round 15 of the review ([#85](https://github.com/atralice/skillLib/issues/85)) ([ebf3ff7](https://github.com/atralice/skillLib/commit/ebf3ff7fa232df2858f9c1b3e7f9585522b4ad05))
-* round 16 of the review ([#86](https://github.com/atralice/skillLib/issues/86)) ([1da8372](https://github.com/atralice/skillLib/commit/1da8372ac15a49e163e6cf181b60aa30a6e82a44))
-* round 17 of the review ([#87](https://github.com/atralice/skillLib/issues/87)) ([a662e2f](https://github.com/atralice/skillLib/commit/a662e2f861dba034a0316bdab85bdd14018146a2))
-* round 18 of the review ([#88](https://github.com/atralice/skillLib/issues/88)) ([a280449](https://github.com/atralice/skillLib/commit/a280449228b8981b82f0de4b2e0ee572531e06bc))
-* round 19 of the review ([#89](https://github.com/atralice/skillLib/issues/89)) ([bab693f](https://github.com/atralice/skillLib/commit/bab693f03913c8e4519ecff1e5731e25438ce4fe))
-* round 20 of the review ([#90](https://github.com/atralice/skillLib/issues/90)) ([fd3e74c](https://github.com/atralice/skillLib/commit/fd3e74cceacfa02f38dc50ffd6d5e6b9a7e5ecff))
-* round 21 of the review ([#91](https://github.com/atralice/skillLib/issues/91)) ([e257d28](https://github.com/atralice/skillLib/commit/e257d283c18e3f54d9e164ac879bdcb046d367bf))
-* round 22 of the review ([#92](https://github.com/atralice/skillLib/issues/92)) ([b87df9e](https://github.com/atralice/skillLib/commit/b87df9e7697c7894ffd6cc9cf59b8eba1b813ee1))
-* round 23 of the review ([#93](https://github.com/atralice/skillLib/issues/93)) ([6dc363e](https://github.com/atralice/skillLib/commit/6dc363eba7c38e4731d9fc9ad65d39461965f8cc))
-* round 24 of the review ([#94](https://github.com/atralice/skillLib/issues/94)) ([c486c56](https://github.com/atralice/skillLib/commit/c486c5672d334719213c03f4ffca033ac6e21116))
-* round 25 of the review ([#95](https://github.com/atralice/skillLib/issues/95)) ([4a4cc6a](https://github.com/atralice/skillLib/commit/4a4cc6aecaf6c4cd4ce542e95b8db9e246d99821))
-* round 26 of the review ([#96](https://github.com/atralice/skillLib/issues/96)) ([b1676c5](https://github.com/atralice/skillLib/commit/b1676c5b1a58ffa1d6981c1282118764af9dff12))
-* round 27 of the review (targeted) ([#97](https://github.com/atralice/skillLib/issues/97)) ([b6b3a6c](https://github.com/atralice/skillLib/commit/b6b3a6c3e7321c9067ef7bc295b2f1a815ffef6c))
-* round 28 of the review ([#98](https://github.com/atralice/skillLib/issues/98)) ([2e55ca1](https://github.com/atralice/skillLib/commit/2e55ca16222fb02f8c7ba19a2f4942ffefbe7408))
-* round 29 of the review ([#99](https://github.com/atralice/skillLib/issues/99)) ([7cb2e3d](https://github.com/atralice/skillLib/commit/7cb2e3d7fadc1d5a063c572af02b14c3273e8498))
-* round 30 of the review (targeted) ([#101](https://github.com/atralice/skillLib/issues/101)) ([2864dbe](https://github.com/atralice/skillLib/commit/2864dbef70fb6a0c30b4c508e4fc0f5fe67bc246))
-* round 31 of the review ([#103](https://github.com/atralice/skillLib/issues/103)) ([13faf65](https://github.com/atralice/skillLib/commit/13faf6509ef58f549dd82e5bea6f07b2907d3c68))
-* round 8 of the review ([#77](https://github.com/atralice/skillLib/issues/77)) ([24c213c](https://github.com/atralice/skillLib/commit/24c213cf9205c2e3cbb2e1d61a3bb4df5b09fdb1))
-* round 9: add never takes over a committed team copy ([#79](https://github.com/atralice/skillLib/issues/79)) ([83de5e8](https://github.com/atralice/skillLib/commit/83de5e8249624718b9101cbfbd6c1a117160c684))
+### Never half done
+* `add`, `sync`, `link`, `update` and `remove` check every folder they'd touch before writing anything. A skills folder that is a file, or links out of the repo, is reported, not written through.
+* A file where a skill's folder goes is never deleted.
+* `sync` never repoints a link that reaches other content.
+
+### Doctor
+* Doctor offers no choice that can't succeed, and `doctor --fix` converges.
+* `doctor --fix` removes a broken link by itself only at a repo's top, uncommitted; committed links and links inside monorepo packages are always asked first.
+* New reports: what's in the way of a link, a skills folder that isn't one, copies that differ behind a link, pins sync can't put back, pins from another library.
+
+### Changes agents and scripts will notice
+* `add` reports `unchanged` (nothing written) or `relinked` (only links written) instead of `updated` when nothing new was installed.
+* `remove` drops just the pin when the skill's own folder isn't the repo's (a folder outside the repo, a file), and says what it left in `reason`.
+* Change results can carry `inTheWay` (something is where a link goes); the command exits 1.
+* `status` and other commands that take no names reject stray words; `unhide` and `folders` failures print `{"error"}` with `--json`.
+
+### Plugins
+* A plugin only turned on in your settings (not installed) is never offered for removal; turning it off edits your settings.
+* A plugin a repo's settings turn on is shown as loading in that repo, not every repo, and its review prompt says so.
+* Replacing a plugin with your own copies checks every repo can take them before anything changes.
+
+### Also
+* A skills folder that links to another folder in the repo (`.claude/skills` → `.agents/skills`) is treated as one folder: committed team skills there are the team's (never removed), and `add` finds nothing in its own way.
+* `restore` that can't put a copy back prints `{"error"}` with `--json`; doctor shows a choice by label where `apply` needs one.
+* Usage counts skip a transcript (or transcript folder) that can't be read, so `doctor` and `usage` no longer fail on one, and the app says when usage can't be shown; plugin skills are counted under `plugin:skill`.
+* An empty `SKILLLIB_HOME` or `CLAUDE_CONFIG_DIR` falls back to the default; agents' own config folders are never treated as projects.
+* A `SKILL.md` that starts with a byte-order mark is read correctly.
+* Monorepo packages are looked for up to five folders deep; a package with its own `skilllib.json` counts even before you open it.
+* The app's results wrap to three lines instead of being cut off; deletes and moves say what was left.
+* Windows: link checks handle drive paths, `\\?\` targets and case.
 
 ## [1.11.3](https://github.com/atralice/skillLib/compare/v1.11.2...v1.11.3) (2026-10-19)
 
