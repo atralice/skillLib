@@ -4,7 +4,7 @@ import { enabledHarnesses } from "./config.js";
 import { gitInfo, relativeTo, type GitInfo } from "./git.js";
 import { ALL_PROJECT_DIRS, CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, stash } from "./library.js";
-import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
@@ -228,10 +228,11 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
  */
 export function gitVisibleSteps(plan: TidyPlan, git: GitInfo | null = plan.root ? gitInfo(plan.root) : null): TidyStep[] {
   if (!plan.root || !git) return [];
-  return plan.steps.filter((s) => {
-    const state = git.of(relativeTo(plan.root!, s.path));
-    return state === "committed" || state === "changed";
-  });
+  const shared = (rel: string) => ["committed", "changed"].includes(git.of(rel));
+  // A managed skill's new link is also written into skilllib.json: when that's committed, git sees it too.
+  const dep = readManifest(plan.root).skills[plan.name];
+  const recordsLink = (s: TidyStep) => !!dep && (s.kind === "link" || s.kind === "replace") && !dep.links?.includes(relativeTo(plan.root!, dirname(s.path)));
+  return plan.steps.filter((s) => shared(relativeTo(plan.root!, s.path)) || (recordsLink(s) && shared(MANIFEST_FILE)));
 }
 
 export type TidyResult = { name: string; root: string | null; applied: TidyStep[]; held: TidyStep[] };

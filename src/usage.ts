@@ -119,7 +119,9 @@ export function usesByProject(uses: SkillUse[], projectOf: (cwd: string) => stri
     const root = projectOf(use.cwd);
     if (!root) continue;
     const counts = byProject.get(root) ?? new Map<string, number>();
-    counts.set(use.skill, (counts.get(use.skill) ?? 0) + 1);
+    // As summarize: a plugin's copy (/plugin:name) counts for the skill, so status and doctor agree.
+    const skill = use.skill.split(":").pop()!;
+    counts.set(skill, (counts.get(skill) ?? 0) + 1);
     byProject.set(root, counts);
   }
   return byProject;

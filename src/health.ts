@@ -7,7 +7,7 @@ import { addSkill, deleteLibrarySkill, discardEdits, importSkill, isLink, librar
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { skillDirsIn, treeHash } from "./skills.js";
-import { readableRoots, readManifest } from "./project.js";
+import { knownProjects, pinsIn, readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { versionForHash, versionHistory } from "./versions.js";
@@ -277,7 +277,8 @@ export function findIssues(
   // Which of your agents load a plugin in a repo: its settings can turn it off for Claude Code, but Cursor ignores them.
   const pluginAgentsIn = (plugin: ClaudePlugin, root: string) => new Set(loadedHere.get(root)!.filter((m) => plugin.skills.includes(m.path)).flatMap((m) => m.harnesses));
   const globalYours = new Set(loaded.filter((m) => m.movable).map((m) => m.name));
-  const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name)]);
+  // In any repo you have, not only the ones this scan looks at (status scans just the one you're in).
+  const installedYours = new Set([...globalYours, ...[...statuses.values()].flat().map((s) => s.name), ...knownProjects().flatMap((p) => Object.keys(pinsIn(p)))]);
   const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
     const where = basename(root);
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
@@ -347,7 +348,7 @@ export function findIssues(
         notInstalled.length
           ? `Your ${notInstalled.join(", ")} ${notInstalled.length === 1 ? "is" : "are"} only in Your skills, not installed anywhere: once the plugin is gone, add ${notInstalled.length === 1 ? "it" : "them"} where you need ${notInstalled.length === 1 ? "it" : "them"}.`
           : "",
-        others ? `The plugin's other ${others === 1 ? "skill is" : `${others} skills are`} copied into Your skills first, so nothing is lost.` : "",
+        others ? `Turning it off or removing it copies its other ${others === 1 ? "skill" : `${others} skills`} into Your skills first, so nothing is lost.` : "",
         plugin.extras.length
           ? `It also brings ${plugin.extras.join(", ")}: ${plugin.synced ? "turning it off pauses those" : "removing it drops those, turning it off pauses them"}.`
           : "",
@@ -617,6 +618,8 @@ export function findIssues(
     if (partial.length) {
       const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
       const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
+      // Links for a skill skilllib manages are recorded in skilllib.json: when that's committed, git sees it too.
+      const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "");
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         const r = linkAll(root, { allowTracked });
@@ -634,9 +637,11 @@ export function findIssues(
           .map((s) => `${s.name} (not ${agentNames(s.visibility.filter((v) => v.paths === 0).map((v) => v.id))})`)
           .join(", ")}. Adding links makes the one real copy reach every agent you use; nothing is copied or moved.${
           tracked.length ? ` Git tracks ${tracked.join(", ")}, so links there show in git status.` : ""
-        }`,
+        }${manifestShared ? " The new links are recorded in skilllib.json, which git tracks." : ""}`,
         at: rows(root, partial.map((s) => s.name)),
-        ...(tracked.length
+        ...(manifestShared && !tracked.length
+          ? { choices: [{ label: "Add the links", hint: "git will see skilllib.json change", run: run(false) }] }
+          : tracked.length
           ? {
               choices: [
                 // Only when some link goes where git doesn't track: otherwise this one would link nothing.
@@ -1011,7 +1016,7 @@ export function usageIssues(
           p.extras.length ? ` It also brings ${p.extras.join(", ")}: turning it off pauses those too.` : ""
         }`,
         choices: [
-          { label: `Turn the plugin ${p.id} off`, hint: "stays installed", run: () => orThrow(setPluginOn(p, false)) },
+          { label: `Turn the plugin ${p.id} off`, hint: p.scope === "project" ? `stays installed; edits ${basename(p.projectPath ?? "the repo")}'s committed .claude/settings.json` : "stays installed", run: () => orThrow(setPluginOn(p, false)) },
           ...(p.synced || p.settingsOnly ? [] : [{ label: `Uninstall the plugin ${p.id}`, hint: "its data stays; restorable with skilllib restore", run: () => orThrow(uninstallPlugin(p)) }]),
         ],
         plugin: p.id,

@@ -789,3 +789,8 @@ test("a skilllib.json key that isn't a skill name is ignored, never read as a pa
   expect(readManifest(project).skills).toEqual({});
   expect(projectStatus(project)).toEqual([]);
 });
+
+test("a skilllib.json whose skills is a list is an error, not pins named 0 and 1", () => {
+  writeFileSync(join(project, "skilllib.json"), JSON.stringify({ skills: ["foo", "bar"] }));
+  expect(() => readManifest(project)).toThrow("isn't a skilllib.json");
+});

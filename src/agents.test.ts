@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
@@ -275,5 +275,16 @@ test("installed for Codex first, then Claude Code: one real copy and a link", ()
   setHarnesses(["claude-code", "codex"]);
   expect(installAgentSkill().ok).toBe(true);
   expect(lstatSync(join(tmp, ".agents", "skills", "skilllib")).isSymbolicLink()).toBe(true);
+  expect(agentSkillState()).toBe("installed");
+});
+
+test.skipIf(process.platform === "win32")("with ~/.claude/skills a link to ~/.agents/skills, the agent skill installs once, not as a link to itself", () => {
+  setHarnesses(["claude-code", "codex"]);
+  rmSync(join(tmp, ".claude", "skills"), { recursive: true, force: true });
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  mkdirSync(join(tmp, ".claude"), { recursive: true });
+  symlinkSync(join(tmp, ".agents", "skills"), join(tmp, ".claude", "skills"));
+  expect(installAgentSkill().ok).toBe(true);
+  expect(existsSync(join(tmp, ".agents", "skills", "skilllib", "SKILL.md"))).toBe(true);
   expect(agentSkillState()).toBe("installed");
 });

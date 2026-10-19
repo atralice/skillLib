@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { harness, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir } from "./library.js";
-import { claudeDir, OWN_SKILL_MARKER, userHome } from "./paths.js";
+import { claudeDir, OWN_SKILL_MARKER, userHome, realPath } from "./paths.js";
 import { tildify } from "./output.js";
 
 /**
@@ -29,7 +29,9 @@ export function agentSkillDirs(enabled: HarnessId[] = enabledHarnesses()): strin
   const agentsSkills = join(userHome(), ".agents", "skills");
   const needsClaude = enabled.some((id) => harness(id).globalDirs().includes(claudeSkills));
   const needsAgents = enabled.some((id) => !harness(id).globalDirs().includes(claudeSkills));
-  return [...(needsClaude ? [claudeSkills] : []), ...(needsAgents ? [agentsSkills] : [])].map((d) => join(d, AGENT_SKILL_NAME));
+  // Once per real folder: ~/.claude/skills can be a link to ~/.agents/skills (installing twice would link it to itself).
+  const dirs = [...(needsClaude ? [claudeSkills] : []), ...(needsAgents ? [agentsSkills] : [])];
+  return dirs.filter((d, i) => dirs.findIndex((o) => realPath(o) === realPath(d)) === i).map((d) => join(d, AGENT_SKILL_NAME));
 }
 
 function isOurs(dir: string): boolean {
