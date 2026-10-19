@@ -33,7 +33,16 @@ function git(root: string, args: string[], input?: string): string | null {
  * `extraDirs`: more folders to cover, relative to the root (e.g. nested skill folders).
  */
 export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null {
-  if (!existsSync(join(root, ".git"))) return null;
+  // The project can be a folder inside the repo (a nested skilllib.json): ask git, don't look for .git here.
+  // `prefix` is where the project sits in the repo ("packages/web/", or "" at the top).
+  let inRepo: string;
+  try {
+    inRepo = execFileSync("git", ["rev-parse", "--show-prefix"], { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    // Not a repo git can read. A .git folder here (a fresh or partial one) still makes this the top, as before.
+    if (!existsSync(join(root, ".git"))) return null;
+    inRepo = "";
+  }
   const dirs = [...ALL_PROJECT_DIRS, MANIFEST_FILE, ...extraDirs].filter((d) => existsSync(join(root, d)));
   if (dirs.length === 0) return { of: () => "new" };
 
@@ -41,7 +50,10 @@ export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null 
   const dirty = (git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...dirs]) ?? "")
     .split("\0")
     .filter(Boolean)
-    .map((entry) => entry.slice(3));
+    // status paths are from the repo's top (ls-files' are from here): make them relative to the project too.
+    .map((entry) => entry.slice(3))
+    .filter((path) => path.startsWith(inRepo))
+    .map((path) => path.slice(inRepo.length));
 
   const ignoredCache = new Map<string, boolean>();
   const isIgnored = (rel: string) => {

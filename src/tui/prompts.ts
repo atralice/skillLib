@@ -1,6 +1,6 @@
 /** Prompts the TUI copies for an agent: reviewing skills, and writing a new one. */
 import { dirname } from "node:path";
-import { harness, type HarnessId } from "../harnesses.js";
+import { harness, installDirs, type HarnessId } from "../harnesses.js";
 import { buildReviewPrompt, type ReviewSkill } from "../review.js";
 import { totalUses, type LocalSkill, type World } from "./world.js";
 
@@ -73,7 +73,8 @@ export function reviewPrompt(w: World, names: string[], scope: string, repo?: st
 /** Asks an agent to write a new skill, in a repo or in your library. */
 export function writeSkillPrompt(w: World, name: string, repo: string | null): string {
   const p = repo ? w.projects.find((x) => x.name === repo) : undefined;
-  const file = p ? `${p.path}/.claude/skills/${name || "<name>"}/SKILL.md` : w.ops.libraryFile(name || "<name>");
+  // The folder an add would use for your agents (Codex and Zed don't read .claude/skills).
+  const file = p ? `${p.path}/${installDirs(w.agents)[0]}/${name || "<name>"}/SKILL.md` : w.ops.libraryFile(name || "<name>");
   return `Write a new agent skill${name ? ` named "${name}"` : ""}${p ? ` for the repo at ${p.path}` : " for my skill library"}.
 
 Create ${file} with:

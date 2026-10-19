@@ -54,6 +54,7 @@ export function readManifest(root: string): Manifest {
   } catch {
     throw new Error(`${path} isn't valid JSON (a merge conflict?): fix it, then run skilllib again`);
   }
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path} isn't a skilllib.json (it should hold an object with "skills")`);
   const skills = Object.fromEntries(
     Object.entries(data.skills ?? {}).flatMap(([name, value]): [string, Dependency][] => {
       // Registry-era refs ("@owner/name": "^1.0.0") don't map to the library.

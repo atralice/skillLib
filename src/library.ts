@@ -317,18 +317,13 @@ export function linkEverywhere(root: string, name: string, location: string, { a
 }
 
 /**
- * Removes symlinks to this skill in the project's harness folders. Never touches a real folder.
- * A link in .grok/skills stays unless it already dangles, or it points at `removing` (the copy
- * about to go away). Leaving that link would make Grok load a path that no longer exists.
+ * Removes the links to a skill that point at nothing, in every repo skill folder: run after its copy was
+ * moved away (removeUntracked backs it up first). A link to another copy (the team's, say) stays.
  */
-export function unlinkEverywhere(root: string, name: string, removing?: string): string[] {
-  const gone = removing ? realpathOrNull(removing) : null;
+export function unlinkEverywhere(root: string, name: string): string[] {
   return ALL_PROJECT_DIRS.filter((dir) => {
     const link = join(root, dir, name);
-    if (!isLink(link)) return false;
-    // Only links to nothing or to the copy being removed: one to another copy (the team's, say) stays.
-    const target = realpathOrNull(link);
-    if (target !== null && target !== gone) return false;
+    if (!isLink(link) || realpathOrNull(link) !== null) return false;
     unlinkSync(link);
     return true;
   });
@@ -399,6 +394,8 @@ export function addSkill(
   name: string,
   { force = false, version, allowTracked = false }: { force?: boolean; version?: number; allowTracked?: boolean } = {},
 ): Change {
+  // A skill's name is one folder name: never ".", "..", empty, or a path.
+  if (!name || name === "." || name === ".." || /[\\/]/.test(name)) return { name, action: "skipped", reason: "not a skill name" };
   const target = version === undefined ? latestVersion(name) : getVersion(name, version);
   if (!target) return { name, action: "skipped", reason: version === undefined ? "not in the library" : `version ${version} doesn't exist` };
 
@@ -647,7 +644,7 @@ export function stash(dir: string, bucket: string): string {
 export function removeUntracked(root: string, name: string, path: string): string {
   // The backup first: when the copy is itself a link, removing links first would take it away.
   const to = stash(path, "trash");
-  unlinkEverywhere(root, name, to);
+  unlinkEverywhere(root, name);
   return to;
 }
 

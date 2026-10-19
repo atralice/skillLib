@@ -276,10 +276,11 @@ describe("harnesses", () => {
       { id: "cursor", paths: 2 },
       { id: "codex", paths: 1 },
     ]);
-    // A link to another copy stays; one to the copy being removed goes.
+    // A link to a copy stays; once the copy is gone, the link points at nothing and goes.
     expect(unlinkEverywhere(project, "team-flow")).toEqual([]);
-    expect(unlinkEverywhere(project, "team-flow", repo("team-flow"))).toEqual([".claude/skills"]);
-    expect(existsSync(repo("team-flow"))).toBe(true);
+    rmSync(repo("team-flow"), { recursive: true });
+    expect(unlinkEverywhere(project, "team-flow")).toEqual([".claude/skills"]);
+    expect(lstatSync(local("team-flow"), { throwIfNoEntry: false })).toBeUndefined();
   });
 
   test("with Claude Code and Codex, the real copy goes in .agents/skills and Claude Code gets a link, like npx skills", () => {
@@ -760,5 +761,25 @@ describe("round 8", () => {
     const c = discardEdits(project, "alpha");
     expect(c.action).toBe("reset");
     expect(readFileSync(join(c.backedUp!, "SKILL.md"), "utf-8")).toContain("my edits");
+  });
+});
+
+describe("round 10", () => {
+  test.skipIf(process.platform === "win32")("a skill with a link back to itself hashes and copies without looping", () => {
+    const dir = join(tmp, "src", "alpha");
+    symlinkSync(".", join(dir, "self"));
+    expect(treeHash(dir)).toBeString();
+    copySkill(dir, join(tmp, "copy"));
+    expect(existsSync(join(tmp, "copy", "SKILL.md"))).toBe(true);
+  });
+
+  test("add refuses a name that isn't one folder name", () => {
+    for (const name of [".", "..", "", "a/b"]) expect(addSkill(project, name).action).toBe("skipped");
+    expect(existsSync(join(project, "skilllib.json"))).toBe(false);
+  });
+
+  test("a skilllib.json holding null is an error that names it, not a crash", () => {
+    writeFileSync(join(project, "skilllib.json"), "null");
+    expect(() => readManifest(project)).toThrow("isn't a skilllib.json");
   });
 });

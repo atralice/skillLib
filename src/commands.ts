@@ -365,7 +365,10 @@ export function projects(args: Args) {
     roots.map((root) => {
       const skills = projectStatus(root);
       const managed = skills.filter((s) => s.managed);
-      const attention = skills.filter((s) => s.state !== "ok" && s.state !== "local only").length;
+      // The team's committed skills are fine as they are: only what needs a decision counts.
+      const teamState = teamStateIn(root);
+      const usual = new Set(["ok", "local only", "repo skill", "repo skill, in library", "from npx skills"]);
+      const attention = skills.filter((s) => !usual.has(teamState(s))).length;
       return {
         Project: basename(root),
         Path: dim(tildify(root)),
