@@ -4,10 +4,10 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
-import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
+import { knownProjects, pinsIn, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
-import { tildify } from "./output.js";
+import { localStamp, tildify } from "./output.js";
 import { forgetLatest, getVersion, latestVersion, versionDir, versionForHash } from "./versions.js";
 
 export type LibrarySkill = { name: string; description: string; dir: string };
@@ -105,7 +105,7 @@ function dependencyDirs(root: string, name: string, dep: Dependency | undefined)
 }
 
 /** True when git tracks files under `dir` in `root` (so writing there shows up in git status). */
-export function isGitTracked(root: string, dir: string): boolean {
+function isGitTracked(root: string, dir: string): boolean {
   try {
     const out = execFileSync("git", ["ls-files", "--", dir], { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
     return out.trim().length > 0;
@@ -262,7 +262,7 @@ export function nestedSkills(root: string, { depth = 3, enabled = enabledHarness
  * in a folder the repo commits (so it goes in with that folder). A copy in a
  * folder git doesn't track, or a gitignored one, stays on this machine.
  */
-export function sharedByGit(root: string, location: string, name: string): boolean {
+function sharedByGit(root: string, location: string, name: string): boolean {
   const copy = `${location}/${name}`;
   if (isGitTracked(root, copy)) return true;
   if (!isGitTracked(root, location)) return false;
@@ -508,7 +508,7 @@ export function syncProject(root: string, { force = false } = {}): Change[] {
 }
 
 /** `syncProject` for one skill: nothing when it's already as pinned. */
-export function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
+function syncSkill(root: string, name: string, { force = false } = {}): Change[] {
   const dep = readManifest(root).skills[name];
   if (!dep) return [];
   const copy = join(root, dep.dir ?? PROJECT_SKILLS_DIR, name);
@@ -649,7 +649,7 @@ export function removeUntracked(root: string, name: string, path: string): strin
 }
 
 export function projectsUsing(name: string): string[] {
-  return knownProjects().filter((p) => name in readManifest(p).skills);
+  return knownProjects().filter((p) => name in pinsIn(p));
 }
 
 /** Removes a skill from the library by moving it to ~/.skilllib/trash. Refuses while projects still use it. */
@@ -753,7 +753,7 @@ export function listBackups(): Backup[] {
         // No index entry (an older skilllib, or a lost index): only the library and the global folder
         // are safe to guess; a project's backup has no right answer, so it isn't restored by guessing.
         const from = index[entry] ?? (kind === "trash" ? librarySkillDir(name) : kind === "global-backup" ? join(claudeDir(), "skills", name) : "");
-        return [{ name, kind, path: join(dir, entry), movedAt: `${match[2]} ${match[3]}:${match[4]}`, from }];
+        return [{ name, kind, path: join(dir, entry), movedAt: localStamp(Date.parse(`${match[2]}T${match[3]}:${match[4]}:${match[5]}Z`)), from }];
       });
     })
     // By the entry's full timestamp (movedAt shows minutes only): `restore <name>` takes the newest.

@@ -681,7 +681,7 @@ export function findIssues(
           choices: [
             {
               label: "Import into the library",
-              hint: `${where} then tracks it`,
+              hint: "copies it into Your skills",
               run: () => {
                 intoLibrary(s.path);
                 track(root, s.name);
@@ -919,7 +919,7 @@ export function findIssues(
 }
 
 /** When a skill folder appeared: creation time where the filesystem keeps it, else its inode change time (a copy can't carry an old one over). */
-export function addedAt(path: string): number {
+function addedAt(path: string): number {
   try {
     const st = lstatSync(path);
     return st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;

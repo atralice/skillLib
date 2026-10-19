@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { librarySkills, nestedSkills, projectStatus, type ProjectSkill } from "./library.js";
 import { enabledHarnesses, visibleProjects } from "./config.js";
 import { gitInfo, relativeTo } from "./git.js";
-import { projectHere, readManifest } from "./project.js";
+import { pinsIn, projectHere } from "./project.js";
 import { tildify } from "./output.js";
 import { machineSkills, skillsLoadedIn, type SourceKind } from "./sources.js";
 import { findIssues, type Issue } from "./health.js";
@@ -126,7 +126,7 @@ export function firstSentence(description: string): string {
 
 /** Your library; inside a project, split into what it has and what it could add. */
 export function libraryFor(currentProject: string | null): ListJson {
-  const manifests = visibleProjects().map((p) => ({ name: basename(p), skills: readManifest(p).skills }));
+  const manifests = visibleProjects().map((p) => ({ name: basename(p), skills: pinsIn(p) }));
   const here = currentProject ? new Set(projectStatus(currentProject).map((s) => s.name)) : null;
   const all = librarySkills();
   const describe = (s: (typeof all)[number]): ListJson["skills"][number] => {

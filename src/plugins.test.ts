@@ -473,3 +473,13 @@ test.skipIf(process.platform === "win32")("removing a plugin from its duplicate 
   withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "delete")).toMatchObject({ ok: true }));
   expect(readFileSync(join(tmp, "calls"), "utf-8")).toContain("plugin uninstall pt@mk --keep-data --scope user");
 });
+
+test.skipIf(process.platform === "win32")("turning off a plugin never copies its version of a skill you already have", () => {
+  fakeClaude();
+  skill(join(tmp, ".claude", "skills", "glob-one"), "mine");
+  skill(join(tmp, "p", "skills", "glob-one"), "the plugin's");
+  skill(join(tmp, "p", "skills", "tk-extra"));
+  const plugin: ClaudePlugin = { id: "tk@mk", scope: "user", synced: false, skills: [join(tmp, "p", "skills", "glob-one"), join(tmp, "p", "skills", "tk-extra")], extras: [] };
+  withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "tk@mk turned off; tk-extra copied into Your skills" }));
+  expect(existsSync(join(tmp, "home", "library", "glob-one"))).toBe(false);
+});

@@ -65,7 +65,7 @@ export function setHidden(project: string, hidden: boolean): boolean {
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "vendor", "target", "Library", "Applications", "Pictures", "Music", "Movies"]);
 
 /** Git repos and folders with skills under `dir`. Doesn't descend into a repo once found. */
-export function findProjects(dir: string, depth = 4): string[] {
+function findProjects(dir: string, depth = 4): string[] {
   if (depth < 0 || !existsSync(dir)) return [];
   if (isProjectCandidate(dir)) {
     const isRepo = existsSync(join(dir, ".git"));

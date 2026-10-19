@@ -23,7 +23,7 @@
 <text x="203.5" y="92.0" fill="#ef6b6b" xml:space="preserve" textLength="33.7" lengthAdjust="spacingAndGlyphs">15  </text>
 <text x="245.6" y="92.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="254.0" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
-<text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Skill              Ver  Used in            Uses  Issue / description              </text>
+<text x="270.9" y="92.0" fill="#5a6275" xml:space="preserve" textLength="725.0" lengthAdjust="spacingAndGlyphs">    Skill              Ver  Used in          Uses  Issue / description                </text>
 <text x="1004.3" y="92.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="111.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="111.0" fill="#d7dae0" font-weight="bold" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">⧉ Plugins         </text>
@@ -54,8 +54,8 @@
 <text x="287.8" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="16.9" lengthAdjust="spacingAndGlyphs">⚠ </text>
 <text x="304.6" y="149.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">sql-migrations     </text>
 <text x="464.8" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v1   </text>
-<text x="506.9" y="149.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">0 repos               – </text>
-<text x="709.3" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> In no repo, unused 30 days       </text>
+<text x="506.9" y="149.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">0 repos             – </text>
+<text x="692.4" y="149.0" fill="#f2c94c" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> In no repo, unused 30 days         </text>
 <text x="1004.3" y="149.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="168.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">◆ web-app          </text>
@@ -64,8 +64,8 @@
 <text x="254.0" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="168.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  stripe-payments    </text>
 <text x="464.8" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v2   </text>
-<text x="506.9" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">2 repos              14 </text>
-<text x="709.3" y="168.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> Stripe Checkout, Payment Links, …</text>
+<text x="506.9" y="168.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">2 repos            14 </text>
+<text x="692.4" y="168.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> Stripe Checkout, Payment Links, we…</text>
 <text x="1004.3" y="168.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="187.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  api-server       </text>
@@ -74,8 +74,8 @@
 <text x="254.0" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="187.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  api-conventions    </text>
 <text x="464.8" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v1   </text>
-<text x="506.9" y="187.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">2 repos              13 </text>
-<text x="709.3" y="187.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> Our REST conventions: resource n…</text>
+<text x="506.9" y="187.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">2 repos            13 </text>
+<text x="692.4" y="187.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> Our REST conventions: resource nam…</text>
 <text x="1004.3" y="187.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="206.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  docs-site        </text>
@@ -84,9 +84,9 @@
 <text x="254.0" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="206.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  react-patterns     </text>
 <text x="464.8" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v2   </text>
-<text x="506.9" y="206.0" fill="#f2c94c" xml:space="preserve" textLength="151.7" lengthAdjust="spacingAndGlyphs">2 repos (1 behind)</text>
-<text x="658.7" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">   11 </text>
-<text x="709.3" y="206.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> Component patterns for React 19:…</text>
+<text x="506.9" y="206.0" fill="#f2c94c" xml:space="preserve" textLength="134.9" lengthAdjust="spacingAndGlyphs">2 repos, 1 beh… </text>
+<text x="641.8" y="206.0" fill="#8a93a6" xml:space="preserve" textLength="50.6" lengthAdjust="spacingAndGlyphs">   11 </text>
+<text x="692.4" y="206.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> Component patterns for React 19: c…</text>
 <text x="1004.3" y="206.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="225.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="160.2" lengthAdjust="spacingAndGlyphs">  mobile-app       </text>
@@ -95,8 +95,8 @@
 <text x="254.0" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="225.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  mdx-tips           </text>
 <text x="464.8" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v1   </text>
-<text x="506.9" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">1 repo                1 </text>
-<text x="709.3" y="225.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> MDX components and frontmatter u…</text>
+<text x="506.9" y="225.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">1 repo              1 </text>
+<text x="692.4" y="225.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> MDX components and frontmatter use…</text>
 <text x="1004.3" y="225.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="244.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  billing              </text>
@@ -104,8 +104,8 @@
 <text x="254.0" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="244.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  seo-meta           </text>
 <text x="464.8" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v1   </text>
-<text x="506.9" y="244.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">1 repo                – </text>
-<text x="709.3" y="244.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> Page titles, Open Graph and stru…</text>
+<text x="506.9" y="244.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">1 repo              – </text>
+<text x="692.4" y="244.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> Page titles, Open Graph and struct…</text>
 <text x="1004.3" y="244.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="263.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  blog                 </text>
@@ -113,8 +113,8 @@
 <text x="254.0" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="287.8" y="263.0" fill="#d7dae0" xml:space="preserve" textLength="177.0" lengthAdjust="spacingAndGlyphs">  testing-guide      </text>
 <text x="464.8" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="42.1" lengthAdjust="spacingAndGlyphs">v3   </text>
-<text x="506.9" y="263.0" fill="#8a93a6" xml:space="preserve" textLength="202.3" lengthAdjust="spacingAndGlyphs">1 repo                – </text>
-<text x="709.3" y="263.0" fill="#5a6275" xml:space="preserve" textLength="286.6" lengthAdjust="spacingAndGlyphs"> How we write unit and e2e tests:…</text>
+<text x="506.9" y="263.0" fill="#8a93a6" xml:space="preserve" textLength="185.5" lengthAdjust="spacingAndGlyphs">1 repo              – </text>
+<text x="692.4" y="263.0" fill="#5a6275" xml:space="preserve" textLength="303.5" lengthAdjust="spacingAndGlyphs"> How we write unit and e2e tests: f…</text>
 <text x="1004.3" y="263.0" fill="#8b9dff" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="18.0" y="282.0" fill="#4b5578" xml:space="preserve" textLength="8.4" lengthAdjust="spacingAndGlyphs">│</text>
 <text x="51.7" y="282.0" fill="#d7dae0" xml:space="preserve" textLength="193.9" lengthAdjust="spacingAndGlyphs">  cli-tools            </text>

@@ -21,7 +21,7 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realpathOrNull, userHome } from "./paths.js";
-import { findProjectRoot, isProjectCandidate, knownProjects, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
+import { findProjectRoot, isProjectCandidate, knownProjects, pinsIn, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { gitInfo, relativeTo } from "./git.js";
@@ -289,7 +289,7 @@ export async function list(args: Args) {
   } else {
     const installs = new Map<string, string[]>();
     for (const project of visibleProjects()) {
-      for (const name of Object.keys(readManifest(project).skills)) {
+      for (const name of Object.keys(pinsIn(project))) {
         installs.set(name, [...(installs.get(name) ?? []), basename(project)]);
       }
     }
@@ -752,13 +752,13 @@ export function show(args: Args) {
       path: dir,
       latest: latestVersion(name)?.version ?? null,
       origin: libraryOrigins()[name] ?? "",
-      projects: knownProjects().filter((p) => name in readManifest(p).skills).map((p) => basename(p)),
+      projects: knownProjects().filter((p) => name in pinsIn(p)).map((p) => basename(p)),
       skillMd: readFileSync(join(dir, "SKILL.md"), "utf-8"),
     });
   }
   info(`${name} ${dim(tildify(dir))}`);
   if (description) info(`\n${description}`);
-  const using = knownProjects().filter((p) => name in readManifest(p).skills);
+  const using = knownProjects().filter((p) => name in pinsIn(p));
   info(`\nInstalled in: ${using.map((p) => tildify(p)).join(", ") || "no projects"}`);
 }
 
