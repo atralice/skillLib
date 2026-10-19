@@ -375,8 +375,10 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       fixOption(remove),
       reviewOption(w, u.name, ui, p),
     ];
-  // Loads everywhere: what's left to do from a repo is turning a plugin off here, or going to Global.
-  return [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)];
+  // Loads everywhere: what's left to do from a repo is turning a plugin off here, or going to Global. One this repo's
+  // settings turn on isn't in Global: it's reviewed as this repo loads it.
+  const everywhere = !!u.machine && w.machine.some((m) => m.path === u.machine!.path && m.where === u.machine!.where);
+  return everywhere ? [{ label: "Open in Global", action: () => ui.openInGlobal(u.name) }, reviewOption(w, u.name, ui)] : [reviewOption(w, u.name, ui, p)];
 }
 
 /** A project at a glance: where it lives, its skilllib.json and plugins. Health is on the Issues tab. */
@@ -615,7 +617,9 @@ function pluginItems(w: W.World, columns: number, skillW: number, ui: Ui, issues
           ? "in Cursor (whether it's on is only in Cursor)"
           : p.scope === "claude.ai"
             ? "synced from your claude.ai account"
-            : p.repo
+            : p.settingsOnly
+              ? "not installed: turned on in your settings, loaded from its marketplace's copy"
+              : p.repo
               ? `${p.scope} scope, in ${p.repo} only`
               : `user scope, in every repo`;
         b.line(label("Installed"), [installed, color.text], [p.version ? `   v${p.version.replace(/^v/, "")}` : "", color.muted], [p.id.includes("@") && p.scope !== "claude.ai" ? `   from ${p.id.split("@")[1]}` : "", color.faint]);

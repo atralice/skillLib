@@ -24,7 +24,7 @@ import {
   type ProjectSkill,
   type SkillState,
 } from "./library.js";
-import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realpathOrNull, userHome } from "./paths.js";
+import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
 import { findProjectRoot, isProjectCandidate, knownProjects, pinsIn, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
@@ -194,6 +194,9 @@ function requireProject(): string {
   const root = projectHere();
   if (root) return root;
   if (!isProjectCandidate(findProjectRoot())) {
+    // Or a folder of skilllib's or an agent's own (~/.claude, ~/.skilllib), even one that's a git repo.
+    const top = findProjectRoot();
+    if (realPath(top) !== realPath(userHome())) throw new Error(`${tildify(top)} is skilllib's or an agent's own folder, not a project. Run this inside a project.`);
     const stray = existsSync(join(userHome(), MANIFEST_FILE)) ? `, though ${tildify(join(userHome(), MANIFEST_FILE))} makes it look like one` : "";
     throw new Error(`Your home folder isn't a project${stray}: skills added here would load in every repo. Run this inside a project.`);
   }

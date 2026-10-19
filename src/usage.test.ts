@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { summarize, usesFromTranscriptLine } from "./usage.js";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { scanUsage, summarize, usesFromTranscriptLine } from "./usage.js";
 
 test("reads Skill calls, skill file reads, and slash commands from transcript lines", () => {
   const assistant = JSON.stringify({
@@ -39,4 +42,24 @@ test("reads Skill calls, skill file reads, and slash commands from transcript li
 test("a plugin's copy of a skill counts as the skill", () => {
   const use = (skill: string, key: string) => ({ skill, source: "slash" as const, cwd: "", at: "2026-09-27T12:00:00.000Z", key });
   expect(summarize([use("ponytail:ponytail", "a"), use("ponytail", "b")]).map((s) => [s.skill, s.uses])).toEqual([["ponytail", 2]]);
+});
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a transcript folder that can't be read is skipped, not the whole count", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-usage-"));
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  const locked = join(dir, "projects", "locked");
+  mkdirSync(locked, { recursive: true });
+  mkdirSync(join(dir, "projects", "open"));
+  writeFileSync(join(locked, "a.jsonl"), "{}\n");
+  writeFileSync(join(dir, "projects", "open", "b.jsonl"), "{}\n");
+  chmodSync(locked, 0o000);
+  try {
+    expect(await scanUsage(30)).toEqual([]);
+  } finally {
+    chmodSync(locked, 0o755);
+    rmSync(dir, { recursive: true, force: true });
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
+  }
 });
