@@ -777,3 +777,20 @@ test("Delete it on a global skill waits for repos whose agents only reach it glo
   w = loadWorld();
   expect(said(w.ops.deleteGlobal(w.machine.find((m) => m.name === "g1")!))).toBe("Deleted g1 (in Settings › Backups)");
 });
+
+test("Delete it on a global copy that another global link goes through takes that link along, and counts its agents", () => {
+  setHarnesses(["claude-code", "codex"]);
+  writeSkill(join(tmp, "dev", "foo"));
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "dev", "foo"), join(tmp, ".agents", "skills", "foo"));
+  mkdirSync(join(tmp, ".claude", "skills"), { recursive: true });
+  symlinkSync(join(tmp, ".agents", "skills", "foo"), join(tmp, ".claude", "skills", "foo")); // a link to the link
+  const other = join(tmp, "other");
+  writeSkill(join(other, ".agents", "skills", "foo")); // Codex has its own; Claude Code runs the global one
+  mkdirSync(join(other, ".git"));
+  rememberProjects([other]);
+  const w = loadWorld();
+  const agentsEntry = w.machine.find((m) => m.name === "foo" && m.path.includes(".agents"))!;
+  expect(said(w.ops.deleteGlobal(agentsEntry))).toContain("Claude Code in other only sees the global copy");
+  expect(isLink(join(tmp, ".claude", "skills", "foo"))).toBe(true);
+});

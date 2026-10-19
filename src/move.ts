@@ -1,9 +1,8 @@
 import { basename } from "node:path";
-import { addSkill, blindSaid, blindWithoutGlobal, importSkill, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
+import { addSkill, blindSaid, blindWithoutGlobal, copiesDiffer, importSkill, inTheWaySaid, trackBlocker, unloadGlobal, type Change } from "./library.js";
 import { realPath } from "./paths.js";
 import { knownProjects } from "./project.js";
 import { harness } from "./harnesses.js";
-import { treeHash } from "./skills.js";
 import { recordOrigin, type SourcedSkill } from "./sources.js";
 
 type GlobalSkill = Pick<SourcedSkill, "name" | "path" | "links" | "harnesses">;
@@ -36,7 +35,7 @@ export function moveGlobalSkills(
   const byName = new Map<string, GlobalSkill[]>();
   for (const m of skills) byName.set(m.name, [...(byName.get(m.name) ?? []), m]);
   return [...byName].map(([name, copies]): GlobalMove => {
-    if (new Set(copies.map((m) => treeHash(m.path))).size > 1)
+    if (copiesDiffer(copies.map((m) => m.path)))
       return { name, moved: false, reason: `your global copies of ${name} differ; nothing moved (keep one first: skilllib tidy --global)`, changes: [] };
     // In a repo you're not moving it to that holds it, an agent that would then lack it (see blindWithoutGlobal):
     // checked before anything changes.

@@ -16,6 +16,7 @@ import {
   blindSaid,
   blindWithoutGlobal,
   createSkill,
+  survives,
   deleteGlobal,
   deleteLibrarySkill,
   importSkill,
@@ -402,15 +403,19 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     copyToLibrary: (repo, name) => toLibrary(find(repo, name)!.path),
     deleteGlobal: (m) => {
-      // As global move and Stop loading it globally: never while an agent in a repo you have would then lack it. Only
-      // agents that read no other global copy of it lose anything.
+      // Other global entries by that name that go through this one (a link to it, or to its link) would break with it:
+      // they go too, and their agents count. A plugin's skill is its own (/plugin:name); a broken link loads nothing.
+      const others = machine.filter((o) => o.name === m.name && o.path !== m.path && o.kind !== "plugin" && !o.broken);
+      const dependents = others.filter((o) => !survives(o.path, [m.path, ...m.links]));
+      const stays = others.filter((o) => !dependents.includes(o));
       if (!m.broken) {
-        const others = machine.filter((o) => o.name === m.name && o.path !== m.path);
-        const readers = m.agents.filter((id) => !others.some((o) => o.harnesses.includes(id)));
-        const blind = blindWithoutGlobal(m.name, [{ path: m.path, harnesses: readers, links: m.links }], [...roots.values(), ...knownProjects()]);
+        // As global move and Stop loading it globally: never while an agent in a repo you have would then lack it. Only
+        // agents that read no other global copy of it (one that stays) lose anything.
+        const readers = [...new Set([...m.agents, ...dependents.flatMap((o) => o.harnesses)])].filter((id) => !stays.some((o) => o.harnesses.includes(id)));
+        const blind = blindWithoutGlobal(m.name, [{ path: m.path, harnesses: readers, links: [...m.links, ...dependents.map((o) => o.path)] }], [...roots.values(), ...knownProjects()]);
         if (blind.length) return failed(`${m.name} kept: ${blindSaid(m.name, blind, (root) => [...roots].find(([, r]) => r === root)?.[0] ?? basename(root))}`);
       }
-      const r = deleteGlobal(m.path, m.links);
+      const r = deleteGlobal(m.path, [...m.links, ...dependents.map((o) => o.path)]);
       return r.ok ? (m.broken ? `Removed the broken link ${m.name}` : `Deleted ${m.name} (in Settings › Backups)`) : failed(`${m.name}: ${r.reason}`);
     },
     keepGlobal: (name, keep) => (setKeepGlobal([name], keep), keep ? `${name} marked as global on purpose` : `${name} is no longer marked as global on purpose`),

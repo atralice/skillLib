@@ -896,7 +896,7 @@ test("in a repo whose .agents/skills links out of it, an untracked skill is offe
   expect(findIssues([project], machineSkills(), new Set(["al-local"])).some((i) => i.id === `adopt:${project}:al-local`)).toBe(false);
 });
 
-test("where add would refuse, edited and update offer nothing that would fail or write first", () => {
+test("where add would refuse, edited offers only a copy into the library, and update nothing", () => {
   setHarnesses(["claude-code"]);
   const project = join(tmp, "app");
   for (const name of ["foo", "bar"]) {
@@ -912,8 +912,11 @@ test("where add would refuse, edited and update offer nothing that would fail or
   setHarnesses(["claude-code", "codex"]); // Codex would need .agents/skills, which links out of the repo
   const issues = findIssues([project], machineSkills(), new Set(["foo", "bar"]));
   const edited = issues.find((i) => i.id === `edited:${project}:foo`)!;
-  expect(edited.choices).toBeUndefined();
+  // Only what works there: copying the edits into Your skills (the repo's copy and pin stay).
+  expect(edited.choices!.map((c) => c.label)).toEqual(["Copy the edits into Your skills"]);
   expect(edited.detail).toContain(".agents links out of the repo");
+  expect(runFix(edited.choices![0]!).ok).toBe(true);
+  expect(readManifest(project).skills.foo?.version).toBe(1);
   expect(issues.some((i) => i.id === `update:${project}`)).toBe(false);
 });
 
@@ -927,4 +930,16 @@ test("Stop loading it globally isn't offered while your global copies differ", (
   const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
   expect(twice.choices).toBeUndefined();
   expect(twice.detail).toContain("Your global copies of foo differ");
+});
+
+test("a broken global link by the same name isn't a copy that differs", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const project = join(tmp, "app");
+  skill(join(project, ".claude", "skills", "foo"));
+  skill(join(project, ".agents", "skills", "foo"));
+  skill(join(tmp, ".claude", "skills", "foo"));
+  mkdirSync(join(tmp, ".agents", "skills"), { recursive: true });
+  symlinkSync(join(tmp, "nowhere"), join(tmp, ".agents", "skills", "foo"));
+  const twice = findIssues([project], machineSkills(), new Set()).find((i) => i.id === "twice:foo")!;
+  expect(twice.choices?.map((c) => c.label)).toEqual(["Stop loading it globally"]);
 });
