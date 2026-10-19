@@ -286,11 +286,11 @@ test.skipIf(process.platform === "win32")("a link to different content isn't rep
 
 test("tidy never removes a real copy the repo commits, even one no agent of yours needs", () => {
   setHarnesses(["claude-code"]);
-  writeSkill(join(project, ".agents", "skills", "foo"));
+  writeSkill(join(project, ".agents", "skills", "foo"), "same");
   execFileSync("git", ["init", "-q"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
-  writeSkill(join(project, ".claude", "skills", "foo")); // an identical copy, not committed: the managed one
+  writeSkill(join(project, ".claude", "skills", "foo"), "same"); // an identical copy, not committed: the managed one
   writeFileSync(join(project, ".git", "info", "exclude"), ".claude/\n");
   importSkill(join(project, ".claude", "skills", "foo"));
   addSkill(project, "foo");
