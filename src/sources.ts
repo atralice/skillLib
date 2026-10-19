@@ -4,7 +4,7 @@ import { enabledHarnesses } from "./config.js";
 import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { claudeDir, codexSystemDir, grokDir, OWN_SKILL_MARKER, readJson, readState, realPath, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
-import { readSkillInfo, skillDirsIn } from "./skills.js";
+import { isDir, readSkillInfo, skillDirsIn } from "./skills.js";
 import { tildify } from "./output.js";
 
 /**
@@ -97,7 +97,7 @@ function globalFolderSkills(enabled: HarnessId[]): SourcedSkill[] {
   const lock = skillsShLock();
   const agentsDir = join(userHome(), ".agents", "skills");
   const entries = globalSkillDirs().flatMap((dir) => {
-    if (!existsSync(dir)) return [];
+    if (!isDir(dir)) return [];
     return readdirSync(dir)
       .filter((name) => !name.startsWith(".") && name !== "synced")
       .flatMap((name) => {
@@ -179,7 +179,7 @@ function claudeAiSkills(enabled: HarnessId[]): SourcedSkill[] {
     byReal.set(real, entry);
   }
   return [...byReal.values()].flatMap(({ dir, readers }) =>
-    readdirSync(dir)
+    (isDir(dir) ? readdirSync(dir) : [])
       .filter((d) => !d.startsWith("."))
       .flatMap((bucket) =>
         skillDirsIn(join(dir, bucket)).map((path) => vendorSkill(path, "claude.ai", "claude.ai account", enabled.filter((id) => readers.includes(id)))),

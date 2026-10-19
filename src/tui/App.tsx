@@ -311,6 +311,9 @@ const reviewOption = (w: W.World, name: string, ui: Ui, repo?: string): Option =
   action: () => ui.copy(reviewPrompt(w, [name], `Review the skill ${name}${repo ? ` in ${repo}` : ""}.`, repo), `a review prompt for ${name}`),
 });
 
+/** " Git will see it." for a copy the repo commits: an action that changes it says so up front. */
+const gitSees = (s?: W.LocalSkill) => (s?.git === "committed" || s?.git === "changed" ? " Git will see it." : "");
+
 /** Pick a library version to install in a repo (older ones too). */
 function versionsOption(w: W.World, repo: string, name: string, installed: number | undefined, ui: Ui): Option {
   return {
@@ -321,7 +324,7 @@ function versionsOption(w: W.World, repo: string, name: string, installed: numbe
         w.ops
           .versions(name)
           .reverse()
-          .map((v) => fixOption({ label: `v${v.version}  ${v.date}${v.version === installed ? "  (installed)" : ""}`, preview: `Install ${name} v${v.version} in ${repo}.`, run: (w) => w.ops.installVersion(repo, name, v.version) })),
+          .map((v) => fixOption({ label: `v${v.version}  ${v.date}${v.version === installed ? "  (installed)" : ""}`, preview: `Install ${name} v${v.version} in ${repo}.${gitSees(W.project(w, repo).skills.find((x) => x.name === name))}`, run: (w) => w.ops.installVersion(repo, name, v.version) })),
       ),
   };
 }
@@ -338,7 +341,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
         ? `${p}'s skilllib.json stops pinning ${u.name}. There's no folder to delete.`
         : s?.source === "lib"
           ? `Delete ${s.dir}/${u.name} in ${p}.${inLibrary ? " Your library keeps it." : ""}`
-          : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) + (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : ""),
+          : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) + (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : "") + gitSees(s),
     run: (w) => w.ops.remove(p, u.name),
   };
   if (s?.source === "lib")
@@ -346,7 +349,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
       // A tracked skill your library doesn't have: nothing to edit there, no versions to pick.
       ...(inLibrary
         ? [
-            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.`, run: (w) => w.ops.update(p, u.name) })] : []),
+            ...(s.version! < inLibrary.latest ? [fixOption({ label: `Update to v${inLibrary.latest}`, preview: `Replace ${s.dir}/${u.name} with library v${inLibrary.latest}.${gitSees(s)}`, run: (w) => w.ops.update(p, u.name) })] : []),
             { label: "Edit in library", action: () => ui.edit(w.ops.libraryFile(u.name)) },
             versionsOption(w, p, u.name, s.version, ui),
           ]
@@ -497,7 +500,7 @@ function libraryItems(w: W.World, nameW: number, ui: Ui): Item[] {
             ? [
                 fixOption({
                   label: "Remove from repos…",
-                  preview: `Pick repos to remove ${l.name} from. Your library keeps it.`,
+                  preview: `Pick repos to remove ${l.name} from. Your library keeps it. Where a repo commits its copy, git will see it.`,
                   run: () => "",
                   candidates: () => removable.map((p) => p.name),
                   pickRepos: (w, rs) => W.joined(rs.map((r) => w.ops.remove(r, l.name))),

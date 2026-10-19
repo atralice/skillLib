@@ -6,6 +6,7 @@ import {
   createSkill,
   backupFrom,
   listBackups,
+  movedTogether,
   restoreBackup,
   importSkill,
   librarySkills,
@@ -16,7 +17,6 @@ import {
   linkAll,
   syncProject,
   updateProject,
-  type Backup,
   type Change,
   type ProjectSkill,
   type SkillState,
@@ -375,7 +375,7 @@ export function projects(args: Args) {
         Project: basename(root),
         Path: dim(tildify(root)),
         Skills: managed.map((s) => s.name).join(", ") || dim("none"),
-        "Local only": String(skills.filter((s) => s.state === "local only").length),
+        "Local only": String(skills.filter((s) => teamState(s) === "local only").length),
         Status: attention === 0 ? green("ok") : yellow(`${attention} need attention`),
       };
     }),
@@ -593,11 +593,8 @@ export function restore(args: Args) {
   }
   const newest = backups.find((b) => b.name === name);
   if (!newest) throw new Error(`No backup named ${name} (skilllib restore lists them; a skill removed from a repo that your library has comes back with skilllib add ${name})`);
-  // Copies moved out in one go (a global skill and its link in another agent's folder) come back together:
-  // the same name and kind, moved within two seconds of each other (entries end in their ISO time).
-  const at = (b: Backup) => Date.parse(b.path.slice(-24).replace(/^(.{13})-(\d\d)-(\d\d)-(\d{3})Z$/, "$1:$2:$3.$4Z"));
-  const together = newest.kind === "plugin" ? [newest] : backups.filter((b) => b.name === name && b.kind === newest.kind && Math.abs(at(b) - at(newest)) <= 2000);
-  for (const backup of together) {
+  // Copies moved out in one go come back together.
+  for (const backup of movedTogether(backups, newest)) {
     const r = backup.kind === "plugin" ? restorePlugin(backup) : restoreBackup(backup);
     if (r.ok) success(`Restored ${name} to ${tildify(r.to)}`);
     else {

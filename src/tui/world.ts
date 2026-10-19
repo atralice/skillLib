@@ -465,7 +465,7 @@ export function deleteLibraryFix(w: World, names: string[]): Fix {
       `Delete ${what} and ${names.length === 1 ? "its" : "their"} versions from your library.`,
       repos.length ? `Removes ${names.length === 1 ? "it" : "them"} from ${repos.length === 1 ? repos[0] : `these ${repos.length} repos: ${repos.join(", ")}`}.` : "No repo uses it.",
       edited.length ? `${edited.join(", ")} ${edited.length === 1 ? "has" : "have"} local edits: backed up too.` : "",
-      "Every copy goes to Settings › Backups.",
+      "Every copy goes to Settings › Backups; where a repo commits its copy, git will see it.",
       others.length ? `Untracked or the team's own copies in ${others.join(", ")} stay.` : "",
     ]
       .filter(Boolean)

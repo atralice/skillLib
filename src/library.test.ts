@@ -839,3 +839,9 @@ describe("round 14", () => {
     expect(existsSync(local("beta"))).toBe(false);
   });
 });
+
+test("a file where a skills folder goes is ignored, not a crash", () => {
+  mkdirSync(join(project, ".cursor"), { recursive: true });
+  writeFileSync(join(project, ".cursor", "skills"), "x");
+  expect(() => projectStatus(project)).not.toThrow();
+});

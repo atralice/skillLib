@@ -778,6 +778,16 @@ export function listBackups(): Backup[] {
     .sort((a, b) => b.path.slice(-24).localeCompare(a.path.slice(-24)));
 }
 
+/**
+ * The backups moved out in one go with `backup` (a global skill and its copy in another agent's folder): the
+ * same name and kind, moved within two seconds of each other (entries end in their ISO time). Restored together.
+ */
+export function movedTogether(backups: Backup[], backup: Backup): Backup[] {
+  if (backup.kind === "plugin") return [backup];
+  const at = (b: Backup) => Date.parse(b.path.slice(-24).replace(/^(.{13})-(\d\d)-(\d\d)-(\d{3})Z$/, "$1:$2:$3.$4Z"));
+  return backups.filter((b) => b.name === backup.name && b.kind === backup.kind && Math.abs(at(b) - at(backup)) <= 2000);
+}
+
 /** Where a backup came from, as lists show it: "library (deleted)", or the folder it was in (e.g. "~/Projects/web/.cursor/skills"). */
 export function backupFrom(backup: Backup): string {
   if (backup.kind === "plugin") return "Claude Code plugin";
