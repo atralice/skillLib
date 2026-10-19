@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, realpathSync } from "node:fs";
-import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
@@ -387,7 +387,7 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const who = blind.map((b) => `${harness(b.id).name} in ${label(b.root)}`).join(", ");
   const folders = [...new Set(blind.flatMap((b) => (b.folder ? [`${b.folder} in ${label(b.root)}`] : [])))];
   // A link in a repo (or package) by its place there and whose it is; one elsewhere (~/devskills/x) by its path.
-  const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link.startsWith("~") || b.link.startsWith("/") ? b.link : `${b.link} in ${label(b.root)}`] : [])))];
+  const links = [...new Set(blind.flatMap((b) => (b.link ? [b.link.startsWith("~") || isAbsolute(b.link) ? b.link : `${b.link} in ${label(b.root)}`] : [])))];
   // One piece of advice per shared folder, naming every repo folder that links there.
   const sharedBy = new Map<string, { to: string; where: Set<string>; dirs: Set<string> }>();
   for (const b of blind.filter((x) => x.shared)) {
@@ -402,7 +402,7 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
   const fixes = [
     ...(folders.length ? [`point ${folders.join(", ")} back into the repo`] : []),
     // A package's link to the global copy: add or link at the repo's top doesn't touch it.
-    ...(links.length ? [`give ${links.join(", ")} a copy of its own instead of a link to the global one`] : []),
+    ...(links.length ? [`give ${links.join(", ")} ${links.length === 1 ? "a copy of its own" : "each a copy of its own"} instead of a link to the global one`] : []),
     ...shared,
     // Named, so with other advice beside it, it's clear which repo (or package) this is about.
     ...(repos.length
