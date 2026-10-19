@@ -264,7 +264,7 @@ export async function status(args: Args) {
   // sync installs from your library: it can't restore a skill the library doesn't have.
   const notInLibrary = missing.filter((s) => s.latest === null).map((s) => s.name);
   if (notInLibrary.length)
-    hints.push(`${notInLibrary.join(", ")} ${notInLibrary.length === 1 ? "isn't" : "aren't"} in your library (${tildify(libraryDir())}): \`skilllib import <dir>\` to add, or set SKILLLIB_HOME to the library that has ${notInLibrary.length === 1 ? "it" : "them"}`);
+    hints.push(`${notInLibrary.join(", ")} ${notInLibrary.length === 1 ? "isn't" : "aren't"} in your library (${tildify(libraryDir())}): \`skilllib import <dir>\` to add, or set SKILLLIB_HOME to the skilllib folder whose library has ${notInLibrary.length === 1 ? "it" : "them"}`);
   // Each hint names the skill's own folder: the real copy may be in .agents/skills.
   const at = (s: { path: string }) => relativeTo(root, s.path);
   for (const s of skills.filter((x) => x.state === "edited locally" || x.state === "edited locally, update available"))

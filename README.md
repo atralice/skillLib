@@ -162,7 +162,7 @@ What skilllib flags:
 
 | Issue | Fixes |
 |---|---|
-| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo, so it's offered only when no agent in any of your repos would then lack the skill (otherwise the issue says who, and what to do first). If you keep it global on purpose, remove the repo copies skilllib installed instead |
+| **Repo and global copies** (a repo copy of a skill that also loads globally) | Stop loading it globally. Your call: that changes every repo, so it's offered only when no repo of yours that has or pins the skill would be left with only the global copy for an agent (otherwise the issue says who, and what to do first), and when the global copy is a version in Your skills. If you keep it global on purpose, remove the repo copies skilllib installed instead |
 | **Also in a plugin** | Remove the plugin or turn it off, or turn it off in this repo only (`.claude/settings.local.json`, a local-only file git ignores), or remove your copy from this repo. Cursor ignores repo settings, so once the repo turns the plugin off, only turning the plugin off or removing it helps there |
 | **Folder missing** · **No longer in your library** | Sync the project · copy it back into your library |
 | **Not the pinned version** (the copy is another version from your library, e.g. after a pull) | Install the pinned versions (`sync`; a choice when the copies are committed) |
@@ -170,7 +170,7 @@ What skilllib flags:
 | **Not every agent can use it** | Add the links (links only; nothing is copied or moved). If git tracks a folder a link would go in, you choose whether git sees it |
 | **Differs from your library** · **Not tracked** · **Not in your library** · **From npx skills** | Update your library from it, or replace it with your library's (the team's committed copy is only copied) · track it · import it · import it |
 | **Unused 30 days** | Remove the ones skilllib installed from the repo |
-| **Broken link** (in a repo) | Remove it (your call when git tracks the link). Next to a real copy it's an extra link instead: tidy points it at the copy |
+| **Broken link** (in a repo) | Remove it (your call when git tracks the link). Next to a real copy it's tidy's: it points it at the copy where an agent needs that folder, and removes it otherwise |
 | **Pinned version not in your library** | Install your newest (the folder is missing and your library has no copy of what skilllib.json pins) |
 | **Broken link** · **Not reviewed** (global) | Remove the link · move it to repos, keep it global on purpose, or delete it (the row's actions) |
 | **Not every agent can use it** (global) | Link it into that agent's global folder, e.g. a Codex skill in `~/.agents/skills` or `~/.codex/skills` gets a link in `~/.claude/skills` |
@@ -266,7 +266,7 @@ The same skill often reaches your agents more than once: a copy in `.claude/skil
 
 | What it finds | What it does |
 |---|---|
-| Identical copies in several folders | Keeps one and turns the others into links. In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
+| Identical copies in several folders | Keeps one and turns the others into links where an agent needs that folder (and removes them where none does; a copy the repo commits always stays). In a repo, it keeps the committed copy. Globally, it keeps the one in `~/.agents/skills`. |
 | Links no agent you use needs | Removes them. It keeps links that `skilllib.json` records, because teammates may use other agents. |
 | **Copies that differ** | Shows which agent runs which copy (e.g. Claude Code and Cursor run `.claude`, Codex runs `.agents`), and lets you pick the one to keep. It's your call, so **Fix all** never does it. |
 | Copies that differ behind a link (a link to another copy, in or out of the repo) | Reported only: skilllib never changes what a link points to. Make the copies the same, or remove the link. |
@@ -454,7 +454,7 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 
 **Does it change my repos?** Only when you tell it to: adding, removing, linking or tidying a skill, which updates `skilllib.json`. It asks before linking into a folder git tracks, and before tidy changes a committed file. It never deletes the only copy of a repo's own skill.
 
-**Can I share skills with my team?** Commit `skilllib.json` along with the skill folders (`.agents/skills`, and `.claude/skills` if you use Claude Code). Or keep your library in a git repo and point `SKILLLIB_HOME` at it.
+**Can I share skills with my team?** Commit `skilllib.json` along with the skill folders (`.agents/skills`, and `.claude/skills` if you use Claude Code). Or keep `~/.skilllib/library` in a git repo of its own (the rest of `~/.skilllib` is personal: config, backups, the version store), and run `skilllib import` on teammates' machines from a clone of it.
 
 **Why does usage only count Claude Code?** It's the only agent whose transcripts skilllib reads. Grok keeps sessions under `~/.grok/sessions`, and Cursor doesn't keep them locally. Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 

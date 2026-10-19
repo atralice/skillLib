@@ -94,9 +94,21 @@ function summarize(where: string, verb: string, changes: Change[]): string {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** Issue.at for skills in one repo, or in Global (`root` null). */
 const rows = (root: string | null, skills: string[]) => skills.map((skill) => ({ root, skill }));
+/**
+ * Whether `remove` takes a skill skilllib manages without --force: not edited, in your library, nothing in sync's way.
+ * Choices that remove several copies offer only these, so none is half done.
+ */
+const removesClean = (root: string, s: { name: string; managed: boolean; state: string }) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library" && !syncBlocker(root, s.name);
+
 /** "; git will see it" when any of these copies is committed: a choice that changes them says so. */
+/** One git snapshot per repo for a scan (findIssues and usageIssues start afresh): each gitInfo spawns git. */
+let gitMemo = new Map<string, ReturnType<typeof gitInfo>>();
+const gitOf = (root: string) => {
+  if (!gitMemo.has(root)) gitMemo.set(root, gitInfo(root));
+  return gitMemo.get(root)!;
+};
 const gitNote = (root: string, paths: string[]) => {
-  const git = gitInfo(root);
+  const git = gitOf(root);
   return paths.some((p) => ["committed", "changed"].includes(git?.of(relativeTo(root, p)) ?? "")) ? "; git will see it" : "";
 };
 const agentNames = (ids: HarnessId[]) => ids.map((id) => harness(id).name).join(", ");
@@ -281,6 +293,7 @@ export function findIssues(
   loadedIn: (root: string) => SourcedSkill[] = (root) => skillsLoadedIn(root, machine),
   nestedOf: (root: string) => ProjectSkill[] = nestedSkills,
 ): Issue[] {
+  gitMemo = new Map(); // a scan sees git as it is now
   // A repo whose skilllib.json can't be read (a merge conflict) is one problem, not the end of the scan.
   const { readable: projects, unreadable } = readableRoots(roots);
   const issues: Issue[] = unreadable.map(({ root, reason }) => ({
@@ -346,7 +359,8 @@ export function findIssues(
   const repoChoices = (plugin: ClaudePlugin, root: string, names: string[]): Choice[] => {
     const where = basename(root);
     const copies = statuses.get(root)!.filter((s) => names.includes(s.name));
-    const allManaged = names.every((n) => copies.some((c) => c.name === n && c.managed));
+    // Every copy removes cleanly (not edited, in your library): else none is removed, so it's never half done.
+    const allManaged = names.every((n) => copies.some((c) => c.name === n && removesClean(root, c)));
     // Not a copy the repo commits (it's the team's, as README says), and only when every agent that reads
     // your copy also loads the plugin's: Codex, Zed and Grok never load a Claude Code plugin.
     const committed = gitNote(root, copies.map((s) => s.path)) !== "";
@@ -633,7 +647,7 @@ export function findIssues(
     // library on purpose: still said, but putting the pinned one back is your call there, never automatic.
     const drifted = unstuck.filter((s) => s.state === "out of sync" && knownPin(s));
     if (drifted.length) {
-      const seen = drifted.some((s) => ["committed", "changed"].includes(gitInfo(root)?.of(relativeTo(root, s.path)) ?? ""));
+      const seen = drifted.some((s) => ["committed", "changed"].includes(gitOf(root)?.of(relativeTo(root, s.path)) ?? ""));
       const yours = drifted.some((s) => untrackable(s));
       // Only these skills: the rest of the repo is other issues' business.
       const install: Choice = {
@@ -661,7 +675,7 @@ export function findIssues(
         id: `unavailable:${root}:${s.name}`,
         severity: "problem",
         title: `${s.name}: pinned in ${where}'s skilllib.json, but not in your library`,
-        detail: `Its folder is missing, and your library (${tildify(libraryDir())}) has no copy to restore: import it, or set SKILLLIB_HOME to the library that has it.`,
+        detail: `Its folder is missing, and your library (${tildify(libraryDir())}) has no copy to restore: import it, or set SKILLLIB_HOME to the skilllib folder whose library has it.`,
         at: rows(root, [s.name]),
         // Editing skilllib.json is the team's call: a choice, never run by `doctor --fix`.
         choices: [
@@ -689,7 +703,7 @@ export function findIssues(
         choices: [
           {
             label: "Update to the newest versions",
-            hint: ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "") ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+            hint: ["committed", "changed"].includes(gitOf(root)?.of(MANIFEST_FILE) ?? "") ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
             run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
           },
         ],
@@ -698,7 +712,7 @@ export function findIssues(
     // One real copy per skill, plus only the links your agents need.
     const tidy = planProjectTidy(root);
     if (tidy.plans.length) {
-      const git = gitInfo(root);
+      const git = gitOf(root);
       const visible = tidy.plans.flatMap((p) => gitVisibleSteps(p, git).map((s) => describeStep(s, root)));
       const run = (mode: "keep" | "go") => () => {
         const r = applyAll(tidy.plans, mode);
@@ -801,7 +815,7 @@ export function findIssues(
       const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
       const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
       // Links for a skill skilllib manages are recorded in skilllib.json: when that's committed, git sees it too.
-      const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitInfo(root)?.of(MANIFEST_FILE) ?? "");
+      const manifestShared = partial.some((s) => s.managed) && ["committed", "changed"].includes(gitOf(root)?.of(MANIFEST_FILE) ?? "");
       const run = (allowTracked: boolean) => () => {
         if (allowTracked) allowTrackedLinks(root);
         // Only the skills this issue lists (not one an agent already loads from a global copy).
@@ -845,7 +859,7 @@ export function findIssues(
 
     const differing = new Set(tidy.conflicts.map((c) => c.name));
     // A copy git has committed is the team's (as in the TUI): copy it into the library, but don't make skilllib.json track it.
-    const git = gitInfo(root);
+    const git = gitOf(root);
     const committed = (s: ProjectSkill) => ["committed", "changed"].includes(git?.of(relativeTo(root, s.path)) ?? "");
     for (const s of unstuck) {
       // A link whose real folder lives elsewhere (maybe under another name) isn't a copy to import or track,
@@ -1056,7 +1070,8 @@ export function findIssues(
   for (const [name, copies] of alsoGlobal) {
     const wheres = copies.map((c) => basename(c.root)).join(", ");
     // Only copies skilllib installed can be removed from here; a repo's own skill is the team's.
-    const removable = copies.filter((c) => c.managed).map((c) => c.root);
+    // Only copies remove takes without --force (not edited, in your library): a choice is never half done.
+    const removable = copies.filter((c) => c.managed && statuses.get(c.root)?.some((s) => s.name === name && removesClean(c.root, s))).map((c) => c.root);
     const repoOwn = copies.filter((c) => !c.managed).map((c) => basename(c.root));
     // Each repo's row, and Global's.
     const at = [...copies.flatMap((c) => rows(c.root, [name])), ...rows(null, [name])];
@@ -1087,8 +1102,11 @@ export function findIssues(
                 // Removing a managed copy edits its skilllib.json too.
                 hint: `the global copy stays${extra.some((r) => gitNote(r, [...statuses.get(r)!.filter((s) => s.name === name).map((s) => s.path), join(r, MANIFEST_FILE)])) ? "; git will see it" : ""}`,
                 run: () => {
-                  const removed = extra.filter((root) => removeSkill(root, name).action === "removed").map((r) => basename(r));
-                  if (!removed.length) throw new Error(`${name}: removed from no project (local edits?)`);
+                  const results = extra.map((root) => [root, removeSkill(root, name)] as const);
+                  const removed = results.filter(([, c]) => c.action === "removed").map(([r]) => basename(r));
+                  const kept = results.filter(([, c]) => c.action !== "removed").map(([r, c]) => `${basename(r)} (${c.reason})`);
+                  // Not all it said (a repo changed since): a failure, naming what stayed; what was removed stays removed.
+                  if (kept.length) throw new Error(`${name}: ${removed.length ? `removed from ${removed.join(", ")}; ` : ""}kept in ${kept.join(", ")}`);
                   return `${name}: removed from ${removed.join(", ")}; the global copy stays`;
                 },
               },
@@ -1105,7 +1123,10 @@ export function findIssues(
     // Global copies that differ need a winner first (conflict:global:), as global move says: unloading them all would
     // leave one only in the backups.
     const differ = copiesDiffer(doomed.map((m) => m.path));
-    const blind = movable && !differ ? blindWithoutGlobal(name, doomed, everyRepo, entriesOf, subsOf) : [];
+    // Your library has another version than the global copy: stopping it would leave the global content only in the
+    // backups, and agents that ran it run your library's from now on. Import it first, as global move asks.
+    const libraryDiffers = !!movable && libraryNames.has(name) && versionForHash(name, treeHash(movable.path) ?? "") === null;
+    const blind = movable && !differ && !libraryDiffers ? blindWithoutGlobal(name, doomed, everyRepo, entriesOf, subsOf) : [];
     issues.push({
       at,
       id: `twice:${name}`,
@@ -1118,12 +1139,14 @@ export function findIssues(
           ? `The global copy comes from ${machine.find((m) => m.name === name && !m.movable)?.origin ?? "a vendor"}: turn it off there.`
           : differ
             ? `Your global copies of ${name} differ: keep one first (skilllib tidy --global), then stop loading it globally.`
+            : libraryDiffers
+              ? `The global copy isn't a version in Your skills (agents loading it globally run different content than the repo's): update your library from it first (skilllib import ${tildify(movable!.path)} --force), or keep it global (skilllib global keep).`
             : blind.length
               ? `${blindSaid(name, blind)}.`
             : "Stop loading it globally, or keep it global on purpose (skilllib global keep)."
       }`,
       choices:
-        movable && !differ && !blind.length
+        movable && !differ && !libraryDiffers && !blind.length
           ? [
               {
                 label: "Stop loading it globally",
@@ -1203,6 +1226,7 @@ export function usageIssues(
   },
   statusOf: (root: string) => { name: string; managed: boolean; path: string; state: string }[] = projectStatus,
 ): Issue[] {
+  gitMemo = new Map(); // a scan sees git as it is now
   if (!enabledHarnesses().includes("claude-code")) return [];
   const issues: Issue[] = [];
   const since = Date.now() - uses.days * 24 * 60 * 60 * 1000;
@@ -1214,7 +1238,7 @@ export function usageIssues(
     // Edited copies stay (removing them is remove --force's call): offering them would be a choice that can't succeed.
     // Only what remove takes without --force: not edited copies, not a skill your library doesn't have (its copy may
     // not match its pin either), not one something is in the way of.
-    const removable = unused.filter((s) => s.managed && !s.state.startsWith("edited") && s.state !== "not in library" && !syncBlocker(root, s.name));
+    const removable = unused.filter((s) => removesClean(root, s));
     issues.push({
       id: `unused:${root}`,
       severity: "suggestion",

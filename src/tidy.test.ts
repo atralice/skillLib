@@ -283,3 +283,18 @@ test.skipIf(process.platform === "win32")("a link to different content isn't rep
   expect(report.plans.find((p) => p.name === "foo")).toBeUndefined();
   expect(report.skipped.find((s) => s.name === "foo")?.reason).toContain("links to a different copy");
 });
+
+test("tidy never removes a real copy the repo commits, even one no agent of yours needs", () => {
+  setHarnesses(["claude-code"]);
+  writeSkill(join(project, ".agents", "skills", "foo"));
+  execFileSync("git", ["init", "-q"], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: project });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
+  writeSkill(join(project, ".claude", "skills", "foo")); // an identical copy, not committed: the managed one
+  writeFileSync(join(project, ".git", "info", "exclude"), ".claude/\n");
+  importSkill(join(project, ".claude", "skills", "foo"));
+  addSkill(project, "foo");
+  const steps = planProjectTidy(project).plans.flatMap((p) => p.steps);
+  expect(steps.filter((s) => s.kind === "remove" && s.path.includes(".agents"))).toEqual([]);
+  expect(existsSync(join(project, ".agents", "skills", "foo", "SKILL.md"))).toBe(true);
+});

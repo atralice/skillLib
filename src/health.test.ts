@@ -245,7 +245,7 @@ test("a pinned skill whose folder is missing: sync restores it from the library;
   expect(sync.detail).toBe("alpha: the folder is missing");
   const ghost = issues.find((i) => i.id === `unavailable:${project}:ghost-skill`)!;
   expect(ghost.title).toBe("ghost-skill: pinned in web's skilllib.json, but not in your library");
-  expect(ghost.detail).toContain("import it, or set SKILLLIB_HOME to the library that has it");
+  expect(ghost.detail).toContain("import it, or set SKILLLIB_HOME to the skilllib folder whose library has it");
   expect(ghost.fix).toBeUndefined();
   expect(issues.some((i) => i.title.includes("out of date"))).toBe(false);
 
@@ -1083,4 +1083,28 @@ test("a skills folder that resolves to the repo's own top folder doesn't make gi
   const broken = findIssues([repo], machineSkills(), new Set()).find((i) => i.id === `broken:${repo}:.agents/skills/foo`)!;
   expect(broken.fix).toBeUndefined();
   expect(broken.detail).toContain("Git tracks the link");
+});
+
+test("Stop loading it globally isn't offered when the global copy isn't a version in your library", () => {
+  const project = join(tmp, "app");
+  skill(join(tmp, "src", "foo"), "B");
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(project, "foo");
+  skill(join(tmp, ".claude", "skills", "foo"), "A");
+  const twice = findIssues([project], machineSkills(), new Set(["foo"])).find((i) => i.id === "twice:foo")!;
+  expect(twice.choices).toBeUndefined();
+  expect(twice.detail).toContain("isn't a version in Your skills");
+});
+
+test("removing a skill you keep global from several repos offers only copies remove takes cleanly", () => {
+  for (const name of ["a", "b"]) mkdirSync(join(tmp, name), { recursive: true });
+  skill(join(tmp, "src", "foo"));
+  importSkill(join(tmp, "src", "foo"));
+  addSkill(join(tmp, "a"), "foo");
+  addSkill(join(tmp, "b"), "foo");
+  writeFileSync(join(tmp, "a", ".claude", "skills", "foo", "SKILL.md"), "edited\n");
+  skill(join(tmp, ".claude", "skills", "foo"));
+  setKeepGlobal(["foo"], true);
+  const twice = findIssues([join(tmp, "a"), join(tmp, "b")], machineSkills(), new Set(["foo"])).find((i) => i.id === "twice:foo")!;
+  expect(twice.choices!.map((c) => c.label)).toEqual(["Remove the copies in b"]);
 });
