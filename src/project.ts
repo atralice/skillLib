@@ -174,7 +174,8 @@ function gitIn(root: string, args: string[]): string | null {
  */
 export function normalizeRemote(url: string): string {
   let s = url.trim();
-  const scp = s.match(/^[^/@:]+@([^/:]+):(?!\/)(.*)$/);
+  // scp-like, with or without a user (git@host:path, host:path); never a Windows drive (C:\repo).
+  const scp = s.match(/^(?:[^/@:]+@)?([^/:\\]{2,}):(?!\/)(.*)$/);
   if (scp) s = `${scp[1]}/${scp[2]}`;
   else s = s.replace(/^[a-z+]+:\/\//i, "").replace(/^[^/@]+@/, "").replace(/^([^/:]+):\d+\//, "$1/");
   return s.replace(/\.git\/?$/, "").replace(/\/+$/, "").toLowerCase();
@@ -258,7 +259,8 @@ export function excludePersonal(root: string, skills: Manifest["skills"] = Objec
   const lines = text.split("\n");
   const start = lines.indexOf(EXCLUDE_START);
   const end = start === -1 ? -1 : lines.indexOf(EXCLUDE_END, start);
-  const rest = start === -1 ? lines : [...lines.slice(0, start), ...lines.slice(end === -1 ? lines.length : end + 1)];
+  // Without its end line (edited by hand), only the start line goes: the lines after it may be yours.
+  const rest = start === -1 ? lines : [...lines.slice(0, start), ...lines.slice(end === -1 ? start + 1 : end + 1)];
   while (rest.length && rest[rest.length - 1] === "") rest.pop();
   // No trailing slash: a link is a file to git, and "x/" only matches folders.
   const paths = Object.entries(skills).flatMap(([name, d]) => [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].map((dir) => `/${dir}/${name}`));

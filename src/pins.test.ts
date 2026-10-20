@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 test("a remote names the repo however it was cloned", () => {
-  for (const url of ["git@github.com:acme/web.git", "https://github.com/Acme/Web", "https://user@github.com/acme/web.git/", "ssh://git@github.com:22/acme/web.git", "ssh://git@github.com/acme/web"])
+  for (const url of ["git@github.com:acme/web.git", "github.com:acme/web.git", "https://github.com/Acme/Web", "https://user@github.com/acme/web.git/", "ssh://git@github.com:22/acme/web.git", "ssh://git@github.com/acme/web"])
     expect(normalizeRemote(url)).toBe("github.com/acme/web");
 });
 
@@ -90,6 +90,32 @@ describe("a repo without skilllib.json", () => {
     expect(personalPinsFile(tree)).toBe(personalPinsFile(solo));
     expect(syncProject(tree)).toMatchObject([{ name: "alpha", action: "installed" }]);
     expect(status(tree)).toBe("");
+  });
+
+  test("moving it to skilllib.json takes back a link git would see while git doesn't share the copy", () => {
+    setHarnesses(["claude-code", "codex"]);
+    writeSkill(join(repo, ".claude", "skills", "team"), "team");
+    git(repo, "add", ".");
+    git(repo, "commit", "-qm", "team");
+    addSkill(repo, "alpha");
+    expect(addSkill(repo, "alpha", { personal: false })).toMatchObject({ moved: "shared", uncommitted: [".claude/skills"] });
+    expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
+    expect(readManifest(repo).skills.alpha?.links).toBeUndefined();
+  });
+
+  test("a pin whose version your library lacks doesn't move", () => {
+    addSkill(repo, "alpha");
+    const file = personalPinsFile(repo)!;
+    writeFileSync(file, JSON.stringify({ skills: { alpha: { version: 1, hash: "from-elsewhere" } } }));
+    expect(addSkill(repo, "alpha", { personal: false })).toMatchObject({ action: "skipped", reason: expect.stringContaining("can't move as it is") });
+  });
+
+  test("an exclude block missing its end line keeps the lines after it", () => {
+    addSkill(repo, "alpha");
+    writeFileSync(join(repo, ".git", "info", "exclude"), exclude(repo).replace("# end skilllib\n", "") + "mine.log\n");
+    removeSkill(repo, "alpha");
+    expect(exclude(repo)).toContain("mine.log");
+    expect(exclude(repo)).not.toContain("# skilllib");
   });
 
   test("remove takes the pin and the exclude lines away", () => {
@@ -161,7 +187,8 @@ describe("a repo with skilllib.json", () => {
     expect(readManifest(repo).skills.alpha?.personal).toBeUndefined();
     const issue = findIssues([repo], machineSkills(), new Set(["alpha"])).find((i) => i.id === `shadowed:${repo}`)!;
     expect(issue.title).toBe("web: 1 skill pinned in both skilllib.json and your personal pins");
-    expect(runFix(issue.fix!)).toEqual({ ok: true, message: "web: alpha now pinned only in skilllib.json" });
+    expect(issue.fix).toBeUndefined();
+    expect(runFix(issue.choices![0]!)).toEqual({ ok: true, message: "web: alpha now pinned only in skilllib.json" });
     expect(readdirSync(personalPinsDir())).toEqual([]);
     expect(readManifest(repo).skills.alpha).toBeDefined();
     expect(exclude(repo)).not.toContain("alpha");
