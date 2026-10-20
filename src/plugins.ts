@@ -404,29 +404,20 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
   if (plugin.settingsOnly && how === "delete") return { ok: false, message: `${plugin.id} isn't installed, only turned on in your settings: turn it off instead` };
   const lost = unplaced(plugin, how === "delete" ? "uninstall" : "disable");
   if (lost) return lost;
-  // Check the CLI works before changing anything. Without it, a user install can still be turned off
-  // in ~/.claude/settings.json (as a synced plugin is); uninstalling needs the CLI.
-  const viaSettings = plugin.synced || plugin.settingsOnly || (!claudeBinary() && how === "off" && !plugin.projectPath);
-  if (!viaSettings && !claudeBinary()) {
-    return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
-  }
-  const wasOn = enabledPlugins(plugin.projectPath)[plugin.id] === true;
+  // A synced plugin can only be turned off here; uninstalling the others needs the CLI: checked before anything is
+  // copied in, so a failure changes nothing. (Turning off works without it, in the settings file.)
+  const uninstall = how === "delete" && !plugin.synced;
+  if (uninstall && !claudeBinary()) return { ok: false, message: `${plugin.id}: nothing changed; Claude Code's CLI didn't run (tried \`claude\` on your PATH and ~/.local/bin/claude)` };
   // Your own copy wins: the plugin's version of a skill you have never goes into your library.
   const yours = new Set(machineSkills().filter((m) => m.movable).map((m) => m.name));
   const imported = plugin.skills.filter((dir) => !yours.has(basename(dir)) && latestVersion(basename(dir)) === null).map((dir) => importSkill(dir).name);
-  const scope = plugin.scope ? ["--scope", plugin.scope] : [];
-  const r = viaSettings
-    ? // Synced and settings-only plugins aren't installed, so `claude plugin` can't touch them: their switch is enabledPlugins.
-      setPluginIn(join(claudeDir(), "settings.json"), plugin.id, false)
-    : // --keep-data, as uninstallPlugin: its saved data stays, so a restore brings it back as it was.
-      claude(["plugin", how === "delete" ? "uninstall" : "disable", plugin.id, ...(how === "delete" ? ["--keep-data"] : []), ...scope], plugin.projectPath);
   const saved = imported.length ? `; ${imported.join(", ")} copied into Your skills` : "";
-  if (!r.ok) return { ok: false, message: `${plugin.id}: ${r.reason}${saved}` };
-  if (how === "delete" && !plugin.synced) recordRemovedPlugin(plugin.id, plugin.scope ?? "user", plugin.projectPath, wasOn);
+  const r = uninstall ? uninstallPlugin(plugin) : setPluginOn(plugin, false);
+  if (!r.ok) return { ok: false, message: `${r.message}${saved}` };
   // One install goes; another (in a project) stays, and the message says so.
-  const others = how === "delete" ? (installedPluginsJson()[plugin.id] ?? []).filter((e) => (e.scope ?? "user") !== (plugin.scope ?? "user") || e.projectPath !== plugin.projectPath) : [];
+  const others = uninstall ? (installedPluginsJson()[plugin.id] ?? []).filter((e) => (e.scope ?? "user") !== (plugin.scope ?? "user") || e.projectPath !== plugin.projectPath) : [];
   const left = others.length ? `; its ${others.map((e) => `${e.scope ?? "user"} install${e.projectPath ? ` in ${basename(e.projectPath)}` : ""}`).join(", ")} stays` : "";
-  return { ok: true, message: `${plugin.id} ${how === "delete" && !plugin.synced ? `removed (${plugin.scope ?? "user"} install)` : "turned off"}${saved}${left}` };
+  return { ok: true, message: `${plugin.id} ${uninstall ? `removed (${plugin.scope ?? "user"} install)` : "turned off"}${saved}${left}` };
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
