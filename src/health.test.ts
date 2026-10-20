@@ -1134,5 +1134,6 @@ test("two committed copies that differ: every choice doctor offers resolves it, 
       expect(findIssues([repo], [], new Set()).some((i) => i.id === `conflict:${repo}:dup`)).toBe(false);
     }
   }
-});
+  // Five agent sets, each running git and copying repos: Windows runners take over 20s.
+}, 120_000);
 
