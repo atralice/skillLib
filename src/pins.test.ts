@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { findIssues, runFix } from "./health.js";
 import { addSkill, importSkill, projectStatus, removeSkill, syncProject } from "./library.js";
+import { moveGlobalSkills } from "./move.js";
 import { normalizeRemote, personalPins, personalPinsDir, personalPinsFile, readManifest } from "./project.js";
 import { machineSkills } from "./sources.js";
 import { forgetLatest } from "./versions.js";
@@ -163,7 +164,17 @@ describe("a repo with skilllib.json", () => {
     expect(runFix(issue.fix!)).toEqual({ ok: true, message: "web: alpha now pinned only in skilllib.json" });
     expect(readdirSync(personalPinsDir())).toEqual([]);
     expect(readManifest(repo).skills.alpha).toBeDefined();
+    expect(exclude(repo)).not.toContain("alpha");
   });
+});
+
+test("global move into a repo without skilllib.json pins it personally, out of git", () => {
+  writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
+  const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [repo]);
+  expect(mv).toMatchObject({ moved: true });
+  expect(readManifest(repo).skills.alpha?.personal).toBe(true);
+  expect(existsSync(join(repo, "skilllib.json"))).toBe(false);
+  expect(status(repo)).toBe("");
 });
 
 test("a monorepo package can't have personal pins", () => {

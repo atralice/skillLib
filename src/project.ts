@@ -190,8 +190,11 @@ const keys = new Map<string, { remote: string } | { path: string } | null>();
 function personalKey(root: string): { remote: string } | { path: string } | null {
   const real = realPath(root);
   if (keys.has(real)) return keys.get(real)!;
+  const prefix = gitIn(root, ["rev-parse", "--show-prefix"]);
+  // Not a repo git can read: not kept, since a folder can become one (git init) while the app is open.
+  if (prefix === null) return null;
   let key: { remote: string } | { path: string } | null = null;
-  if (gitIn(root, ["rev-parse", "--show-prefix"]) === "") {
+  if (prefix === "") {
     const remote = gitIn(root, ["remote", "get-url", "origin"]) || ((first) => (first ? gitIn(root, ["remote", "get-url", first]) : null))(gitIn(root, ["remote"])?.split("\n")[0]);
     if (remote) key = { remote: normalizeRemote(remote) };
     else {
@@ -200,8 +203,7 @@ function personalKey(root: string): { remote: string } | { path: string } | null
       key = { path: basename(dir) === ".git" ? dirname(dir) : dir };
     }
   }
-  // Only a found key is kept: a folder can become a repo (git init) while the app is open.
-  if (key) keys.set(real, key);
+  keys.set(real, key);
   return key;
 }
 
@@ -228,6 +230,7 @@ export function dropPersonalPin(root: string, name: string) {
   const { [name]: _, ...rest } = readPins(file).skills;
   if (Object.keys(rest).length) writeChanged(file, { ...personalKey(root), skills: sorted(rest) });
   else rmSync(file, { force: true });
+  excludePersonal(root);
 }
 
 const EXCLUDE_START = "# skilllib: personal skills (kept by skilllib; don't edit)";
