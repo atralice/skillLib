@@ -12,18 +12,20 @@ import { tildify } from "./output.js";
  * - hidden: projects you don't want listed
  * - harnesses: the coding agents you use; decides where skills get installed.
  *   Unset until you choose (first run asks).
- * - agentsDirOk: projects where you allowed (in the app) writing links into any skill folder git tracks
+ * - allowTracked: projects where you allowed writing links into any skill folder git tracks (as --allow-tracked does once)
  * - keepGlobal: names of your global skills you chose to keep global; skilllib stops nagging about them
  */
-export type Config = { roots: string[]; hidden: string[]; harnesses?: HarnessId[]; agentsDirOk?: string[]; keepGlobal?: string[] };
+export type Config = { roots: string[]; hidden: string[]; harnesses?: HarnessId[]; allowTracked?: string[]; keepGlobal?: string[] };
 
 function configFile(): string {
   return join(skilllibHome(), "config.json");
 }
 
 export function readConfig(): Config {
-  const data = readState<Partial<Config>>(configFile()) ?? {};
-  return { ...data, roots: data.roots ?? [], hidden: data.hidden ?? [] };
+  // Up to 1.11.7 allowTracked was called agentsDirOk: read it as allowTracked (the next write saves the new name).
+  const { agentsDirOk, ...data } = readState<Partial<Config> & { agentsDirOk?: string[] }>(configFile()) ?? {};
+  const allowTracked = [...new Set([...(data.allowTracked ?? []), ...(agentsDirOk ?? [])])].sort();
+  return { ...data, roots: data.roots ?? [], hidden: data.hidden ?? [], ...(allowTracked.length ? { allowTracked } : {}) };
 }
 
 function writeConfig(config: Config) {
@@ -111,7 +113,12 @@ export function setHarnesses(ids: HarnessId[]) {
 /** Remembers that you allowed skilllib to add links in this project's git-tracked skill folders. */
 export function allowTrackedLinks(root: string) {
   const config = readConfig();
-  writeConfig({ ...config, agentsDirOk: [...new Set([...(config.agentsDirOk ?? []), root])].sort() });
+  writeConfig({ ...config, allowTracked: [...new Set([...(config.allowTracked ?? []), root])].sort() });
+}
+
+/** Whether you allowed links in this project's git-tracked skill folders (allowTrackedLinks). */
+export function allowsTrackedLinks(root: string): boolean {
+  return readConfig().allowTracked?.includes(root) ?? false;
 }
 
 /** Global skills you marked as global on purpose. */

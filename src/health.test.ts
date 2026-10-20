@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addRoot, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
+import { addRoot, allowsTrackedLinks, allowTrackedLinks, discoverProjects, harnessesChosen, keptGlobal, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { findIssues, runFix, usageIssues } from "./health.js";
 import { addSkill, createSkill, deleteGlobal, deleteLibrarySkill, importSkill, linkAll, linkGlobal, listBackups, projectStatus, restoreBackup } from "./library.js";
 import { readManifest, rememberProjects } from "./project.js";
@@ -1136,4 +1136,13 @@ test("two committed copies that differ: every choice doctor offers resolves it, 
   }
   // Five agent sets, each running git and copying repos: Windows runners take over 20s.
 }, 120_000);
+
+test("a config from 1.11.7 or before (agentsDirOk) keeps its allowed repos under allowTracked", () => {
+  mkdirSync(join(tmp, "home"), { recursive: true });
+  writeFileSync(join(tmp, "home", "config.json"), JSON.stringify({ roots: [], hidden: [], agentsDirOk: ["/r/a"] }));
+  expect(allowsTrackedLinks("/r/a")).toBe(true);
+  allowTrackedLinks("/r/b");
+  const saved = JSON.parse(readFileSync(join(tmp, "home", "config.json"), "utf-8"));
+  expect([saved.allowTracked, saved.agentsDirOk]).toEqual([["/r/a", "/r/b"], undefined]);
+});
 
