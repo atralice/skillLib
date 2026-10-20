@@ -22,6 +22,8 @@ Set up:
 In a project (a git repo or a folder with skilllib.json; never your home folder):
   skilllib status                This project's skills, which agents load them, and issues
   skilllib add <name>...         Install library skills where your harnesses look
+                                 (pinned in skilllib.json when the repo has one, else in your
+                                 personal pins, kept out of git; --personal / --shared to choose)
   skilllib remove <name>...      Remove skills from this project
   skilllib link [--all]          Make every skill here usable by all your agents (adds links)
   skilllib tidy [--all|--global] One real copy per skill, plus only the links your agents need
@@ -69,7 +71,7 @@ const FLAGS_OF: Record<string, string[]> = {
   "": ["days"],
   ui: [],
   status: ["days"],
-  add: ["force", "allow-tracked"],
+  add: ["force", "allow-tracked", "personal", "shared"],
   remove: ["force"],
   sync: ["all", "force"],
   update: ["all", "force", "allow-tracked"],

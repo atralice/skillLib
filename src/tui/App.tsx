@@ -90,7 +90,7 @@ const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.S
 function tag(u: W.Usable): Seg {
   const s = u.local;
   if (s?.source === "lib") {
-    return [`lib v${s.version}`, color.accent];
+    return [`lib v${s.version}${s.personal ? " · personal" : ""}`, color.accent];
   }
   if (s) return [s.source, color.blue];
   if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
@@ -349,7 +349,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
           : `Move ${s?.dir}/${u.name} in ${p} to Settings › Backups.`) +
       (s?.others ? ` The copy in ${s.others.join(", ")} stays.` : "") +
       // A managed skill's removal edits skilllib.json too.
-      (gitSees(s) || (s?.source === "lib" && W.project(w, p).manifest === "committed" ? " Git will see skilllib.json change." : "")),
+      (gitSees(s) || (s?.source === "lib" && !s.personal && W.project(w, p).manifest === "committed" ? " Git will see skilllib.json change." : "")),
     run: (w) => w.ops.remove(p, u.name),
   };
   if (s?.source === "lib")
@@ -362,6 +362,11 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
             versionsOption(w, p, u.name, s.version, ui),
           ]
         : []),
+      fixOption(
+        s.personal
+          ? { label: "Pin it for the team", preview: `Move ${u.name}'s pin into ${p}'s skilllib.json. Git will see skilllib.json and ${s.dir}/${u.name}: commit them to share it.`, run: (w) => w.ops.pin(p, u.name, false) }
+          : { label: "Make it personal", preview: `Move ${u.name}'s pin out of ${p}'s skilllib.json into your personal pins, and keep its copy out of git.`, run: (w) => w.ops.pin(p, u.name, true) },
+      ),
       fixOption(remove),
       reviewOption(w, u.name, ui, p),
     ];

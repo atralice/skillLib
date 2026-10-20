@@ -1,6 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { claudeDir, codexHome, grokDir, MANIFEST_FILE, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { claudeDir, codexHome, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
 import { ALL_PROJECT_DIRS } from "./harnesses.js";
 
@@ -17,6 +19,8 @@ export type Dependency = {
   dir?: string;
   /** Other harness folders holding a link to it (e.g. ".agents/skills" for Codex). */
   links?: string[];
+  /** In your personal pins (~/.skilllib/pins), not the repo's skilllib.json. Never written to a file. */
+  personal?: boolean;
 };
 export type Manifest = { skills: Record<string, Dependency> };
 
@@ -46,8 +50,8 @@ export function projectHere(from: string = process.cwd()): string | null {
   return isProjectCandidate(root) && (existsSync(join(root, ".git")) || existsSync(join(root, MANIFEST_FILE))) ? root : null;
 }
 
-export function readManifest(root: string): Manifest {
-  const path = join(root, MANIFEST_FILE);
+/** A pins file (skilllib.json, or one of your personal ones), checked as sync and remove need it. */
+function readPins(path: string): Manifest {
   if (!existsSync(path)) return { skills: {} };
   let data: { skills?: Record<string, unknown> };
   try {
@@ -89,10 +93,167 @@ export function readManifest(root: string): Manifest {
   return { ...data, skills };
 }
 
+/**
+ * The project's pins: its skilllib.json, and your personal pins for it (marked `personal`). A skill in both is
+ * the repo's: skilllib.json wins, and doctor reports the personal one (personalShadowed).
+ */
+export function readManifest(root: string): Manifest {
+  const shared = readPins(join(root, MANIFEST_FILE));
+  const file = personalPinsFile(root);
+  const personal = file ? readPins(file).skills : {};
+  const mine = Object.fromEntries(Object.entries(personal).map(([name, dep]) => [name, { ...dep, personal: true }]));
+  return { ...shared, skills: { ...mine, ...shared.skills } };
+}
+
+/** Pins in a fixed order: a fixed locale, so the order doesn't depend on whose machine wrote the file. */
+const sorted = (skills: Manifest["skills"]) => Object.fromEntries(Object.entries(skills).sort(([a], [b]) => a.localeCompare(b, "en")));
+
+/**
+ * Writes a project's pins back where each came from: personal ones to your pins file, the rest to skilllib.json
+ * (created only when it has some). A personal pin the repo's skilllib.json hides stays as it was. The installed
+ * copies of personal skills are kept out of git (see excludePersonal).
+ */
 export function writeManifest(root: string, manifest: Manifest) {
-  // A fixed locale: the file is shared, so its order must not depend on whose machine wrote it.
-  const skills = Object.fromEntries(Object.entries(manifest.skills).sort(([a], [b]) => a.localeCompare(b, "en")));
-  writeState(join(root, MANIFEST_FILE), { ...manifest, skills });
+  const shared = Object.fromEntries(Object.entries(manifest.skills).filter(([, d]) => !d.personal));
+  const mine = Object.fromEntries(Object.entries(manifest.skills).flatMap(([name, d]) => (d.personal ? [[name, withoutMark(d)]] : [])));
+  const path = join(root, MANIFEST_FILE);
+  const onDisk = readPins(path).skills;
+  if (existsSync(path) || Object.keys(shared).length) writeChanged(path, { ...manifest, skills: sorted(shared) });
+  const file = personalPinsFile(root);
+  if (!file) {
+    if (Object.keys(mine).length) throw new Error(`${root} isn't the top folder of a git repo, so it can't have personal pins`);
+    return;
+  }
+  // Hidden by a pin skilllib.json already had: kept. One that just moved there (add --shared) goes.
+  for (const [name, dep] of Object.entries(readPins(file).skills)) if (onDisk[name] && manifest.skills[name] && !manifest.skills[name]!.personal) mine[name] = dep;
+  if (Object.keys(mine).length) writeChanged(file, { ...personalKey(root), skills: sorted(mine) });
+  else rmSync(file, { force: true });
+  excludePersonal(root, mine);
+}
+
+/** writeState, unless the file already holds this: a personal change never touches skilllib.json, not even its spacing. */
+function writeChanged(path: string, data: { skills: Manifest["skills"] }) {
+  try {
+    if (JSON.stringify(JSON.parse(readFileSync(path, "utf-8"))) === JSON.stringify(data)) return;
+  } catch {
+    // Missing, or not JSON: written.
+  }
+  writeState(path, data);
+}
+
+function withoutMark(dep: Dependency): Dependency {
+  const { personal: _, ...rest } = dep;
+  return rest;
+}
+
+/** Whether a project has any pins: a skilllib.json, or personal ones. */
+export function hasPins(root: string): boolean {
+  if (existsSync(join(root, MANIFEST_FILE))) return true;
+  const file = personalPinsFile(root);
+  return !!file && existsSync(file);
+}
+
+// ─── Personal pins ──────────────────────────────────────
+
+/** Where your personal pins live, one file per repo. Keep it in git with your library to take them to other machines. */
+export function personalPinsDir(): string {
+  return join(skilllibHome(), "pins");
+}
+
+function gitIn(root: string, args: string[]): string | null {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A remote's URL as one name for the repo, whichever way it was cloned: git@github.com:a/b.git,
+ * https://github.com/a/b and ssh://git@github.com:22/a/b are all github.com/a/b.
+ */
+export function normalizeRemote(url: string): string {
+  let s = url.trim();
+  const scp = s.match(/^[^/@:]+@([^/:]+):(?!\/)(.*)$/);
+  if (scp) s = `${scp[1]}/${scp[2]}`;
+  else s = s.replace(/^[a-z+]+:\/\//i, "").replace(/^[^/@]+@/, "").replace(/^([^/:]+):\d+\//, "$1/");
+  return s.replace(/\.git\/?$/, "").replace(/\/+$/, "").toLowerCase();
+}
+
+const keys = new Map<string, { remote: string } | { path: string } | null>();
+
+/**
+ * What names a repo across clones, worktrees and machines: its origin remote (else its first). A repo with no
+ * remote is named by its folder (the main checkout's, so its worktrees share it), and its pins stay on this
+ * machine. Null for anything but the top folder of a git repo: only those can have personal pins.
+ */
+function personalKey(root: string): { remote: string } | { path: string } | null {
+  const real = realPath(root);
+  if (keys.has(real)) return keys.get(real)!;
+  let key: { remote: string } | { path: string } | null = null;
+  if (gitIn(root, ["rev-parse", "--show-prefix"]) === "") {
+    const remote = gitIn(root, ["remote", "get-url", "origin"]) || ((first) => (first ? gitIn(root, ["remote", "get-url", first]) : null))(gitIn(root, ["remote"])?.split("\n")[0]);
+    if (remote) key = { remote: normalizeRemote(remote) };
+    else {
+      const common = gitIn(root, ["rev-parse", "--git-common-dir"]);
+      const dir = common ? realPath(resolve(root, common)) : real;
+      key = { path: basename(dir) === ".git" ? dirname(dir) : dir };
+    }
+  }
+  // Only a found key is kept: a folder can become a repo (git init) while the app is open.
+  if (key) keys.set(real, key);
+  return key;
+}
+
+/** Your personal pins file for this repo, or null when it can't have one (see personalKey). It may not exist yet. */
+export function personalPinsFile(root: string): string | null {
+  const key = personalKey(root);
+  if (!key) return null;
+  const name = "remote" in key ? key.remote : `local-${basename(key.path)}`;
+  const slug = name.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  const id = createHash("sha1").update("remote" in key ? key.remote : key.path).digest("hex").slice(0, 8);
+  return join(personalPinsDir(), `${slug}-${id}.json`);
+}
+
+/** Your personal pins for a repo as the file has them, the ones its skilllib.json hides included. */
+export function personalPins(root: string): Manifest["skills"] {
+  const file = personalPinsFile(root);
+  return file ? readPins(file).skills : {};
+}
+
+/** Drops a personal pin, leaving its installed copy alone (the repo's skilllib.json pins the same skill). */
+export function dropPersonalPin(root: string, name: string) {
+  const file = personalPinsFile(root);
+  if (!file) return;
+  const { [name]: _, ...rest } = readPins(file).skills;
+  if (Object.keys(rest).length) writeChanged(file, { ...personalKey(root), skills: sorted(rest) });
+  else rmSync(file, { force: true });
+}
+
+const EXCLUDE_START = "# skilllib: personal skills (kept by skilllib; don't edit)";
+const EXCLUDE_END = "# end skilllib";
+
+/**
+ * Keeps personal skills' copies and links out of git: one block in the repo's info/exclude (this clone only,
+ * shared by its worktrees), rewritten from the pins each time. Nothing is written when it's already right.
+ */
+export function excludePersonal(root: string, skills: Manifest["skills"] = Object.fromEntries(Object.entries(readManifest(root).skills).filter(([, d]) => d.personal))) {
+  const at = gitIn(root, ["rev-parse", "--git-path", "info/exclude"]);
+  if (!at) return;
+  const file = resolve(root, at);
+  const text = existsSync(file) ? readFileSync(file, "utf-8") : "";
+  const lines = text.split("\n");
+  const start = lines.indexOf(EXCLUDE_START);
+  const end = start === -1 ? -1 : lines.indexOf(EXCLUDE_END, start);
+  const rest = start === -1 ? lines : [...lines.slice(0, start), ...lines.slice(end === -1 ? lines.length : end + 1)];
+  while (rest.length && rest[rest.length - 1] === "") rest.pop();
+  // No trailing slash: a link is a file to git, and "x/" only matches folders.
+  const paths = Object.entries(skills).flatMap(([name, d]) => [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].map((dir) => `/${dir}/${name}`));
+  const block = paths.length ? [EXCLUDE_START, ...[...new Set(paths)].sort(), EXCLUDE_END] : [];
+  const next = [...rest, ...(rest.length && block.length ? [""] : []), ...block].join("\n") + (rest.length || block.length ? "\n" : "");
+  if (next === text) return;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, next);
 }
 
 // ─── Known projects ─────────────────────────────────────

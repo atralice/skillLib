@@ -24,6 +24,8 @@ export type LocalSkill = {
   agents: HarnessId[];
   /** Installed version, for tracked skills. */
   version?: number;
+  /** Tracked in your personal pins (~/.skilllib/pins), not skilllib.json: only on your machines, kept out of git. */
+  personal?: boolean;
   edited?: boolean;
   missing?: boolean;
   /** Its git state; null when the repo isn't a git repo. */
@@ -127,6 +129,8 @@ export type Ops = {
   remove(repo: string, name: string): Result;
   /** One tracked skill to the newest library version (doctor's fix updates every one in the repo). */
   update(repo: string, name: string): Result;
+  /** Moves a tracked skill's pin to your personal pins, or to the repo's skilllib.json; its version stays. */
+  pin(repo: string, name: string, personal: boolean): Result;
   /** This repo's copy into your library (new skill, or a new version); the repo's copy stays. */
   copyToLibrary(repo: string, name: string): Result;
   deleteGlobal(m: MachineSkill): Result;
@@ -276,6 +280,7 @@ function shortOf(found: Found): string {
     unavailable: "Pinned, not in your library",
     pin: "Pinned version not in your library",
     "out-of-sync": "Not the pinned version",
+    shadowed: "Pinned twice",
     update: "Out of date",
     uncommitted: "Commit it first",
     local: "Not in your library",

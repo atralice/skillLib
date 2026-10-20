@@ -104,6 +104,7 @@ test("moving to a repo that commits Claude Code's folder keeps it global until y
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   writeSkill(join(repo, ".agents", "skills", "other"));
   git("add", ".");
@@ -137,6 +138,7 @@ test("moving to a repo where a link would break for teammates keeps it global, s
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -154,6 +156,7 @@ test("adding library skills to a repo that commits Claude Code's folder asks onc
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   writeSkill(join(repo, ".agents", "skills", "other"));
   git("add", ".");
@@ -191,6 +194,7 @@ test("adding a skill whose copy git doesn't share says why it isn't linked, with
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -207,6 +211,7 @@ test("linking never puts an uncommitted skill in a folder git tracks, and doesn'
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
