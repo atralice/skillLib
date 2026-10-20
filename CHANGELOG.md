@@ -2,10 +2,12 @@
 
 ## [1.12.1](https://github.com/atralice/skillLib/compare/v1.12.0...v1.12.1) (2026-10-20)
 
+Fixes from a full regression run on 1.12.0.
 
-### Bug Fixes
-
-* personal skills stay out of git through linked skills folders ([#127](https://github.com/atralice/skillLib/issues/127)) ([ddab2d3](https://github.com/atralice/skillLib/commit/ddab2d3596dbb764146c3a91301069e292b24710))
+### Fixes
+* Personal skills stay out of git when a skills folder is a link to another folder in the repo (`.agents/skills` → `.claude/skills`, or both → `skills/`). In 1.12.0 they showed in `git status` there, and `git add -A` would have staged them.
+* A skill pinned both in `skilllib.json` and in your personal pins no longer goes in and out of the exclude block depending on the last command: the team's copy is left to git.
+* Doctor says "your personal pins", not `skilllib.json`, for a personal skill it can't restore or whose pinned version is missing.
 
 ## [1.12.0](https://github.com/atralice/skillLib/compare/v1.11.7...v1.12.0) (2026-10-20)
 
