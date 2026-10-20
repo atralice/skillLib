@@ -25,7 +25,7 @@ import {
   type SkillState,
 } from "./library.js";
 import { claudeDir, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, skilllibHome, userHome } from "./paths.js";
-import { findProjectRoot, isProjectCandidate, knownProjects, pinsIn, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
+import { findProjectRoot, hasPins, isProjectCandidate, knownProjects, personalPinsDir, pinsIn, projectHere, readableRoots, readManifest, rememberProjects } from "./project.js";
 import { isSkillDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { latestVersion } from "./versions.js";
 import { gitInfo, isShared, relativeTo } from "./git.js";
@@ -55,6 +55,8 @@ export type Args = {
   days: number;
   dryRun: boolean;
   allowGit: boolean;
+  /** add: pin in your personal pins (true) or the repo's skilllib.json (false); unset, where it already is (else personal unless the repo has a skilllib.json). */
+  personal?: boolean;
   /** tidy: the folder whose copy wins a conflict, e.g. ".agents/skills". */
   keep?: string;
   /** global move: the repos to move skills into (each --to takes one, or several comma-separated). */
@@ -71,6 +73,8 @@ const FLAGS = {
   json: { type: "boolean" },
   "dry-run": { type: "boolean" },
   "allow-git": { type: "boolean" },
+  personal: { type: "boolean" },
+  shared: { type: "boolean" },
   days: { type: "string" },
   keep: { type: "string" },
   to: { type: "string", multiple: true },
@@ -81,6 +85,7 @@ export const VALUE_FLAGS = Object.entries(FLAGS).flatMap(([name, f]) => (f.type 
 
 export function parseArgs(argv: string[]): Args {
   const { values: v, positionals } = parseFlags({ args: argv, options: FLAGS, allowPositionals: true, strict: true });
+  if (v.personal && v.shared) throw new Error("--personal and --shared don't go together: a pin is in one place");
   const days = Number(v.days ?? USAGE_DAYS);
   if (!Number.isInteger(days) || days <= 0) throw new Error(`--days takes a whole number of days, like --days 30 (got ${v.days})`);
   return {
@@ -94,6 +99,7 @@ export function parseArgs(argv: string[]): Args {
     days,
     dryRun: !!v["dry-run"],
     allowGit: !!v["allow-git"],
+    ...(v.personal || v.shared ? { personal: !!v.personal } : {}),
     ...(v.keep ? { keep: v.keep } : {}),
     to: (v.to ?? []).flatMap((t) => t.split(",").filter(Boolean)),
   };
@@ -112,7 +118,9 @@ function withDirs(root: string, changes: Change[]): ChangeJson[] {
   return changes.map((c): ChangeJson => {
     const dep = c.action !== "removed" && c.action !== "skipped" ? skills[c.name] : undefined;
     // The folders it's in now: a recorded link something is in the way of isn't one of them.
-    return dep ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? []).filter((d) => !c.inTheWay?.includes(`${d}/${c.name}`))] } : c;
+    return dep
+      ? { ...c, dirs: [dep.dir ?? PROJECT_SKILLS_DIR, ...(dep.links ?? []).filter((d) => !c.inTheWay?.includes(`${d}/${c.name}`))], ...(dep.personal ? { personal: true as const } : {}) }
+      : c;
   });
 }
 
@@ -140,7 +148,7 @@ function printChanges(root: string, changes: Change[], args: Args) {
     else {
       const icon = c.action === "removed" ? red("-") : c.action === "reset" ? yellow("↺") : c.action === "unchanged" ? dim("=") : green(c.action === "installed" ? "+" : c.action === "relinked" ? "⇢" : "↑");
       const versions = c.action === "removed" ? "" : c.from && c.from !== c.to ? ` v${c.from} → v${c.to}` : c.to ? ` v${c.to}` : "";
-      info(`  ${icon} ${c.name}${versions} ${dim(c.action)}`);
+      info(`  ${icon} ${c.name}${versions} ${dim(c.action)}${c.moved ? dim(c.moved === "personal" ? ", now in your personal pins" : ", now in skilllib.json") : ""}`);
       if (c.reason) info(dim(`    ${c.reason}`));
     }
     if (c.backedUp) info(dim(`    local edits saved to ${tildify(c.backedUp)}; \`skilllib restore ${c.name}\` brings them back`));
@@ -403,10 +411,16 @@ export function projects(args: Args) {
 
 export function add(args: Args) {
   if (args.positional.length === 0) {
-    throw new Error("Usage: skilllib add <skill-name>... [--force]");
+    throw new Error("Usage: skilllib add <skill-name>... [--force] [--personal|--shared]");
   }
   const root = requireProject();
-  printChanges(root, args.positional.map((name) => addSkill(root, name, { force: args.force, allowTracked: args.allowTracked })), args);
+  const changes = args.positional.map((name) => addSkill(root, name, { force: args.force, allowTracked: args.allowTracked, personal: args.personal }));
+  printChanges(root, changes, args);
+  const pins = readManifest(root).skills;
+  const done = changes.filter((c) => c.action !== "skipped" && pins[c.name]);
+  // Where a new pin went isn't obvious from the command: said once.
+  if (!args.json && done.some((c) => pins[c.name]!.personal))
+    info(dim(`Pinned in your personal pins (${tildify(personalPinsDir())}) and kept out of git. --shared pins in skilllib.json for the team.`));
   rememberProjects([root]);
 }
 
@@ -441,7 +455,7 @@ export function sync(args: Args) {
   const roots = changeEach(
     args,
     (root) => syncProject(root, { force: args.force }),
-    (root) => (existsSync(join(root, MANIFEST_FILE)) ? success("Installed versions match skilllib.json") : info(dim("No skilllib.json: nothing to sync"))),
+    (root) => (hasPins(root) ? success("Installed versions match what's pinned") : info(dim("No skilllib.json or personal pins: nothing to sync"))),
   );
   if (!args.all) rememberProjects(roots);
 }
@@ -900,7 +914,9 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
     for (const [root, c] of m.changes) warnHeldLinks(root, c, `in ${basename(root)}`);
     if (m.left) warn(`${m.name}: ${m.left.join(", ")} now point${m.left.length === 1 ? "s" : ""} at nothing (the repo's own copy serves that package): remove ${m.left.length === 1 ? "it" : "them"}`);
   }
-  if (moves.some((m) => m.moved)) info(dim("Commit skilllib.json and the skill folders in each repo."));
+  // Only repos that pin in skilllib.json have something to commit: personal pins stay out of git.
+  const toCommit = [...new Set(moves.filter((m) => m.moved).flatMap((m) => m.changes.map(([r]) => r)))].filter((r) => existsSync(join(r, MANIFEST_FILE)));
+  if (toCommit.length) info(dim(`Commit skilllib.json and the skill folders in ${toCommit.map((r) => basename(r)).join(", ")}.`));
 }
 
 /**

@@ -47,6 +47,8 @@ export type StatusSkillGroup = {
   git?: GitState;
   /** Only when some of your agents don't load it here. */
   agents?: HarnessId[];
+  /** In your personal pins (~/.skilllib/pins): only on your machines, kept out of git. */
+  personal?: true;
 };
 
 /** Global skills that come from the same place and load in the same agents. */
@@ -122,6 +124,8 @@ export type ProjectsJson = {
 export type ChangeJson = Change & {
   /** Where an installed, updated or reset skill now is: the real copy first, then its links. */
   dirs?: string[];
+  /** Pinned in your personal pins, kept out of git: nothing to commit. */
+  personal?: true;
 };
 
 /** `skilllib add|remove --json`, and `sync|update --json` without --all. */

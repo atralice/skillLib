@@ -310,7 +310,7 @@ describe("harnesses", () => {
     execFileSync("git", ["add", "."], { cwd: project });
     setHarnesses(["claude-code", "codex"]);
 
-    expect(addSkill(project, "alpha")).toMatchObject({ action: "installed", blocked: [".claude/skills"] });
+    expect(addSkill(project, "alpha", { personal: false })).toMatchObject({ action: "installed", blocked: [".claude/skills"] });
     expect(existsSync(local("alpha"))).toBe(false);
     expect(addSkill(project, "alpha", { allowTracked: true })).toMatchObject({ action: "relinked" });
     expect(existsSync(join(local("alpha"), "SKILL.md"))).toBe(true);
@@ -322,7 +322,7 @@ describe("harnesses", () => {
     execFileSync("git", ["add", "."], { cwd: project });
     setHarnesses(["claude-code", "codex"]);
 
-    const c = addSkill(project, "alpha", { allowTracked: true });
+    const c = addSkill(project, "alpha", { allowTracked: true, personal: false });
     expect(c).toMatchObject({ action: "installed", uncommitted: [".claude/skills"] });
     expect(c.blocked).toBeUndefined();
     expect(existsSync(local("alpha"))).toBe(false);
@@ -996,6 +996,7 @@ test("global move only waits for agents that load the global copy", () => {
   // The repo already has the copy in .claude/skills; git tracks .agents/skills, so Codex's link is held back.
   writeSkill(local("alpha"), "v1");
   writeSkill(join(project, ".agents", "skills", "team"), "team");
+  writeFileSync(join(project, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   execFileSync("git", ["init", "-q"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", ".agents"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
@@ -1013,6 +1014,7 @@ test("global move never unloads a skill an agent in another repo only ever saw g
   // In app1, git tracks .claude/skills and the copy isn't committed: Claude Code there runs the global copy.
   const app1 = join(tmp, "app1");
   writeSkill(join(app1, ".claude", "skills", "team"), "team");
+  writeFileSync(join(app1, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   execFileSync("git", ["init", "-q"], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });

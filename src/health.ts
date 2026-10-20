@@ -7,7 +7,7 @@ import { addSkill, realNative, blindSaid, blindWithoutGlobal, blockerSaid, copie
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
-import { knownProjects, pinsIn, readableRoots, readManifest } from "./project.js";
+import { dropPersonalPin, knownProjects, personalPins, pinsIn, readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, pluginNameOf, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { latestVersion, versionForHash, versionHistory } from "./versions.js";
@@ -760,6 +760,28 @@ function repoIssues(root: string, ctx: RepoScan): void {
   // sync restores a missing folder from your library: the pinned content, found by its hash. A skill the
   // library doesn't have, or a pin from another library, can't come back that way.
   const pins = readManifest(root).skills;
+  // A skill your personal pins have and the repo's skilllib.json pins too (it was shared after you added it): the
+  // repo's pin wins, so yours does nothing now. Dropping it changes nothing that loads, but it's yours to drop: if the
+  // team unpins the skill later, your pin would have kept it. A choice, never run by `doctor --fix`.
+  const shadowed = Object.keys(personalPins(root)).filter((name) => pins[name] && !pins[name]!.personal);
+  if (shadowed.length)
+    ctx.issues.push({
+      id: `shadowed:${root}`,
+      severity: "suggestion",
+      title: `${where}: ${plural(shadowed.length, "skill")} pinned in both skilllib.json and your personal pins`,
+      detail: `${shadowed.join(", ")}: ${where}'s skilllib.json pins ${shadowed.length === 1 ? "it" : "them"} for the team, and that pin wins. Your personal pin does nothing.`,
+      at: rows(root, shadowed),
+      choices: [
+        {
+          label: "Drop the personal pins",
+          hint: "skilllib.json's pins stay; nothing that loads changes",
+          run: () => {
+            for (const name of shadowed) dropPersonalPin(root, name);
+            return `${where}: ${shadowed.join(", ")} now pinned only in skilllib.json`;
+          },
+        },
+      ],
+    });
   // Where add would refuse (a skills folder it'd use isn't one in the repo), skilllib can't track, update, save or
   // discard a skill here: no choice that would fail (or write first) is offered. Once per skill.
   const blockedFor = new Map<string, string | null>();

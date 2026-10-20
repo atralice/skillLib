@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { allowsTrackedLinks, enabledHarnesses, setKeepGlobal } from "./config.js";
-import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
+import { excludePersonal, knownProjects, personalPinsFile, readManifest, writeManifest, type Dependency, type Manifest } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { localStamp, tildify } from "./output.js";
@@ -58,6 +58,8 @@ export type ProjectSkill = {
   visibility: Visibility;
   /** Where `npx skills add` got it (from the project's skills-lock.json), e.g. "genmedia-labs/skills". */
   source?: string;
+  /** Pinned in your personal pins, not the repo's skilllib.json (managed skills). */
+  personal?: boolean;
 };
 
 export function isLink(path: string): boolean {
@@ -518,6 +520,7 @@ export function projectStatus(root: string): ProjectSkill[] {
       location,
       path,
       visibility: visibilityOf(root, name, enabled),
+      ...(dep.personal ? { personal: true } : {}),
     };
   });
 
@@ -665,11 +668,16 @@ function sharedByGit(root: string, location: string, name: string): boolean {
   const copy = `${location}/${name}`;
   if (isGitTracked(root, copy)) return true;
   if (!isGitTracked(root, location)) return false;
+  return !gitIgnores(root, copy);
+}
+
+/** Whether git ignores a path (.gitignore, or info/exclude, where personal skills are kept). */
+function gitIgnores(root: string, rel: string): boolean {
   try {
-    execFileSync("git", ["check-ignore", "-q", "--no-index", "--", copy], { cwd: root, stdio: "ignore" });
-    return false; // exit 0: ignored
+    execFileSync("git", ["check-ignore", "-q", "--no-index", "--", rel], { cwd: root, stdio: "ignore" });
+    return true; // exit 0: ignored
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -708,7 +716,8 @@ export function linkEverywhere(root: string, name: string, location: string, { a
       stuck(`${dir}/${name}`);
       continue;
     }
-    if (isGitTracked(root, dir)) {
+    // A link git ignores (a personal skill's, in info/exclude) is never seen by teammates: no consent needed.
+    if (isGitTracked(root, dir) && !gitIgnores(root, `${dir}/${name}`)) {
       if (!(shared ??= sharedByGit(root, location, name))) {
         if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
         continue;
@@ -747,11 +756,14 @@ export function relinkDependency(root: string, name: string, { allowTracked = fa
   const manifest = readManifest(root);
   const dep = manifest.skills[name];
   if (!dep) return { created: [], blocked: [], uncommitted: [], inTheWay: [] };
+  // A personal skill's links are kept out of git first (every folder one could go in), so they need no consent where
+  // git tracks the folder; the block is put back to what's recorded after.
+  if (dep.personal) excludePersonal(root, { ...personalOf(manifest), [name]: { ...dep, links: [...ALL_PROJECT_DIRS] } });
   const result = linkEverywhere(root, name, dep.dir ?? PROJECT_SKILLS_DIR, { allowTracked });
   if (result.created.length) {
     manifest.skills[name] = { ...dep, links: [...new Set([...(dep.links ?? []), ...result.created])] };
     writeManifest(root, manifest);
-  }
+  } else if (dep.personal) excludePersonal(root);
   return result;
 }
 
@@ -798,6 +810,8 @@ export type Change = {
   inTheWay?: string[];
   /** Where overwritten local edits went (~/.skilllib/edit-backup/…); `skilllib restore` puts them back. */
   backedUp?: string;
+  /** The pin moved: to your personal pins, or to the repo's skilllib.json. */
+  moved?: "personal" | "shared";
 };
 
 /**
@@ -862,16 +876,33 @@ export function addRefusal(root: string, name: string, hash: string): string | n
 export function addSkill(
   root: string,
   name: string,
-  { force = false, version, allowTracked = false }: { force?: boolean; version?: number; allowTracked?: boolean } = {},
+  { force = false, version, allowTracked = false, personal }: { force?: boolean; version?: number; allowTracked?: boolean; personal?: boolean } = {},
 ): Change {
   // A skill's name is one folder name: never ".", "..", empty, or a path.
   if (!name || name === "." || name === ".." || /[\\/]/.test(name)) return { name, action: "skipped", reason: "not a skill name" };
-  const target = version === undefined ? latestVersion(name) : getVersion(name, version);
+  // Moving a pin (--personal, --shared) keeps its version: only a plain add takes the newest.
+  const before = personal !== undefined && version === undefined ? readManifest(root).skills[name] : undefined;
+  const moving = !!before && !!before.personal !== personal;
+  const keep = moving ? versionForHash(name, before!.hash) : null;
+  if (moving && !keep) return { name, action: "skipped", reason: `your library has no copy of the version it pins, so its pin can't move as it is: skilllib update ${name} first` };
+  const target = keep ?? (version === undefined ? latestVersion(name) : getVersion(name, version));
   if (!target) return { name, action: "skipped", reason: version === undefined ? "not in the library" : `version ${version} doesn't exist` };
 
   const plan = addPlan(root, name, target.hash, force);
   if ("reason" in plan) return { name, action: "skipped", reason: plan.reason };
   const { manifest, recorded, primary, wantedLinks, to, local } = plan;
+  const mine = pinsWhere(root, recorded, personal);
+  if (typeof mine === "string") return { name, action: "skipped", reason: mine };
+  // A copy git already has can't become personal: excluding it wouldn't take it out of git.
+  const committed = [primary, ...(recorded?.links ?? [])].find((d) => isGitTracked(root, `${d}/${name}`));
+  if (mine && !recorded?.personal && committed)
+    return { name, action: "skipped", reason: `${committed}/${name} is committed to git, so it can't be personal: remove it from git first (git rm -r --cached ${committed}/${name})` };
+  // The exclude block as it will be, before anything is written: a personal copy is never in git status, and the
+  // link checks below see what git will see.
+  if (mine || recorded?.personal) {
+    const { [name]: _, ...others } = personalOf(manifest);
+    excludePersonal(root, mine ? { ...others, [name]: { version: target.version, hash: target.hash, dir: primary, links: wantedLinks } } : others);
+  }
 
   let backedUp: string | undefined;
   const copied = local !== target.hash || isLink(to);
@@ -889,11 +920,24 @@ export function addSkill(
   const inTheWay: string[] = [];
   let shared: boolean | undefined;
   let relinked = false;
+  // A personal pin moving to skilllib.json: its links were out of git, so git sees each one as new now.
+  const toShared = !!recorded?.personal && !mine;
+  /**
+   * Whether git would see a new link here that it shouldn't, as linkEverywhere: never when git doesn't share the real
+   * copy, else only with your consent. A link git ignores (a personal skill's) is never seen.
+   */
+  const heldBack = (dir: string) => {
+    if (!isGitTracked(root, dir) || gitIgnores(root, `${dir}/${name}`)) return false;
+    if (!(shared ??= sharedByGit(root, primary, name))) return (uncommitted.push(dir), true);
+    if (!allowTracked && !allowsTrackedLinks(root)) return (blocked.push(dir), true);
+    return false;
+  };
   for (const dir of wantedLinks) {
     const link = join(root, dir, name);
     const slot = slotAt(link, to);
     if (slot === "ok") {
-      links.push(dir);
+      if (toShared && isLink(link) && heldBack(dir)) unlinkSync(link);
+      else links.push(dir);
       continue;
     }
     // A link to nothing is replaced; anything else there (a file, another copy) is left, and said. A link
@@ -903,17 +947,8 @@ export function addSkill(
       if (recorded?.links?.includes(dir)) links.push(dir);
       continue;
     }
-    // A new link in a folder git tracks, as linkEverywhere: never when git doesn't share the real copy, else with your consent.
-    if (!recorded?.links?.includes(dir) && isGitTracked(root, dir)) {
-      if (!(shared ??= sharedByGit(root, primary, name))) {
-        uncommitted.push(dir);
-        continue;
-      }
-      if (!allowTracked && !allowsTrackedLinks(root)) {
-        blocked.push(dir);
-        continue;
-      }
-    }
+    // A link skilllib.json already records is the team's: put back. Any other is new to git.
+    if ((toShared || !recorded?.links?.includes(dir)) && heldBack(dir)) continue;
     if (isLink(link)) unlinkSync(link);
     mkdirSync(join(root, dir), { recursive: true });
     linkDir(to, link);
@@ -926,8 +961,10 @@ export function addSkill(
     hash: target.hash,
     ...(primary !== PROJECT_SKILLS_DIR ? { dir: primary } : {}),
     ...(links.length ? { links } : {}),
+    ...(mine ? { personal: true } : {}),
   };
   writeManifest(root, manifest);
+  const moved = recorded && !!recorded.personal !== mine ? (mine ? "personal" : "shared") : undefined;
   // The version the pin's hash names, as everywhere else: never skilllib.json's raw number.
   const from = recorded ? (versionForHash(name, recorded.hash)?.version ?? recorded.version) : undefined;
   return {
@@ -948,8 +985,22 @@ export function addSkill(
     ...(uncommitted.length ? { uncommitted } : {}),
     ...(inTheWay.length ? { inTheWay } : {}),
     ...(backedUp ? { backedUp } : {}),
+    ...(moved ? { moved } : {}),
   };
 }
+
+/**
+ * Whether a skill's pin is personal: as asked, else where it already is, else personal unless the repo has a
+ * skilllib.json (then it's the team's way of pinning). A string says why it can't be personal.
+ */
+function pinsWhere(root: string, recorded: Dependency | undefined, personal: boolean | undefined): boolean | string {
+  const want = personal ?? (recorded ? !!recorded.personal : !existsSync(join(root, MANIFEST_FILE)));
+  if (!want || personalPinsFile(root)) return want;
+  // Not a repo's top folder (a package's skilllib.json, a folder git doesn't know): only the asked-for case is refused.
+  return personal ? "only the top folder of a git repo can have personal pins" : false;
+}
+
+const personalOf = (manifest: Manifest) => Object.fromEntries(Object.entries(manifest.skills).filter(([, d]) => d.personal));
 
 export function removeSkill(root: string, name: string, { force = false } = {}): Change {
   const manifest = readManifest(root);
@@ -1018,6 +1069,8 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
  * resets edited skills; the edits go to ~/.skilllib/edit-backup).
  */
 export function syncProject(root: string, { force = false, names }: { force?: boolean; names?: string[] } = {}): Change[] {
+  // Personal skills on a new clone or machine: kept out of git before their copies come back.
+  excludePersonal(root);
   return Object.keys(readManifest(root).skills)
     .filter((name) => !names || names.includes(name))
     .flatMap((name) => syncSkill(root, name, { force }));

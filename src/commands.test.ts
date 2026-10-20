@@ -373,6 +373,7 @@ describe("round 2: what agents rely on", () => {
     const r = join(tmp, "code", "eta");
     mkdirSync(join(r, ".claude", "skills", "team"), { recursive: true });
     writeFileSync(join(r, ".claude", "skills", "team", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    writeFileSync(join(r, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
     const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: r });
     git("init", "-q");
     git("add", ".");
@@ -582,8 +583,8 @@ describe("what the plain commands say", () => {
   test("sync --all doesn't claim a repo without skilllib.json matches it", () => {
     cli(repo(join(tmp, "web")), "status");
     const r = cli(tmp, "sync", "--all");
-    expect(r.out).toContain("No skilllib.json: nothing to sync");
-    expect(r.out).not.toContain("match skilllib.json");
+    expect(r.out).toContain("No skilllib.json or personal pins: nothing to sync");
+    expect(r.out).not.toContain("match what's pinned");
   });
 });
 

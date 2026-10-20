@@ -841,6 +841,7 @@ test("stopping a global copy waits for every repo holding the skill, not only th
   // app1 commits .claude/skills, so add's link there is held back (the copy isn't committed): Claude Code runs the global copy in app1.
   const app1 = join(tmp, "app1");
   skill(join(app1, ".claude", "skills", "team"));
+  writeFileSync(join(app1, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   execFileSync("git", ["init", "-q"], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });

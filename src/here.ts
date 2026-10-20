@@ -73,6 +73,7 @@ export function usableHere(root: string, uses: Map<string, number> = new Map()):
           latest: behind ? s.latest! : undefined,
           git: gitState,
           agents: sameSet(loadedBy, agents) ? undefined : loadedBy,
+          personal: s.personal ? true : undefined,
         };
         return [JSON.stringify(attrs), s.name, () => ({ ...attrs, skills: [] })];
       }),

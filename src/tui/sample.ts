@@ -529,6 +529,7 @@ function sampleOps(w: World): Omit<Ops, "usageIssues"> {
       return `Removed ${name} from ${repo}`;
     },
     update: (repo, name) => ((skill(repo, name).version = lib(name)!.latest), `${name} updated to v${lib(name)!.latest}`),
+    pin: (repo, name, personal) => ((skill(repo, name).personal = personal), personal ? `${name} is now personal in ${repo}` : `${name} is now pinned in ${repo}'s skilllib.json`),
     copyToLibrary: (_repo, name) => (toLibrary(name), `${name} copied into your library`),
     deleteGlobal: (m) => (drop(m), m.broken ? `Removed broken link ${m.name}` : `Deleted ${m.name} (backed up)`),
     keepGlobal: (name, keep) => {

@@ -250,9 +250,10 @@ export function planGlobalTidy({ keep = {}, enabled = enabledHarnesses() }: { ke
 export function gitVisibleSteps(plan: TidyPlan, git: GitInfo | null = plan.root ? gitInfo(plan.root) : null): TidyStep[] {
   if (!plan.root || !git) return [];
   const shared = (rel: string) => isShared(git.of(rel));
-  // A managed skill's new link is also written into skilllib.json: when that's committed, git sees it too.
+  // A managed skill's new link is also written into skilllib.json: when that's committed, git sees it too. A personal
+  // skill's goes in your personal pins, which git never sees.
   const dep = readManifest(plan.root).skills[plan.name];
-  const recordsLink = (s: TidyStep) => !!dep && (s.kind === "link" || s.kind === "replace") && !dep.links?.includes(relativeTo(plan.root!, dirname(s.path)));
+  const recordsLink = (s: TidyStep) => !!dep && !dep.personal && (s.kind === "link" || s.kind === "replace") && !dep.links?.includes(relativeTo(plan.root!, dirname(s.path)));
   return plan.steps.filter((s) => shared(relativeTo(plan.root!, s.path)) || (recordsLink(s) && shared(MANIFEST_FILE)));
 }
 

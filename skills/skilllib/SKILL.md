@@ -6,7 +6,7 @@ allowed-tools: Bash(skilllib:*)
 
 # skilllib
 
-The user manages agent skills with the `skilllib` CLI. Their **library** (`~/.skilllib/library`, "my skills", "the registry") holds versioned skills that load nowhere until added to a repo. A repo pins its skills in `skilllib.json`.
+The user manages agent skills with the `skilllib` CLI. Their **library** (`~/.skilllib/library`, "my skills", "the registry") holds versioned skills that load nowhere until added to a repo. A repo pins its skills in `skilllib.json` (shared, committed), or in the user's personal pins (`~/.skilllib/pins`, kept out of git: `personal: true` in the output).
 
 Always pass `--json` (one line of JSON on stdout; messages go to stderr). A failure exits 1 with `{"error": "..."}` as that line. `link`, `tidy`, `global` (its listing, `keep` and `unkeep`), `restore`, `new`, `folders`, `harnesses`, `scan` and `unhide` print messages only (read the exit code). Unknown flags are errors. Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
 
@@ -25,7 +25,7 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 ## Changing (ask first unless the user asked for this exact change)
 
-`add <name>...` · `remove <name>...` (skills skilllib manages, `source: library`) · `update [name...]` · `sync` (installs what `skilllib.json` pins; takes no names). Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, inTheWay, backedUp}]`, which is the whole result: there's no need to check files afterwards. `import <dir>...` (into the library) prints `[{path, name, status}]` and exits 1 if a folder was skipped (`exists`, `no SKILL.md`). `doctor --fix` prints doctor's issues, each fix with `fixed: {ok, message}`.
+`add <name>...` (pins in `skilllib.json` when the repo has one, else in personal pins; `--personal` / `--shared` choose, and move an existing pin without changing its version) · `remove <name>...` (skills skilllib manages, `source: library`) · `update [name...]` · `sync` (installs what `skilllib.json` pins; takes no names). Pass several names in one call. Their result is `[{name, action, from, to, dirs, reason, blocked, uncommitted, inTheWay, backedUp}]`, which is the whole result: there's no need to check files afterwards. `import <dir>...` (into the library) prints `[{path, name, status}]` and exits 1 if a folder was skipped (`exists`, `no SKILL.md`). `doctor --fix` prints doctor's issues, each fix with `fixed: {ok, message}`.
 
 - `skipped` + `reason`: nothing changed for that skill, and the command exits 1; tell the user. `--force` overwrites local edits (`backedUp` says where they went; `skilllib restore <name>` brings them back), but only use it with their OK.
 - `removed` + `reason`: removed from skilllib.json, but something was left as it is (its copy behind a folder that links out of the repo, a file of the user's, or a link in such a folder). Tell the user what the reason says is still there.
@@ -33,7 +33,7 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 - `inTheWay`: something else is where a link goes (a file, or another copy), so that agent may not run this copy there, and the command exits 1. Tell the user what's there; once they move it, `skilllib link` adds the link. (A skills folder that's a file or links out of the repo makes the skill `skipped` instead, with the reason.)
 - `blocked`: git tracks that folder. Re-run with `--allow-tracked` (for that command only) only with their OK.
 - `uncommitted`: git tracks that folder but not the skill's real copy, so a link there would break for teammates; `--allow-tracked` doesn't change that. Once the copy is committed, `link --allow-tracked` adds it.
-- Changes apply from the agent's next session. Remind the user to commit `skilllib.json` and the folders in `dirs`.
+- Changes apply from the agent's next session. For a change without `personal`, remind the user to commit `skilllib.json` and the folders in `dirs`; a `personal` one has nothing to commit.
 
 **Prefer per-repo skills to global ones.** A global skill loads in every repo, for every agent. When `usage --json` shows one used in only a few repos, propose moving it there:
 

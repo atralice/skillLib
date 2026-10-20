@@ -107,7 +107,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     path: s.path,
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
-    ...(s.managed ? { version: s.version ?? undefined, ...managed[s.state] } : { ...other[s.state], ...own }),
+    ...(s.managed ? { version: s.version ?? undefined, ...(s.personal ? { personal: true } : {}), ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
     ...(others.length ? { others } : {}),
     git: state,
@@ -411,6 +411,11 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     update: (repo, name) => {
       const c = updateProject(rootOf(repo), [name])[0];
       return c ? orForce(c, repo, "Update anyway", () => updateProject(rootOf(repo), [name], { force: true })[0]!) : `${name} is up to date`;
+    },
+    pin: (repo, name, personal) => {
+      const c = addSkill(rootOf(repo), name, { personal });
+      if (c.action === "skipped") return failed(said(c, repo));
+      return personal ? `${name} is now personal in ${repo}: only on your machines, kept out of git` : `${name} is now pinned in ${repo}'s skilllib.json for the team`;
     },
     copyToLibrary: (repo, name) => ((s) => (s ? toLibrary(s.path) : failed(`${name} isn't in ${repo} any more`)))(find(repo, name)),
     deleteGlobal: (m) => {
