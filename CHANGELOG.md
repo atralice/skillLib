@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.7](https://github.com/atralice/skillLib/compare/v1.11.6...v1.11.7) (2026-10-20)
+
+
+### Bug Fixes
+
+* a local plugin switch names .claude/settings.local.json before saying git ignores it ([#118](https://github.com/atralice/skillLib/issues/118)) ([eac8693](https://github.com/atralice/skillLib/commit/eac869318d288b8df78ba2255c0d7198b9f50d76))
+* a result never pushes the list off a short screen; turning a plugin off says what git sees ([#116](https://github.com/atralice/skillLib/issues/116)) ([aa448af](https://github.com/atralice/skillLib/commit/aa448aff799fdc690e81ccfce8d52cf3509a16e8))
+
 ## [1.11.6](https://github.com/atralice/skillLib/compare/v1.11.5...v1.11.6) (2026-10-20)
 
 Small fixes to the app's layout, from the full regression run on 1.11.5.
