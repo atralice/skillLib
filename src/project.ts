@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { claudeDir, codexHome, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
@@ -180,6 +180,14 @@ export function normalizeRemote(url: string): string {
   return s.replace(/\.git\/?$/, "").replace(/\/+$/, "").toLowerCase();
 }
 
+function nativePath(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return realPath(p);
+  }
+}
+
 const keys = new Map<string, { remote: string } | { path: string } | null>();
 
 /**
@@ -198,8 +206,10 @@ function personalKey(root: string): { remote: string } | { path: string } | null
     const remote = gitIn(root, ["remote", "get-url", "origin"]) || ((first) => (first ? gitIn(root, ["remote", "get-url", first]) : null))(gitIn(root, ["remote"])?.split("\n")[0]);
     if (remote) key = { remote: normalizeRemote(remote) };
     else {
+      // As the disk spells it (the native realpath): Windows can hand out a short name (RUNNER~1) for one checkout and
+      // the long one for its worktree, and the key must be the same for both.
       const common = gitIn(root, ["rev-parse", "--git-common-dir"]);
-      const dir = common ? realPath(resolve(root, common)) : real;
+      const dir = nativePath(common ? resolve(root, common) : root);
       key = { path: basename(dir) === ".git" ? dirname(dir) : dir };
     }
   }
