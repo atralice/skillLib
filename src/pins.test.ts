@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
@@ -294,5 +294,26 @@ test("moving the only pin back to personal takes away the skilllib.json --shared
   git(repo, "commit", "-qm", "untrack the copy");
   addSkill(repo, "alpha", { personal: true });
   expect(existsSync(join(repo, "skilllib.json"))).toBe(true);
+});
+
+test.skipIf(process.platform === "win32")("a personal skill stays out of git when a skills folder is a link to another one in the repo", () => {
+  setHarnesses(["claude-code", "codex"]);
+  const layouts: [string, [string, string][]][] = [
+    ["b", [[".agents/skills", "../.claude/skills"]]],
+    ["c", [[".claude/skills", "../skills"], [".agents/skills", "../skills"]]],
+  ];
+  for (const [name, links] of layouts) {
+    const r = clone(`layout-${name}`, `git@github.com:acme/layout-${name}.git`);
+    for (const [from, to] of links) {
+      mkdirSync(join(r, from, "..", to), { recursive: true });
+      writeFileSync(join(r, from, "..", to, ".keep"), "");
+      mkdirSync(join(r, from, ".."), { recursive: true });
+      symlinkSync(to, join(r, from));
+    }
+    git(r, "add", "-A");
+    git(r, "commit", "-qm", "layout");
+    expect(addSkill(r, "alpha")).toMatchObject({ action: "installed" });
+    expect([name, status(r)]).toEqual([name, ""]);
+  }
 });
 
