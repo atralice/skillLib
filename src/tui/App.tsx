@@ -1631,6 +1631,8 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
           ? "space tick · enter save"
           : modal?.kind === "menu"
             ? "↑↓ choose · enter do it · esc cancel"
+            : modal?.kind === "input"
+              ? "enter confirm · ctrl+u clear · esc cancel"
             : modal?.kind === "add"
           ? modal.target
             ? "space tick · enter add · esc cancel"
