@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, realpathSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
-import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
+import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realNative, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { allowsTrackedLinks, enabledHarnesses, setKeepGlobal } from "./config.js";
 import { excludePersonal, knownProjects, personalPinsFile, readManifest, writeManifest, type Dependency, type Manifest } from "./project.js";
@@ -188,17 +188,6 @@ export function visibilityOf(root: string, name: string, enabled: HarnessId[] = 
   }));
 }
 
-/**
- * A real path as the file system spells it: Node's JS realpath keeps the case you asked with on a case-insensitive
- * disk (macOS), and the short names Windows can hand out; the native one gives the one true spelling.
- */
-export function realNative(p: string): string | null {
-  try {
-    return realpathSync.native(p);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Whether `path` still reaches a skill once the global entries `gone` (their own paths: a link entry, not what it

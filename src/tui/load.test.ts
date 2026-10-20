@@ -11,7 +11,7 @@ import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
 import { usableHere } from "../here.js";
-import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pluginIssues, replacePluginFix, repoIssues, said, unlisted, usable, type World } from "./world.js";
+import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pinFix, pluginIssues, replacePluginFix, repoIssues, said, unlisted, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -915,3 +915,27 @@ test("the app's unused hint counts a plugin's copy (plugin:skill) for the skill,
   }
 });
 
+
+test("moving a pin is offered only where it can succeed: never to make the team's committed copy personal", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
+  for (const name of ["team", "mine"]) {
+    writeSkill(join(tmp, "src", name));
+    importSkill(join(tmp, "src", name));
+    addSkill(repo, name);
+  }
+  git("add", "skilllib.json", ".claude/skills/team");
+  git("commit", "-qm", "team");
+
+  let w = loadWorld();
+  expect(pinFix(w, "app", local(w, "team").local!)).toBeNull();
+  const fix = pinFix(w, "app", local(w, "mine").local!)!;
+  expect(fix.label).toBe("Make it personal");
+  expect(fix.preview).toContain("teammates no longer get it");
+  expect(said(fix.run(w))).toBe("mine is now personal in app: only on your machines, kept out of git");
+  w = loadWorld();
+  expect(local(w, "mine").local!.personal).toBe(true);
+  expect(pinFix(w, "app", local(w, "mine").local!)!.label).toBe("Pin it for the team");
+});
