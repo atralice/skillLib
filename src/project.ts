@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { claudeDir, codexHome, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realPath, skilllibHome, userHome, writeState } from "./paths.js";
+import { claudeDir, codexHome, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readJson, readState, realNative, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
 import { ALL_PROJECT_DIRS } from "./harnesses.js";
 
@@ -126,7 +126,7 @@ export function writeManifest(root: string, manifest: Manifest) {
   }
   // Hidden by a pin skilllib.json already had: kept. One that just moved there (add --shared) goes.
   for (const [name, dep] of Object.entries(readPins(file).skills)) if (onDisk[name] && manifest.skills[name] && !manifest.skills[name]!.personal) mine[name] = dep;
-  if (Object.keys(mine).length) writeChanged(file, { ...personalKey(root), skills: sorted(mine) });
+  if (Object.keys(mine).length) writeChanged(file, { ...pinsHeader(repoOf(root)!), skills: sorted(mine) });
   else rmSync(file, { force: true });
   excludePersonal(root, mine);
 }
@@ -162,7 +162,7 @@ export function personalPinsDir(): string {
 
 function gitIn(root: string, args: string[]): string | null {
   try {
-    return execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", args, { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
   } catch {
     return null;
   }
@@ -170,7 +170,8 @@ function gitIn(root: string, args: string[]): string | null {
 
 /**
  * A remote's URL as one name for the repo, whichever way it was cloned: git@github.com:a/b.git,
- * https://github.com/a/b and ssh://git@github.com:22/a/b are all github.com/a/b.
+ * https://github.com/a/b and ssh://git@github.com:22/a/b are all github.com/a/b. Only the host is
+ * case-insensitive: two repos whose paths differ in case stay two.
  */
 export function normalizeRemote(url: string): string {
   let s = url.trim();
@@ -178,54 +179,83 @@ export function normalizeRemote(url: string): string {
   const scp = s.match(/^(?:[^/@:]+@)?([^/:\\]{2,}):(?!\/)(.*)$/);
   if (scp) s = `${scp[1]}/${scp[2]}`;
   else s = s.replace(/^[a-z+]+:\/\//i, "").replace(/^[^/@]+@/, "").replace(/^([^/:]+):\d+\//, "$1/");
-  return s.replace(/\.git\/?$/, "").replace(/\/+$/, "").toLowerCase();
+  s = s.replace(/\.git\/?$/, "").replace(/\/+$/, "");
+  return s.replace(/^[^/]*/, (host) => host.toLowerCase());
 }
-
-function nativePath(p: string): string {
-  try {
-    return realpathSync.native(p);
-  } catch {
-    return realPath(p);
-  }
-}
-
-const keys = new Map<string, { remote: string } | { path: string } | null>();
 
 /**
- * What names a repo across clones, worktrees and machines: its origin remote (else its first). A repo with no
- * remote is named by its folder (the main checkout's, so its worktrees share it), and its pins stay on this
- * machine. Null for anything but the top folder of a git repo: only those can have personal pins.
+ * A repo as personal pins see it: `file`, its pins file (null for anything but the top folder of a git repo: only
+ * those can have personal pins); `folder`, its main checkout (shared by its worktrees); `common`, its git folder.
  */
-function personalKey(root: string): { remote: string } | { path: string } | null {
+type Repo = { file: string | null; folder: string; common: string; remote?: string; root: string };
+
+/** Per folder, with what tells it's stale: git's config file and when it changed, or (outside a repo) no .git yet. */
+const repos = new Map<string, { repo: Repo | null; config: string | null; seen: number }>();
+
+const changedAt = (path: string) => statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? -1;
+
+/**
+ * What names a repo across clones, worktrees and machines: its origin remote (else its first). A repo with no remote
+ * is named by its folder, and its pins stay on this machine. Asked of git once per folder, and again only when git's
+ * config changes (a remote added or renamed) or a .git appears (git init), so the app sees those while it's open.
+ */
+function repoOf(root: string): Repo | null {
   const real = realPath(root);
-  if (keys.has(real)) return keys.get(real)!;
-  const prefix = gitIn(root, ["rev-parse", "--show-prefix"]);
-  // Not a repo git can read: not kept, since a folder can become one (git init) while the app is open.
-  if (prefix === null) return null;
-  let key: { remote: string } | { path: string } | null = null;
-  if (prefix === "") {
-    const remote = gitIn(root, ["remote", "get-url", "origin"]) || ((first) => (first ? gitIn(root, ["remote", "get-url", first]) : null))(gitIn(root, ["remote"])?.split("\n")[0]);
-    if (remote) key = { remote: normalizeRemote(remote) };
-    else {
-      // As the disk spells it (the native realpath): Windows can hand out a short name (RUNNER~1) for one checkout and
-      // the long one for its worktree, and the key must be the same for both.
-      const common = gitIn(root, ["rev-parse", "--git-common-dir"]);
-      const dir = nativePath(common ? resolve(root, common) : root);
-      key = { path: basename(dir) === ".git" ? dirname(dir) : dir };
-    }
+  const hit = repos.get(real);
+  if (hit && (hit.config ? changedAt(hit.config) === hit.seen : !existsSync(join(root, ".git")))) return hit.repo;
+  const out = gitIn(root, ["rev-parse", "--show-prefix", "--git-common-dir"])?.split("\n");
+  if (!out) {
+    repos.set(real, { repo: null, config: null, seen: 0 });
+    return null;
   }
-  keys.set(real, key);
-  return key;
+  // As the disk spells it (the native realpath): Windows can hand out a short name (RUNNER~1) for one checkout and
+  // the long one for its worktree, and the key must be the same for both.
+  const common = realNative(resolve(root, out[1]!.trim())) ?? resolve(root, out[1]!.trim());
+  const folder = basename(common) === ".git" ? dirname(common) : common;
+  const config = join(common, "config");
+  const seen = changedAt(config);
+  let repo: Repo | null = null;
+  if (out[0] === "") {
+    const urls = (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => l.split(" "));
+    const url = (urls.find(([k]) => k === "remote.origin.url") ?? urls[0])?.[1];
+    const remote = url ? normalizeRemote(url) : undefined;
+    repo = { file: pinsFileFor(root, remote, folder), folder, common, ...(remote ? { remote } : {}), root };
+  }
+  repos.set(real, { repo, config, seen });
+  return repo;
 }
 
-/** Your personal pins file for this repo, or null when it can't have one (see personalKey). It may not exist yet. */
-export function personalPinsFile(root: string): string | null {
-  const key = personalKey(root);
-  if (!key) return null;
-  const name = "remote" in key ? key.remote : `local-${basename(key.path)}`;
+/** A repo's first commit: what tells it from another repo cloned into the same folder later. Null before any commit. */
+const firstCommit = (root: string) => gitIn(root, ["rev-list", "--max-parents=0", "HEAD"])?.split("\n")[0] || null;
+
+/**
+ * The pins file for a remote (or, without one, a folder). One that's missing takes over this checkout's file under
+ * another name: written before the repo had a remote, or under a remote since renamed. Every file records its folder
+ * and the repo's first commit, and only the same repo takes it over: a file without a first commit only when it has
+ * no remote either (another repo cloned into a deleted one's folder has a remote).
+ */
+function pinsFileFor(root: string, remote: string | undefined, folder: string): string {
+  const name = remote ?? `local-${basename(folder)}`;
   const slug = name.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80);
-  const id = createHash("sha1").update("remote" in key ? key.remote : key.path).digest("hex").slice(0, 8);
-  return join(personalPinsDir(), `${slug}-${id}.json`);
+  const file = join(personalPinsDir(), `${slug}-${createHash("sha1").update(remote ?? folder).digest("hex").slice(0, 8)}.json`);
+  if (existsSync(file) || !existsSync(personalPinsDir())) return file;
+  for (const other of readdirSync(personalPinsDir()).filter((f) => f.endsWith(".json"))) {
+    const at = join(personalPinsDir(), other);
+    const theirs = readJson<{ path?: string; remote?: string; first?: string }>(at);
+    if (theirs?.path === folder && (theirs.first ? theirs.first === firstCommit(root) : !theirs.remote)) {
+      renameSync(at, file);
+      break;
+    }
+  }
+  return file;
+}
+
+/** What a pins file says besides its pins: the repo's remote and its folder. */
+const pinsHeader = (repo: Repo) => ((first) => ({ ...(repo.remote ? { remote: repo.remote } : {}), path: repo.folder, ...(first ? { first } : {}) }))(firstCommit(repo.root));
+
+/** Your personal pins file for this repo, or null when it can't have one (see repoOf). It may not exist yet. */
+export function personalPinsFile(root: string): string | null {
+  return repoOf(root)?.file ?? null;
 }
 
 /** Your personal pins for a repo as the file has them, the ones its skilllib.json hides included. */
@@ -239,7 +269,7 @@ export function dropPersonalPin(root: string, name: string) {
   const file = personalPinsFile(root);
   if (!file) return;
   const { [name]: _, ...rest } = readPins(file).skills;
-  if (Object.keys(rest).length) writeChanged(file, { ...personalKey(root), skills: sorted(rest) });
+  if (Object.keys(rest).length) writeChanged(file, { ...pinsHeader(repoOf(root)!), skills: sorted(rest) });
   else rmSync(file, { force: true });
   excludePersonal(root);
 }
@@ -252,9 +282,10 @@ const EXCLUDE_END = "# end skilllib";
  * shared by its worktrees), rewritten from the pins each time. Nothing is written when it's already right.
  */
 export function excludePersonal(root: string, skills: Manifest["skills"] = Object.fromEntries(Object.entries(readManifest(root).skills).filter(([, d]) => d.personal))) {
-  const at = gitIn(root, ["rev-parse", "--git-path", "info/exclude"]);
-  if (!at) return;
-  const file = resolve(root, at);
+  // Only a repo's top folder has personal pins: a package's empty set must never rewrite the repo's block.
+  const repo = repoOf(root);
+  if (!repo?.file) return;
+  const file = join(repo.common, "info", "exclude");
   const text = existsSync(file) ? readFileSync(file, "utf-8") : "";
   const lines = text.split("\n");
   const start = lines.indexOf(EXCLUDE_START);
@@ -262,8 +293,9 @@ export function excludePersonal(root: string, skills: Manifest["skills"] = Objec
   // Without its end line (edited by hand), only the start line goes: the lines after it may be yours.
   const rest = start === -1 ? lines : [...lines.slice(0, start), ...lines.slice(end === -1 ? start + 1 : end + 1)];
   while (rest.length && rest[rest.length - 1] === "") rest.pop();
-  // No trailing slash: a link is a file to git, and "x/" only matches folders.
-  const paths = Object.entries(skills).flatMap(([name, d]) => [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].map((dir) => `/${dir}/${name}`));
+  // No trailing slash: a link is a file to git, and "x/" only matches folders. A name's glob characters ([, *, ?) are
+  // escaped, so notes[draft] matches that folder and nothing else.
+  const paths = Object.entries(skills).flatMap(([name, d]) => [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].map((dir) => `/${dir}/${name.replace(/[[\]*?\\]/g, "\\$&")}`));
   const block = paths.length ? [EXCLUDE_START, ...[...new Set(paths)].sort(), EXCLUDE_END] : [];
   const next = [...rest, ...(rest.length && block.length ? [""] : []), ...block].join("\n") + (rest.length || block.length ? "\n" : "");
   if (next === text) return;

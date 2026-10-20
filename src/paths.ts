@@ -72,6 +72,18 @@ export function readJson<T>(path: string): T | null {
   }
 }
 
+/**
+ * A real path as the file system spells it: Node's JS realpath keeps the case you asked with on a case-insensitive
+ * disk (macOS), and the short names Windows can hand out; the native one gives the one true spelling.
+ */
+export function realNative(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
 /** The real path, or null when nothing is there (a missing folder, a link to nothing). */
 export function realpathOrNull(path: string): string | null {
   try {

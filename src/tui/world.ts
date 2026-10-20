@@ -3,7 +3,7 @@
  * doctor's issues (health.ts) placed on their rows. Actions act through `w.ops`: the real disk
  * (load.ts), or in-memory sample data (sample.ts) for tests and headless checks.
  */
-import type { GitState } from "../git.js";
+import { isShared, type GitState } from "../git.js";
 import type { HarnessId } from "../harnesses.js";
 import { runFix, type Choice, type Issue as Found } from "../health.js";
 import { matchScore } from "../search.js";
@@ -26,6 +26,8 @@ export type LocalSkill = {
   version?: number;
   /** Tracked in your personal pins (~/.skilllib/pins), not skilllib.json: only on your machines, kept out of git. */
   personal?: boolean;
+  /** A tracked skill git has: its copy, or a link skilllib.json records. */
+  inGit?: boolean;
   edited?: boolean;
   missing?: boolean;
   /** Its git state; null when the repo isn't a git repo. */
@@ -414,6 +416,25 @@ function globalFixes(m: MachineSkill): Fix[] {
  * What Global offers for a skill beyond its issues. Everything acts on the machine-wide copy;
  * the only thing that reaches repos is "Move it to the repos…", and only the repos you tick.
  */
+/**
+ * Moving a library skill's pin between the repo's skilllib.json and your personal pins, when that can succeed: its
+ * version is in your library, and (to make it personal) git doesn't have its copy or links, since excluding them wouldn't
+ * take it out of git.
+ */
+export function pinFix(w: World, repo: string, s: LocalSkill): Fix | null {
+  if (s.source !== "lib" || !w.library.some((l) => l.name === s.name)) return null;
+  if (s.personal)
+    return { label: "Pin it for the team", preview: `Move ${s.name}'s pin into ${repo}'s skilllib.json. Git will see skilllib.json and ${s.dir}/${s.name}: commit them to share it.`, run: (w) => w.ops.pin(repo, s.name, false) };
+  if (s.inGit || isShared(s.git)) return null;
+  return {
+    label: "Make it personal",
+    preview: `Move ${s.name}'s pin out of ${repo}'s skilllib.json into your personal pins, and keep its copy out of git.${
+      project(w, repo).manifest === "committed" ? " Git will see skilllib.json change: once that's committed, teammates no longer get it." : ""
+    }`,
+    run: (w) => w.ops.pin(repo, s.name, true),
+  };
+}
+
 export function machineActions(m: MachineSkill): Fix[] {
   if (m.broken) return []; // its issue already offers "Remove the link"
   return m.source === "global" ? globalFixes(m) : m.source === "skilllib" ? [removeAgentSkillFix()] : [];

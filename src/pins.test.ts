@@ -45,7 +45,7 @@ beforeEach(() => {
   setHarnesses(["claude-code"]);
   writeSkill(join(tmp, "src", "alpha"), "v1");
   importSkill(join(tmp, "src", "alpha"));
-  repo = clone("web", "git@github.com:Acme/Web.git");
+  repo = clone("web", "git@GitHub.com:acme/web.git");
 });
 
 afterEach(() => {
@@ -53,8 +53,10 @@ afterEach(() => {
 });
 
 test("a remote names the repo however it was cloned", () => {
-  for (const url of ["git@github.com:acme/web.git", "github.com:acme/web.git", "https://github.com/Acme/Web", "https://user@github.com/acme/web.git/", "ssh://git@github.com:22/acme/web.git", "ssh://git@github.com/acme/web"])
+  for (const url of ["git@github.com:acme/web.git", "github.com:acme/web.git", "https://GitHub.com/acme/web", "https://user@github.com/acme/web.git/", "ssh://git@github.com:22/acme/web.git", "ssh://git@github.com/acme/web"])
     expect(normalizeRemote(url)).toBe("github.com/acme/web");
+  // Only the host: paths can differ in case on servers that care.
+  expect(normalizeRemote("https://host.example/Team/Repo")).toBe("host.example/Team/Repo");
 });
 
 describe("a repo without skilllib.json", () => {
@@ -201,6 +203,58 @@ test("global move into a repo without skilllib.json pins it personally, out of g
   expect(mv).toMatchObject({ moved: true });
   expect(readManifest(repo).skills.alpha?.personal).toBe(true);
   expect(existsSync(join(repo, "skilllib.json"))).toBe(false);
+  expect(status(repo)).toBe("");
+});
+
+test("syncing a monorepo package leaves the repo's personal skills out of git", () => {
+  addSkill(repo, "alpha");
+  const pkg = join(repo, "packages", "web");
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
+  addSkill(pkg, "alpha");
+  git(repo, "add", "packages");
+  git(repo, "commit", "-qm", "packages");
+  syncProject(pkg);
+  expect(exclude(repo)).toContain("/.claude/skills/alpha");
+  expect(status(repo)).toBe("");
+});
+
+test("adding a remote to a repo keeps its personal pins, out of git", () => {
+  const solo = join(tmp, "solo");
+  mkdirSync(solo);
+  git(solo, "init", "-q");
+  git(solo, "commit", "-q", "--allow-empty", "-m", "init");
+  addSkill(solo, "alpha");
+  const before = personalPinsFile(solo)!;
+  git(solo, "remote", "add", "origin", "git@github.com:me/solo.git");
+  const after = personalPinsFile(solo)!;
+  expect(after).not.toBe(before);
+  expect(existsSync(before)).toBe(false);
+  expect(JSON.parse(readFileSync(after, "utf-8"))).toMatchObject({ path: expect.stringContaining("solo"), skills: { alpha: { version: 1 } } });
+  expect(readManifest(solo).skills.alpha?.personal).toBe(true);
+  addSkill(solo, "alpha");
+  expect(JSON.parse(readFileSync(after, "utf-8")).remote).toBe("github.com/me/solo");
+  expect(status(solo)).toBe("");
+});
+
+test("another repo cloned into a deleted one's folder doesn't take over its pins", () => {
+  const solo = join(tmp, "solo");
+  mkdirSync(solo);
+  git(solo, "init", "-q");
+  git(solo, "commit", "-q", "--allow-empty", "-m", "init");
+  addSkill(solo, "alpha");
+  const old = personalPinsFile(solo)!;
+  rmSync(solo, { recursive: true, force: true });
+  const other = clone("solo", "git@github.com:someone/else.git");
+  expect(readManifest(other).skills).toEqual({});
+  expect(existsSync(old)).toBe(true);
+});
+
+test("a skill name with glob characters is excluded as itself", () => {
+  writeSkill(join(tmp, "src", "notes[draft]"), "n");
+  importSkill(join(tmp, "src", "notes[draft]"));
+  addSkill(repo, "notes[draft]");
+  expect(exclude(repo)).toContain("/.claude/skills/notes\\[draft\\]");
   expect(status(repo)).toBe("");
 });
 

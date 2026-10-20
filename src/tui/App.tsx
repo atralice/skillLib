@@ -362,11 +362,7 @@ function skillActions(w: W.World, p: string, u: W.Usable, ui: Ui): Option[] {
             versionsOption(w, p, u.name, s.version, ui),
           ]
         : []),
-      fixOption(
-        s.personal
-          ? { label: "Pin it for the team", preview: `Move ${u.name}'s pin into ${p}'s skilllib.json. Git will see skilllib.json and ${s.dir}/${u.name}: commit them to share it.`, run: (w) => w.ops.pin(p, u.name, false) }
-          : { label: "Make it personal", preview: `Move ${u.name}'s pin out of ${p}'s skilllib.json into your personal pins, and keep its copy out of git.`, run: (w) => w.ops.pin(p, u.name, true) },
-      ),
+      ...((f) => (f ? [fixOption(f)] : []))(W.pinFix(w, p, s)),
       fixOption(remove),
       reviewOption(w, u.name, ui, p),
     ];
