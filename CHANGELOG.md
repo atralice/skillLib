@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.11.7](https://github.com/atralice/skillLib/compare/v1.11.6...v1.11.7) (2026-10-20)
+
+Small fixes from a re-check of 1.11.6.
+
+### Fixes
+* Doctor's "Turn the plugin off" says where it turned it off and which file changed: a project's `.claude/settings.json` (which git tracks), or a local `.claude/settings.local.json` (which git now ignores).
+* Without the `claude` command, turning off a plugin installed for one project now edits that project's settings, as the app's switch does, instead of refusing.
+* On a short screen (12 rows, under 80 columns), a long result no longer pushes the list off the screen.
+
 ## [1.11.6](https://github.com/atralice/skillLib/compare/v1.11.5...v1.11.6) (2026-10-20)
 
 Small fixes to the app's layout, from the full regression run on 1.11.5.
