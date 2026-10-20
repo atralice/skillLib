@@ -829,7 +829,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
     ctx.issues.push({
       id: `sync:${root}`,
       severity: "problem",
-      title: `${where}: ${plural(restorable.length, "skill")} in skilllib.json not installed`,
+      title: `${where}: ${plural(restorable.length, "skill")} pinned but not installed`,
       detail: `${restorable.map((s) => s.name).join(", ")}: the folder is missing`,
       at: rows(root, restorable.map((s) => s.name)),
       fix: {
@@ -856,7 +856,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
     ctx.issues.push({
       id: `out-of-sync:${root}`,
       severity: "suggestion",
-      title: `${where}: ${plural(drifted.length, "skill")} not at the version skilllib.json pins`,
+      title: `${where}: ${plural(drifted.length, "skill")} not at the pinned version`,
       detail: `${drifted.map((s) => s.name).join(", ")}: each copy is another version from your library. sync installs the pinned one.${
         yours
           ? ` ${[...new Set(drifted.flatMap((s) => (untrackable(s) ? [untrackable(s)!] : [])))]

@@ -241,7 +241,7 @@ test("a pinned skill whose folder is missing: sync restores it from the library;
 
   const issues = findIssues([project], machineSkills(), new Set(["alpha"]));
   const sync = issues.find((i) => i.id === `sync:${project}`)!;
-  expect(sync.title).toBe("web: 1 skill in skilllib.json not installed");
+  expect(sync.title).toBe("web: 1 skill pinned but not installed");
   expect(sync.detail).toBe("alpha: the folder is missing");
   const ghost = issues.find((i) => i.id === `unavailable:${project}:ghost-skill`)!;
   expect(ghost.title).toBe("ghost-skill: pinned in web's skilllib.json, but not in your library");

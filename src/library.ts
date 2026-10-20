@@ -885,7 +885,7 @@ export function addSkill(
   // A copy git already has can't become personal: excluding it wouldn't take it out of git.
   const committed = [primary, ...(recorded?.links ?? [])].find((d) => isGitTracked(root, `${d}/${name}`));
   if (mine && !recorded?.personal && committed)
-    return { name, action: "skipped", reason: `${committed}/${name} is committed to git, so it can't be personal: remove it from git first (git rm -r --cached ${committed}/${name})` };
+    return { name, action: "skipped", reason: `${committed}/${name} is committed to git, so it can't be personal: remove it from git first (git rm -r --cached '${`${committed}/${name}`.replace(/'/g, "'\\''")}')` };
   // The exclude block as it will be, before anything is written: a personal copy is never in git status, and the
   // link checks below see what git will see.
   if (mine || recorded?.personal) {
