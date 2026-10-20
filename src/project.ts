@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { claudeDir, codexHome, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readJson, readState, realNative, realPath, skilllibHome, userHome, writeState } from "./paths.js";
 import { versionForHash } from "./versions.js";
 import { ALL_PROJECT_DIRS } from "./harnesses.js";
@@ -132,7 +132,8 @@ export function writeManifest(root: string, manifest: Manifest) {
   for (const [name, dep] of Object.entries(readPins(file).skills)) if (onDisk[name] && manifest.skills[name] && !manifest.skills[name]!.personal) mine[name] = dep;
   if (Object.keys(mine).length) writeChanged(file, { ...pinsHeader(repoOf(root)!), skills: sorted(mine) });
   else rmSync(file, { force: true });
-  excludePersonal(root, mine);
+  // Only the pins that count: one skilllib.json hides is the team's, and its copy is git's business.
+  excludePersonal(root, Object.fromEntries(Object.entries(mine).filter(([name]) => !shared[name])));
 }
 
 /** writeState, unless the file already holds this: a personal change never touches skilllib.json, not even its spacing. */
@@ -299,7 +300,17 @@ export function excludePersonal(root: string, skills: Manifest["skills"] = Objec
   while (rest.length && rest[rest.length - 1] === "") rest.pop();
   // No trailing slash: a link is a file to git, and "x/" only matches folders. A name's glob characters ([, *, ?) are
   // escaped, so notes[draft] matches that folder and nothing else.
-  const paths = Object.entries(skills).flatMap(([name, d]) => [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].map((dir) => `/${dir}/${name.replace(/[[\]*?\\]/g, "\\$&")}`));
+  // Each folder also where it really is: git matches the real path, and a skills folder can be a link to another in the
+  // repo (.agents/skills → .claude/skills, or both → skills/), where the copy then shows up.
+  const top = realNative(root) ?? root;
+  const places = (dir: string) => {
+    const real = realNative(join(root, dir));
+    const rel = real ? relative(top, real).split(sep).join("/") : "";
+    return rel && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel) && rel !== dir ? [dir, rel] : [dir];
+  };
+  const paths = Object.entries(skills).flatMap(([name, d]) =>
+    [d.dir ?? PROJECT_SKILLS_DIR, ...(d.links ?? [])].flatMap(places).map((dir) => `/${dir}/${name.replace(/[[\]*?\\]/g, "\\$&")}`),
+  );
   const block = paths.length ? [EXCLUDE_START, ...[...new Set(paths)].sort(), EXCLUDE_END] : [];
   const next = [...rest, ...(rest.length && block.length ? [""] : []), ...block].join("\n") + (rest.length || block.length ? "\n" : "");
   if (next === text) return;

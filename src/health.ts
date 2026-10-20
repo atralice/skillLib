@@ -796,7 +796,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
     ctx.issues.push({
       id: `stuck:${root}:${name}`,
       severity: "problem",
-      title: `${name} in ${where}: sync can't put it back as skilllib.json pins it`,
+      title: `${name} in ${where}: sync can't put it back as ${pins[name]?.personal ? "your personal pins have" : "skilllib.json pins"} it`,
       // What to do depends on what's there: a folder that links out of the repo is a setup of yours, and a pin
       // your library has no version of can't come back by sync anyway.
       detail: `${blocker.said}, so sync can't put it back there.${
@@ -817,9 +817,9 @@ function repoIssues(root: string, ctx: RepoScan): void {
     ctx.issues.push({
       id: `pin:${root}:${s.name}`,
       severity: "problem",
-      title: `${s.name}: the version ${where}'s skilllib.json pins isn't in your library`,
+      title: `${s.name}: the version ${s.personal ? "your personal pins" : `${where}'s skilllib.json`} pin${s.personal ? "" : "s"} isn't in your library`,
       detail: `${s.state === "folder missing" ? "The folder is missing, and no" : "The copy is another version, and no"} version in Your skills has the content it pins (pinned from another library?). ${
-        untrackable(s) ? `${untrackable(s)}, so skilllib can't install it here.` : `Install your newest v${s.latest}; ${where}'s skilllib.json then pins it.`
+        untrackable(s) ? `${untrackable(s)}, so skilllib can't install it here.` : `Install your newest v${s.latest}; ${s.personal ? "your personal pins" : `${where}'s skilllib.json`} then pin${s.personal ? "" : "s"} it.`
       }`,
       at: rows(root, [s.name]),
       // It changes what the shared skilllib.json pins: a choice, never run by `doctor --fix`.
@@ -872,7 +872,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
     ctx.issues.push({
       id: `unavailable:${root}:${s.name}`,
       severity: "problem",
-      title: `${s.name}: pinned in ${where}'s skilllib.json, but not in your library`,
+      title: `${s.name}: pinned in ${s.personal ? "your personal pins" : `${where}'s skilllib.json`}, but not in your library`,
       detail: `Its folder is missing, and your library (${tildify(libraryDir())}) has no copy to restore: import it, or set SKILLLIB_HOME to the skilllib folder whose library has it.`,
       at: rows(root, [s.name]),
       // Editing skilllib.json is the team's call: a choice, never run by `doctor --fix`.
@@ -1088,7 +1088,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `local:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} isn't in your library`,
-        detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in skilllib.json.",
+        detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it (in skilllib.json, or your personal pins when it has none).",
         at: rows(root, [s.name]),
         choices: [
           {
@@ -1161,7 +1161,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `npx:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} came from npx skills, not your library`,
-        detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (${committed(s) ? "committed" : `${untrackable(s)}, so skilllib can't track it here`})` : `; ${where} then tracks it in skilllib.json`}.`,
+        detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (${committed(s) ? "committed" : `${untrackable(s)}, so skilllib can't track it here`})` : `; ${where} then tracks it (in skilllib.json, or your personal pins when it has none)`}.`,
         at: rows(root, [s.name]),
         choices: [
           {
