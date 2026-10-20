@@ -2,11 +2,11 @@
 
 ## [1.11.6](https://github.com/atralice/skillLib/compare/v1.11.5...v1.11.6) (2026-10-20)
 
+Small fixes to the app's layout, from the full regression run on 1.11.5.
 
-### Bug Fixes
-
-* a result gets a third of the screen (a group move's reasons fit at 80x24) ([#113](https://github.com/atralice/skillLib/issues/113)) ([b7e970a](https://github.com/atralice/skillLib/commit/b7e970aabf6d28a82843f86e382fe4569b4b41e5))
-* the tab bar fits narrow terminals; results get room to say why ([#111](https://github.com/atralice/skillLib/issues/111)) ([d4c2a1b](https://github.com/atralice/skillLib/commit/d4c2a1b253f1d47e6a8e96cb5e75c9b121813f7f))
+### Fixes
+* At narrow widths (60 columns) the tab bar drops the skilllib name and shortens "Your skills", so Health's issue count always shows in full (it showed "Health 3" for 38 issues).
+* A result can use up to a third of the screen: a group "Move all" says why each skill stayed, even at 80x24.
 
 ## [1.11.5](https://github.com/atralice/skillLib/compare/v1.11.4...v1.11.5) (2026-10-19)
 
