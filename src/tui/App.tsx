@@ -1281,9 +1281,9 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   }
 
   // ── Layout ──
-  // A result gets up to a quarter of the screen, three lines at least (a group move or delete says why each skill stayed);
-  // a question's keys share one.
-  const toastLines = toast && modal?.kind !== "confirm" ? wrap(toast, termCols - 2, Math.max(3, Math.floor(termRows / 4))).map((l) => " " + l) : [];
+  // A result gets up to a third of the screen, three lines at least (a group move or delete says why each skill stayed:
+  // about eight lines at 80x24); a question's keys share one.
+  const toastLines = toast && modal?.kind !== "confirm" ? wrap(toast, termCols - 2, Math.max(3, Math.floor(termRows / 3))).map((l) => " " + l) : [];
   const bottomH = Math.max(1, toastLines.length);
   // Tall enough to say everything a change does (e.g. every repo a deletion reaches).
   const confirmLines = modal?.kind === "confirm" ? wrap(modal.fix.preview, columns - 6, 6) : [];
