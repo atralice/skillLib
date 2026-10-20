@@ -346,7 +346,8 @@ export function setPluginOn(p: PluginRef, on: boolean): { ok: boolean; message: 
   const r = setPluginIn(settingsFileOf(p)!, p.id, on);
   if (!r.ok) return { ok: false, message: `${p.id}: ${r.reason}` };
   // A local install's switch is in .claude/settings.local.json: keep it out of git, as Claude Code does.
-  if (p.scope === "local" && p.projectPath) return { ...done, message: done.message + ignoreLocalSettings(p.projectPath) };
+  // Its note ("which git ignores") is about the file: name it first.
+  if (p.scope === "local" && p.projectPath) return { ...done, message: `${done.message}; it's in .claude/settings.local.json${ignoreLocalSettings(p.projectPath)}` };
   return done;
 }
 
