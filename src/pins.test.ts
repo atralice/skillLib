@@ -274,3 +274,25 @@ test("the CLI: --personal and --shared don't go together; --json says personal",
   expect(JSON.parse(added.stdout)).toEqual([{ name: "alpha", action: "installed", to: 1, dirs: [".claude/skills"], personal: true }]);
   expect(JSON.parse(cli("status", "--json").stdout).skills).toContainEqual({ source: "library", version: 1, git: "ignored", personal: true, skills: ["alpha"] });
 });
+
+test("moving the only pin back to personal takes away the skilllib.json --shared made, so adds stay personal", () => {
+  writeSkill(join(tmp, "src", "gamma"), "v1");
+  importSkill(join(tmp, "src", "gamma"));
+  addSkill(repo, "alpha");
+  addSkill(repo, "alpha", { personal: false });
+  expect(existsSync(join(repo, "skilllib.json"))).toBe(true);
+  addSkill(repo, "alpha", { personal: true });
+  expect(existsSync(join(repo, "skilllib.json"))).toBe(false);
+  expect(addSkill(repo, "gamma")).toMatchObject({ action: "installed" });
+  expect(readManifest(repo).skills.gamma?.personal).toBe(true);
+  expect(status(repo)).toBe("");
+  // One git tracks is the team's: it stays, even empty.
+  addSkill(repo, "alpha", { personal: false });
+  git(repo, "add", "skilllib.json", ".claude");
+  git(repo, "commit", "-qm", "share alpha");
+  git(repo, "rm", "-rq", "--cached", ".claude/skills/alpha");
+  git(repo, "commit", "-qm", "untrack the copy");
+  addSkill(repo, "alpha", { personal: true });
+  expect(existsSync(join(repo, "skilllib.json"))).toBe(true);
+});
+

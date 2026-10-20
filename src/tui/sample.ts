@@ -353,7 +353,7 @@ function sampleIssues(w: World): { issues: Found[]; unused: Found[] } {
   add(issues, {
     id: `sync:${root("web-app")}`,
     severity: "problem",
-    title: "web-app: 1 skill in skilllib.json not installed",
+    title: "web-app: 1 skill pinned but not installed",
     detail: "seo-meta: the folder is missing",
     fix: { label: "Sync the project", change: () => void (skill("web-app", "seo-meta").missing = false), said: "web-app: restored 1 skill" },
     at: at("web-app", "seo-meta"),

@@ -118,7 +118,11 @@ export function writeManifest(root: string, manifest: Manifest) {
   const mine = Object.fromEntries(Object.entries(manifest.skills).flatMap(([name, d]) => (d.personal ? [[name, withoutMark(d)]] : [])));
   const path = join(root, MANIFEST_FILE);
   const onDisk = readPins(path).skills;
-  if (existsSync(path) || Object.keys(shared).length) writeChanged(path, { ...manifest, skills: sorted(shared) });
+  // Emptied by moving its last pin to your personal pins, and never committed: skilllib made it (add --shared), so it
+  // goes again and the repo is back to pinning personally. One git tracks stays, empty: it's the team's.
+  const leftEmpty = !Object.keys(shared).length && Object.keys(mine).length > 0 && existsSync(path) && gitIn(root, ["ls-files", "--", MANIFEST_FILE]) === "";
+  if (leftEmpty) rmSync(path, { force: true });
+  else if (existsSync(path) || Object.keys(shared).length) writeChanged(path, { ...manifest, skills: sorted(shared) });
   const file = personalPinsFile(root);
   if (!file) {
     if (Object.keys(mine).length) throw new Error(`${root} isn't the top folder of a git repo, so it can't have personal pins`);

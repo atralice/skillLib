@@ -90,7 +90,8 @@ const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.S
 function tag(u: W.Usable): Seg {
   const s = u.local;
   if (s?.source === "lib") {
-    return [`lib v${s.version}${s.personal ? " · personal" : ""}`, color.accent];
+    // Fits the 14-character Source column: "lib v12 · personal" wouldn't.
+    return [s.personal ? `personal v${s.version}` : `lib v${s.version}`, color.accent];
   }
   if (s) return [s.source, color.blue];
   if (u.source === "global") return [u.machine?.kept ? "global ✓" : "global", color.yellow];
