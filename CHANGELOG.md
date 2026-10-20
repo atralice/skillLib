@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.0](https://github.com/atralice/skillLib/compare/v1.11.7...v1.12.0) (2026-10-20)
+
+### Personal pins
+A repo no longer has to commit `skilllib.json` to use skilllib.
+
+* **Personal pins:** pins can live in `~/.skilllib/pins/` (one file per repo, matched by its `origin` remote, so every clone and worktree shares it). skilllib keeps those skills' copies and links out of git with a block in the repo's `.git/info/exclude`; `.gitignore` doesn't change.
+* **Changed default:** in a repo without `skilllib.json`, `skilllib add` now pins personally instead of creating one. In a repo with `skilllib.json`, pins go there as before. `--personal` / `--shared` choose, and on an existing pin they move it, keeping its version.
+* `sync` brings personal skills back on a new clone, worktree or machine, already out of git. Personal pins made before a repo had a remote keep working after you add one.
+* `status --json` groups and change results carry `personal: true`. Doctor reports a skill pinned in both places (`shadowed:`) and offers to drop the personal pin.
+* App: a `personal vN` tag, and *Make it personal* / *Pin it for the team* actions, offered only where they can work.
+
+### Also
+* `~/.skilllib/config.json`'s list of repos where you allowed links in git-tracked folders is now `allowTracked`, matching `--allow-tracked`. Older configs are read as they are and saved under the new name.
+* A group "Move all" result says why each skill stayed, even at 80x24, and never pushes the list off a short screen.
+* The folder input's hint line shows its own keys.
+
 ## [1.11.7](https://github.com/atralice/skillLib/compare/v1.11.6...v1.11.7) (2026-10-20)
 
 Small fixes from a re-check of 1.11.6.
