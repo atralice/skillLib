@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/atralice/skillLib/compare/v1.12.0...v1.12.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* personal skills stay out of git through linked skills folders ([#127](https://github.com/atralice/skillLib/issues/127)) ([ddab2d3](https://github.com/atralice/skillLib/commit/ddab2d3596dbb764146c3a91301069e292b24710))
+
 ## [1.12.0](https://github.com/atralice/skillLib/compare/v1.11.7...v1.12.0) (2026-10-20)
 
 ### Personal pins
