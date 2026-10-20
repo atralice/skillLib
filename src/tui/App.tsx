@@ -69,6 +69,8 @@ type Item = {
   fold?: { key: string; open: boolean };
   inFold?: string;
 };
+/** A modal of one kind, for its key handler. */
+type ModalOf<K extends Modal["kind"]> = Extract<Modal, { kind: K }>;
 type Modal =
   /** `toast`: for a follow-up question, what the change before it said; shown again if you say no. */
   | { kind: "confirm"; fix: W.Fix; toast?: string }
@@ -1090,36 +1092,47 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     if (isNameChar(input, key)) return setFocus("list"), setQuery(query + input.toLowerCase());
     if (key.backspace || key.delete) return setQuery(query.slice(0, -1));
     if (input === "?") return setModal({ kind: "help" });
-    if (focus === "detail") {
-      // Options by line: a fix per line, or a row of actions. ↑↓ move by line, ←→ along a row;
-      // ← on a line's first option goes back a pane, like ← everywhere else.
-      const lines = (detail?.body ?? []).flatMap((l) => (l.row ? [l.row] : l.option !== undefined ? [[l.option]] : []));
-      const at = lines.findIndex((r) => r.includes(detailCursor));
-      const col = at < 0 ? 0 : lines[at]!.indexOf(detailCursor);
-      const goLine = (i: number) => lines[i] && setDetailCursor(lines[i]![Math.min(col, lines[i]!.length - 1)]!);
-      if (key.escape) return setFocus("list");
-      if (key.upArrow) return goLine(Math.max(0, at - 1));
-      if (key.downArrow) return goLine(at + 1);
-      if (key.leftArrow) return col > 0 ? setDetailCursor(lines[at]![col - 1]!) : setFocus("list");
-      if (key.rightArrow) return lines[at]?.[col + 1] !== undefined ? setDetailCursor(lines[at]![col + 1]!) : undefined;
-      if ((key.return || input === " ") && detail?.options[detailCursor]) return choose(detail.options[detailCursor]!);
-      return;
+    if (focus === "detail") return detailKeys(input, key);
+    if (focus === "sidebar") return sidebarKeys(key);
+    return listKeys(input, key);
+  });
+
+  /** The details pane: its options, a fix per line or a row of actions. */
+  function detailKeys(input: string, key: Key) {
+    // Options by line: a fix per line, or a row of actions. ↑↓ move by line, ←→ along a row;
+    // ← on a line's first option goes back a pane, like ← everywhere else.
+    const lines = (detail?.body ?? []).flatMap((l) => (l.row ? [l.row] : l.option !== undefined ? [[l.option]] : []));
+    const at = lines.findIndex((r) => r.includes(detailCursor));
+    const col = at < 0 ? 0 : lines[at]!.indexOf(detailCursor);
+    const goLine = (i: number) => lines[i] && setDetailCursor(lines[i]![Math.min(col, lines[i]!.length - 1)]!);
+    if (key.escape) return setFocus("list");
+    if (key.upArrow) return goLine(Math.max(0, at - 1));
+    if (key.downArrow) return goLine(at + 1);
+    if (key.leftArrow) return col > 0 ? setDetailCursor(lines[at]![col - 1]!) : setFocus("list");
+    if (key.rightArrow) return lines[at]?.[col + 1] !== undefined ? setDetailCursor(lines[at]![col + 1]!) : undefined;
+    if ((key.return || input === " ") && detail?.options[detailCursor]) return choose(detail.options[detailCursor]!);
+    return;
+  }
+
+  /** Places and repos. */
+  function sidebarKeys(key: Key) {
+    if (key.upArrow || key.downArrow) {
+      const d = key.upArrow ? -1 : 1;
+      let i = sideAt + d;
+      while (sideRows[i]?.header) i += d;
+      const next = sideRows[i];
+      if (!next) return;
+      if (next.key === "help") return setOnHelp(true);
+      return next.go(), setOnHelp(false), setFocus("sidebar");
     }
-    if (focus === "sidebar") {
-      if (key.upArrow || key.downArrow) {
-        const d = key.upArrow ? -1 : 1;
-        let i = sideAt + d;
-        while (sideRows[i]?.header) i += d;
-        const next = sideRows[i];
-        if (!next) return;
-        if (next.key === "help") return setOnHelp(true);
-        return next.go(), setOnHelp(false), setFocus("sidebar");
-      }
-      if (key.return && onHelp) return setModal({ kind: "help" });
-      if (key.rightArrow || key.return) return setOnHelp(false), setFocus("list");
-      if (key.escape) return setSideQuery("");
-      return;
-    }
+    if (key.return && onHelp) return setModal({ kind: "help" });
+    if (key.rightArrow || key.return) return setOnHelp(false), setFocus("list");
+    if (key.escape) return setSideQuery("");
+    return;
+  }
+
+  /** The list: moving, groups, tabs, and acting on the row you're on. */
+  function listKeys(input: string, key: Key) {
     // No Places pane: ← → switch places, wherever the list cursor is (groups open and close with space).
     if (!sidebar && (key.leftArrow || key.rightArrow)) {
       const i = PLACES.findIndex(([p]) => p === place) + (key.leftArrow ? -1 : 1);
@@ -1155,45 +1168,15 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
     if (place === "projects" && !open) return key.return ? (setOpen(current.name), setQuery(""), setChip("all")) : undefined;
     if (key.return && detail) return setFocus("detail"), setDetailCursor(0);
     if (input === " ") return fixSelected();
-  });
+  }
 
   function modalKeys(input: string, key: Key) {
     const m = modal!;
     if (m.kind === "help") return setModal(null);
-    if (m.kind === "agents") {
-      if (key.escape && !m.then) return setModal(null);
-      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
-      if (key.downArrow) return setModal({ ...m, cursor: Math.min(HARNESSES.length - 1, m.cursor + 1) });
-      if (input === " ") {
-        const id = HARNESSES[m.cursor]!.id;
-        return setModal({ ...m, selected: m.selected.includes(id) ? m.selected.filter((x) => x !== id) : [...m.selected, id] });
-      }
-      if (key.return) {
-        setModal(null);
-        apply((w) => w.ops.setAgents(m.selected));
-        m.then?.();
-      }
-      return;
-    }
-    if (m.kind === "input") {
-      if (key.escape) return setModal(null);
-      if (key.return) {
-        const value = m.value.trim() || m.placeholder;
-        setModal(null);
-        return value ? m.submit(value) : undefined;
-      }
-      if (key.backspace || key.delete) return setModal({ ...m, value: m.value.slice(0, -1) });
-      if (key.ctrl && input === "u") return setModal({ ...m, value: "" });
-      if (input && !key.ctrl && !key.meta) return setModal({ ...m, value: m.value + input });
-      return;
-    }
-    if (m.kind === "menu") {
-      if (key.escape) return setModal(null);
-      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
-      if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.options.length - 1, m.cursor + 1) });
-      if (key.return && m.options[m.cursor]) return setModal(null), choose(m.options[m.cursor]!);
-      return;
-    }
+    // These handle esc themselves; the rest close on it.
+    if (m.kind === "agents") return agentsKeys(m, input, key);
+    if (m.kind === "input") return inputKeys(m, input, key);
+    if (m.kind === "menu") return menuKeys(m, key);
     // Saying no to a follow-up keeps what the change said (e.g. which agents can't see a skill).
     if (key.escape) return setModal(null), m.kind === "confirm" && m.toast && setToast(m.toast);
     if (m.kind === "confirm") {
@@ -1204,80 +1187,129 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       }
       return;
     }
-    if (m.kind === "repos") {
-      const repos = (m.only ?? world.projects.map((p) => p.name)).filter((r) => !m.query || W.matches(r, m.query));
-      if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
-      if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
-      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
-      if (key.downArrow) return setModal({ ...m, cursor: Math.min(repos.length - 1, m.cursor + 1) });
-      if (input === " ") {
-        const picked = new Set(m.picked);
-        const r = repos[m.cursor];
-        if (!r) return;
-        if (!picked.delete(r)) picked.add(r);
-        return setModal({ ...m, picked });
-      }
-      if (key.return) {
-        if (!m.picked.size && !m.fix.allowNone) return setToast("Tick at least one repo with space, or esc to cancel");
-        setModal(null);
-        setFocus("list");
-        apply((w) => m.fix.pickRepos!(w, [...m.picked]));
-      }
-      return;
+    if (m.kind === "repos") return reposKeys(m, input, key);
+    if (m.kind === "fixall") return fixallKeys(m, input, key);
+    if (m.kind === "add") return addKeys(m, input, key);
+  }
+
+  /** Which agents you use (first run, and Settings). */
+  function agentsKeys(m: ModalOf<"agents">, input: string, key: Key) {
+    if (key.escape && !m.then) return setModal(null);
+    if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+    if (key.downArrow) return setModal({ ...m, cursor: Math.min(HARNESSES.length - 1, m.cursor + 1) });
+    if (input === " ") {
+      const id = HARNESSES[m.cursor]!.id;
+      return setModal({ ...m, selected: m.selected.includes(id) ? m.selected.filter((x) => x !== id) : [...m.selected, id] });
     }
-    if (m.kind === "fixall") {
-      if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
-      if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.items.length - 1, m.cursor + 1) });
-      if (input === " ") return setModal({ ...m, items: m.items.map((it, i) => (i === m.cursor ? { ...it, on: !it.on } : it)) });
-      if (key.return) {
-        setModal(null);
-        const chosen = m.items.filter((it) => it.on);
-        apply((w) => W.runAll(w, chosen.map((it) => it.fix)));
-      }
-      return;
+    if (key.return) {
+      setModal(null);
+      apply((w) => w.ops.setAgents(m.selected));
+      m.then?.();
     }
-    if (m.kind === "add") {
-      const rows = W.addRows(world, m.target, m.query);
-      const cursor = addCursor(rows, m.cursor);
-      const step = (d: number) => {
-        let i = cursor + d;
-        while (rows[i]?.header) i += d;
-        return rows[i] ? setModal({ ...m, cursor: i }) : undefined;
-      };
-      if (key.upArrow) return step(-1);
-      if (key.downArrow) return step(1);
-      if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
-      // Space ticks a skill, or a group's every member (unticks them when all are ticked); picks survive searching.
-      const members = rows[cursor]?.members;
-      if (input === " " && members) {
-        const picked = new Set(m.picked);
-        const all = members.every((n) => picked.has(n));
-        for (const n of members) all ? picked.delete(n) : picked.add(n);
-        return setModal({ ...m, picked });
-      }
-      if (key.return && m.target && m.picked.size) {
-        const [target, names] = [m.target, [...m.picked]];
-        setModal(null);
-        return apply((w) => w.ops.addTo([target], names));
-      }
-      if (key.return && rows[cursor]?.agent) {
-        setModal(null);
-        return ui.copy(writeSkillPrompt(world, m.query, m.target), "a prompt for an agent to write the skill");
-      }
-      if (key.return && rows[cursor]?.run) {
-        const row = rows[cursor]!;
-        if (row.create && !/^[a-z0-9]/.test(m.query)) return setToast("Type the new skill's name first");
-        setModal(null);
-        if (!row.create) return apply(row.run!);
-        // A new skill opens in your editor, and goes into the repo once you've written it. Nothing
-        // reads the library in between, so the template never becomes a version of its own.
-        // Creating can fail (a name the library won't take): say why, rather than open nothing.
-        const created = row.run!(world);
-        if (W.isFailure(created)) return setToast(`✗ ${said(created)}`);
-        return edit(world.ops.libraryFile(m.query), row.afterEdit);
-      }
-      if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
+    return;
+  }
+
+  /** A line of text (a new skill's name). */
+  function inputKeys(m: ModalOf<"input">, input: string, key: Key) {
+    if (key.escape) return setModal(null);
+    if (key.return) {
+      const value = m.value.trim() || m.placeholder;
+      setModal(null);
+      return value ? m.submit(value) : undefined;
     }
+    if (key.backspace || key.delete) return setModal({ ...m, value: m.value.slice(0, -1) });
+    if (key.ctrl && input === "u") return setModal({ ...m, value: "" });
+    if (input && !key.ctrl && !key.meta) return setModal({ ...m, value: m.value + input });
+    return;
+  }
+
+  /** A list of actions to pick from. */
+  function menuKeys(m: ModalOf<"menu">, key: Key) {
+    if (key.escape) return setModal(null);
+    if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+    if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.options.length - 1, m.cursor + 1) });
+    if (key.return && m.options[m.cursor]) return setModal(null), choose(m.options[m.cursor]!);
+    return;
+  }
+
+  /** Ticking repos for a change. */
+  function reposKeys(m: ModalOf<"repos">, input: string, key: Key) {
+    const repos = (m.only ?? world.projects.map((p) => p.name)).filter((r) => !m.query || W.matches(r, m.query));
+    if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
+    if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
+    if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+    if (key.downArrow) return setModal({ ...m, cursor: Math.min(repos.length - 1, m.cursor + 1) });
+    if (input === " ") {
+      const picked = new Set(m.picked);
+      const r = repos[m.cursor];
+      if (!r) return;
+      if (!picked.delete(r)) picked.add(r);
+      return setModal({ ...m, picked });
+    }
+    if (key.return) {
+      if (!m.picked.size && !m.fix.allowNone) return setToast("Tick at least one repo with space, or esc to cancel");
+      setModal(null);
+      setFocus("list");
+      apply((w) => m.fix.pickRepos!(w, [...m.picked]));
+    }
+    return;
+  }
+
+  /** Ticking the fixes "Fix N issues" runs. */
+  function fixallKeys(m: ModalOf<"fixall">, input: string, key: Key) {
+    if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
+    if (key.downArrow) return setModal({ ...m, cursor: Math.min(m.items.length - 1, m.cursor + 1) });
+    if (input === " ") return setModal({ ...m, items: m.items.map((it, i) => (i === m.cursor ? { ...it, on: !it.on } : it)) });
+    if (key.return) {
+      setModal(null);
+      const chosen = m.items.filter((it) => it.on);
+      apply((w) => W.runAll(w, chosen.map((it) => it.fix)));
+    }
+    return;
+  }
+
+  /** Add skills: search, tick, then enter. */
+  function addKeys(m: ModalOf<"add">, input: string, key: Key) {
+    const rows = W.addRows(world, m.target, m.query);
+    const cursor = addCursor(rows, m.cursor);
+    const step = (d: number) => {
+      let i = cursor + d;
+      while (rows[i]?.header) i += d;
+      return rows[i] ? setModal({ ...m, cursor: i }) : undefined;
+    };
+    if (key.upArrow) return step(-1);
+    if (key.downArrow) return step(1);
+    if (key.backspace || key.delete) return setModal({ ...m, query: m.query.slice(0, -1), cursor: 0 });
+    // Space ticks a skill, or a group's every member (unticks them when all are ticked); picks survive searching.
+    const members = rows[cursor]?.members;
+    if (input === " " && members) {
+      const picked = new Set(m.picked);
+      const all = members.every((n) => picked.has(n));
+      for (const n of members) all ? picked.delete(n) : picked.add(n);
+      return setModal({ ...m, picked });
+    }
+    if (key.return && m.target && m.picked.size) {
+      const [target, names] = [m.target, [...m.picked]];
+      setModal(null);
+      return apply((w) => w.ops.addTo([target], names));
+    }
+    if (key.return && rows[cursor]?.agent) {
+      setModal(null);
+      return ui.copy(writeSkillPrompt(world, m.query, m.target), "a prompt for an agent to write the skill");
+    }
+    if (key.return && rows[cursor]?.run) {
+      const row = rows[cursor]!;
+      if (row.create && !/^[a-z0-9]/.test(m.query)) return setToast("Type the new skill's name first");
+      setModal(null);
+      if (!row.create) return apply(row.run!);
+      // A new skill opens in your editor, and goes into the repo once you've written it. Nothing
+      // reads the library in between, so the template never becomes a version of its own.
+      // Creating can fail (a name the library won't take): say why, rather than open nothing.
+      const created = row.run!(world);
+      if (W.isFailure(created)) return setToast(`✗ ${said(created)}`);
+      return edit(world.ops.libraryFile(m.query), row.afterEdit);
+    }
+    if (isNameChar(input, key)) return setModal({ ...m, query: m.query + input.toLowerCase(), cursor: 0 });
   }
 
   // ── Layout ──
