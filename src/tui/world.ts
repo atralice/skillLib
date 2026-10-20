@@ -26,6 +26,8 @@ export type LocalSkill = {
   version?: number;
   /** Tracked in your personal pins (~/.skilllib/pins), not skilllib.json: only on your machines, kept out of git. */
   personal?: boolean;
+  /** A tracked skill git has: its copy, or a link skilllib.json records. */
+  inGit?: boolean;
   edited?: boolean;
   missing?: boolean;
   /** Its git state; null when the repo isn't a git repo. */
@@ -416,14 +418,14 @@ function globalFixes(m: MachineSkill): Fix[] {
  */
 /**
  * Moving a library skill's pin between the repo's skilllib.json and your personal pins, when that can succeed: its
- * version is in your library, and (to make it personal) git doesn't have its copy, since excluding that wouldn't
+ * version is in your library, and (to make it personal) git doesn't have its copy or links, since excluding them wouldn't
  * take it out of git.
  */
 export function pinFix(w: World, repo: string, s: LocalSkill): Fix | null {
   if (s.source !== "lib" || !w.library.some((l) => l.name === s.name)) return null;
   if (s.personal)
     return { label: "Pin it for the team", preview: `Move ${s.name}'s pin into ${repo}'s skilllib.json. Git will see skilllib.json and ${s.dir}/${s.name}: commit them to share it.`, run: (w) => w.ops.pin(repo, s.name, false) };
-  if (isShared(s.git)) return null;
+  if (s.inGit || isShared(s.git)) return null;
   return {
     label: "Make it personal",
     preview: `Move ${s.name}'s pin out of ${repo}'s skilllib.json into your personal pins, and keep its copy out of git.${

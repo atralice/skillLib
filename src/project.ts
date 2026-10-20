@@ -187,7 +187,7 @@ export function normalizeRemote(url: string): string {
  * A repo as personal pins see it: `file`, its pins file (null for anything but the top folder of a git repo: only
  * those can have personal pins); `folder`, its main checkout (shared by its worktrees); `common`, its git folder.
  */
-type Repo = { file: string | null; folder: string; common: string; remote?: string };
+type Repo = { file: string | null; folder: string; common: string; remote?: string; root: string };
 
 /** Per folder, with what tells it's stale: git's config file and when it changed, or (outside a repo) no .git yet. */
 const repos = new Map<string, { repo: Repo | null; config: string | null; seen: number }>();
@@ -219,24 +219,30 @@ function repoOf(root: string): Repo | null {
     const urls = (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => l.split(" "));
     const url = (urls.find(([k]) => k === "remote.origin.url") ?? urls[0])?.[1];
     const remote = url ? normalizeRemote(url) : undefined;
-    repo = { file: pinsFileFor(remote, folder), folder, common, ...(remote ? { remote } : {}) };
+    repo = { file: pinsFileFor(root, remote, folder), folder, common, ...(remote ? { remote } : {}), root };
   }
   repos.set(real, { repo, config, seen });
   return repo;
 }
 
+/** A repo's first commit: what tells it from another repo cloned into the same folder later. Null before any commit. */
+const firstCommit = (root: string) => gitIn(root, ["rev-list", "--max-parents=0", "HEAD"])?.split("\n")[0] || null;
+
 /**
  * The pins file for a remote (or, without one, a folder). One that's missing takes over this checkout's file under
- * another name: written before the repo had a remote, or under a remote since renamed. Every file records its folder.
+ * another name: written before the repo had a remote, or under a remote since renamed. Every file records its folder
+ * and the repo's first commit, and only the same repo takes it over: a file without a first commit only when it has
+ * no remote either (another repo cloned into a deleted one's folder has a remote).
  */
-function pinsFileFor(remote: string | undefined, folder: string): string {
+function pinsFileFor(root: string, remote: string | undefined, folder: string): string {
   const name = remote ?? `local-${basename(folder)}`;
   const slug = name.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80);
   const file = join(personalPinsDir(), `${slug}-${createHash("sha1").update(remote ?? folder).digest("hex").slice(0, 8)}.json`);
   if (existsSync(file) || !existsSync(personalPinsDir())) return file;
   for (const other of readdirSync(personalPinsDir()).filter((f) => f.endsWith(".json"))) {
     const at = join(personalPinsDir(), other);
-    if (readJson<{ path?: string }>(at)?.path === folder) {
+    const theirs = readJson<{ path?: string; remote?: string; first?: string }>(at);
+    if (theirs?.path === folder && (theirs.first ? theirs.first === firstCommit(root) : !theirs.remote)) {
       renameSync(at, file);
       break;
     }
@@ -245,7 +251,7 @@ function pinsFileFor(remote: string | undefined, folder: string): string {
 }
 
 /** What a pins file says besides its pins: the repo's remote and its folder. */
-const pinsHeader = (repo: Repo) => ({ ...(repo.remote ? { remote: repo.remote } : {}), path: repo.folder });
+const pinsHeader = (repo: Repo) => ((first) => ({ ...(repo.remote ? { remote: repo.remote } : {}), path: repo.folder, ...(first ? { first } : {}) }))(firstCommit(repo.root));
 
 /** Your personal pins file for this repo, or null when it can't have one (see repoOf). It may not exist yet. */
 export function personalPinsFile(root: string): string | null {

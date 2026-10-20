@@ -939,3 +939,19 @@ test("moving a pin is offered only where it can succeed: never to make the team'
   expect(local(w, "mine").local!.personal).toBe(true);
   expect(pinFix(w, "app", local(w, "mine").local!)!.label).toBe("Pin it for the team");
 });
+
+test("a pinned skill whose link git has isn't offered as personal, even with its copy out of git", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  setHarnesses(["claude-code", "codex"]);
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
+  writeSkill(join(tmp, "src", "tool"));
+  importSkill(join(tmp, "src", "tool"));
+  addSkill(repo, "tool");
+  // The copy is in .agents/skills (not committed); only Claude Code's link in .claude/skills is.
+  git("add", "skilllib.json", ".claude/skills/tool");
+  git("commit", "-qm", "link only");
+  const w = loadWorld();
+  expect(pinFix(w, "app", local(w, "tool").local!)).toBeNull();
+});

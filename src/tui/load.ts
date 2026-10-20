@@ -100,6 +100,8 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
   const others = otherCopies(root, s.name, s.location);
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
   const own = other[s.state]?.source === "untracked" && isShared(state) ? { source: "repo" as const } : {};
+  // A pinned skill git has (its copy, or a link skilllib.json records) can't become personal.
+  const inGit = s.managed && (isShared(state) || (readManifest(root).skills[s.name]?.links ?? []).some((d) => isShared(git?.of(`${d}/${s.name}`))));
   return {
     name: s.name,
     source: "lib",
@@ -107,7 +109,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     path: s.path,
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
-    ...(s.managed ? { version: s.version ?? undefined, ...(s.personal ? { personal: true } : {}), ...managed[s.state] } : { ...other[s.state], ...own }),
+    ...(s.managed ? { version: s.version ?? undefined, ...(s.personal ? { personal: true } : {}), ...(inGit ? { inGit: true } : {}), ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
     ...(others.length ? { others } : {}),
     git: state,

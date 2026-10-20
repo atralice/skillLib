@@ -237,6 +237,19 @@ test("adding a remote to a repo keeps its personal pins, out of git", () => {
   expect(status(solo)).toBe("");
 });
 
+test("another repo cloned into a deleted one's folder doesn't take over its pins", () => {
+  const solo = join(tmp, "solo");
+  mkdirSync(solo);
+  git(solo, "init", "-q");
+  git(solo, "commit", "-q", "--allow-empty", "-m", "init");
+  addSkill(solo, "alpha");
+  const old = personalPinsFile(solo)!;
+  rmSync(solo, { recursive: true, force: true });
+  const other = clone("solo", "git@github.com:someone/else.git");
+  expect(readManifest(other).skills).toEqual({});
+  expect(existsSync(old)).toBe(true);
+});
+
 test("a skill name with glob characters is excluded as itself", () => {
   writeSkill(join(tmp, "src", "notes[draft]"), "n");
   importSkill(join(tmp, "src", "notes[draft]"));
