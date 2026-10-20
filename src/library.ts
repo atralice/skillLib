@@ -3,7 +3,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, re
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
-import { enabledHarnesses, readConfig, setKeepGlobal } from "./config.js";
+import { allowsTrackedLinks, enabledHarnesses, setKeepGlobal } from "./config.js";
 import { knownProjects, readManifest, writeManifest, type Dependency } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
@@ -713,7 +713,7 @@ export function linkEverywhere(root: string, name: string, location: string, { a
         if (!result.uncommitted.includes(dir)) result.uncommitted.push(dir);
         continue;
       }
-      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+      if (!allowTracked && !allowsTrackedLinks(root)) {
         // Codex and Zed share .agents/skills: one folder, listed once.
         if (!result.blocked.includes(dir)) result.blocked.push(dir);
         continue;
@@ -909,7 +909,7 @@ export function addSkill(
         uncommitted.push(dir);
         continue;
       }
-      if (!allowTracked && !readConfig().agentsDirOk?.includes(root)) {
+      if (!allowTracked && !allowsTrackedLinks(root)) {
         blocked.push(dir);
         continue;
       }
