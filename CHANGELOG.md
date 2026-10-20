@@ -2,17 +2,19 @@
 
 ## [1.12.0](https://github.com/atralice/skillLib/compare/v1.11.7...v1.12.0) (2026-10-20)
 
+### Personal pins
+A repo no longer has to commit `skilllib.json` to use skilllib.
 
-### Features
+* **Personal pins:** pins can live in `~/.skilllib/pins/` (one file per repo, matched by its `origin` remote, so every clone and worktree shares it). skilllib keeps those skills' copies and links out of git with a block in the repo's `.git/info/exclude`; `.gitignore` doesn't change.
+* **Changed default:** in a repo without `skilllib.json`, `skilllib add` now pins personally instead of creating one. In a repo with `skilllib.json`, pins go there as before. `--personal` / `--shared` choose, and on an existing pin they move it, keeping its version.
+* `sync` brings personal skills back on a new clone, worktree or machine, already out of git. Personal pins made before a repo had a remote keep working after you add one.
+* `status --json` groups and change results carry `personal: true`. Doctor reports a skill pinned in both places (`shadowed:`) and offers to drop the personal pin.
+* App: a `personal vN` tag, and *Make it personal* / *Pin it for the team* actions, offered only where they can work.
 
-* personal pins in ~/.skilllib/pins, kept out of git ([#122](https://github.com/atralice/skillLib/issues/122)) ([e371642](https://github.com/atralice/skillLib/commit/e3716424f7acac860c8af7cec8d551428c4d731b))
-
-
-### Bug Fixes
-
-* personal pins survive a package sync and a new remote; Make it personal only where it can work ([#125](https://github.com/atralice/skillLib/issues/125)) ([247978d](https://github.com/atralice/skillLib/commit/247978d2c919c80f872d77e964b4235b3fed1770))
-* personal-pins check findings ([#126](https://github.com/atralice/skillLib/issues/126)) ([a31f03c](https://github.com/atralice/skillLib/commit/a31f03ccf0e5345d1ee316312ef53c810fe05764))
-* the folder input's hint line says its own keys, not "any key closes" ([#123](https://github.com/atralice/skillLib/issues/123)) ([311b0d8](https://github.com/atralice/skillLib/commit/311b0d84e7243e47227441eb4a30500037602daa))
+### Also
+* `~/.skilllib/config.json`'s list of repos where you allowed links in git-tracked folders is now `allowTracked`, matching `--allow-tracked`. Older configs are read as they are and saved under the new name.
+* A group "Move all" result says why each skill stayed, even at 80x24, and never pushes the list off a short screen.
+* The folder input's hint line shows its own keys.
 
 ## [1.11.7](https://github.com/atralice/skillLib/compare/v1.11.6...v1.11.7) (2026-10-20)
 
