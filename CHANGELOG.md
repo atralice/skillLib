@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.12.0](https://github.com/atralice/skillLib/compare/v1.11.7...v1.12.0) (2026-10-20)
+
+
+### Features
+
+* personal pins in ~/.skilllib/pins, kept out of git ([#122](https://github.com/atralice/skillLib/issues/122)) ([e371642](https://github.com/atralice/skillLib/commit/e3716424f7acac860c8af7cec8d551428c4d731b))
+
+
+### Bug Fixes
+
+* personal pins survive a package sync and a new remote; Make it personal only where it can work ([#125](https://github.com/atralice/skillLib/issues/125)) ([247978d](https://github.com/atralice/skillLib/commit/247978d2c919c80f872d77e964b4235b3fed1770))
+* personal-pins check findings ([#126](https://github.com/atralice/skillLib/issues/126)) ([a31f03c](https://github.com/atralice/skillLib/commit/a31f03ccf0e5345d1ee316312ef53c810fe05764))
+* the folder input's hint line says its own keys, not "any key closes" ([#123](https://github.com/atralice/skillLib/issues/123)) ([311b0d8](https://github.com/atralice/skillLib/commit/311b0d84e7243e47227441eb4a30500037602daa))
+
 ## [1.11.7](https://github.com/atralice/skillLib/compare/v1.11.6...v1.11.7) (2026-10-20)
 
 Small fixes from a re-check of 1.11.6.
