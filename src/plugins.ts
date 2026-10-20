@@ -417,7 +417,8 @@ export function removePlugin(plugin: ClaudePlugin, how: "delete" | "off"): { ok:
   // One install goes; another (in a project) stays, and the message says so.
   const others = uninstall ? (installedPluginsJson()[plugin.id] ?? []).filter((e) => (e.scope ?? "user") !== (plugin.scope ?? "user") || e.projectPath !== plugin.projectPath) : [];
   const left = others.length ? `; its ${others.map((e) => `${e.scope ?? "user"} install${e.projectPath ? ` in ${basename(e.projectPath)}` : ""}`).join(", ")} stays` : "";
-  return { ok: true, message: `${plugin.id} ${uninstall ? `removed (${plugin.scope ?? "user"} install)` : "turned off"}${saved}${left}` };
+  // Turned off: setPluginOn's message says where, and which file git sees (a project's settings.json, a local one it ignores).
+  return { ok: true, message: uninstall ? `${plugin.id} removed (${plugin.scope ?? "user"} install)${saved}${left}` : `${r.message}${saved}` };
 }
 
 /** Remembers a plugin skilllib uninstalled, so it can be reinstalled from the backups. */
