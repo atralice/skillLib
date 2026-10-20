@@ -44,7 +44,7 @@ test("a synced plugin is turned off in settings.json, keeping everything else th
   skill(join(tmp, "synced", "skills", "use-railway"));
   const plugin: ClaudePlugin = { id: "railway@synced", scope: null, synced: true, skills: [join(tmp, "synced", "skills", "use-railway")], extras: [] };
 
-  expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "railway@synced turned off; use-railway copied into Your skills" });
+  expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "railway@synced is off; use-railway copied into Your skills" });
   expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"))).toEqual({
     model: "opus",
     enabledPlugins: { "other@mk": true, "railway@synced": false },
@@ -492,7 +492,7 @@ test.skipIf(process.platform === "win32")("turning off a plugin never copies its
   skill(join(tmp, "p", "skills", "glob-one"), "the plugin's");
   skill(join(tmp, "p", "skills", "tk-extra"));
   const plugin: ClaudePlugin = { id: "tk@mk", scope: "user", synced: false, skills: [join(tmp, "p", "skills", "glob-one"), join(tmp, "p", "skills", "tk-extra")], extras: [] };
-  withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "tk@mk turned off; tk-extra copied into Your skills" }));
+  withPath("/usr/bin:/bin", () => expect(removePlugin(plugin, "off")).toMatchObject({ ok: true, message: "tk@mk is off; Claude Code picks it up in its next session; tk-extra copied into Your skills" }));
   expect(existsSync(join(tmp, "home", "library", "glob-one"))).toBe(false);
 });
 
