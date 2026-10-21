@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-20)
+## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-21)
 
 Fixes from a code review of personal pins.
 
