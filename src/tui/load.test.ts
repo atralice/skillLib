@@ -987,6 +987,9 @@ test("Pin it for the team says which link it held back, as Add does", () => {
   const w = loadWorld();
   const fix = pinFix(w, "app", local(w, "tool").local!)!;
   expect(fix.label).toBe("Pin it for the team");
-  expect(said(fix.run(w))).toContain("not linked in .claude/skills");
+  const r = fix.run(w);
+  expect(said(r)).toContain("tool is now pinned in app's skilllib.json for the team, but not linked in .claude/skills");
+  expect(said(r)).toContain("Commit .agents/skills/tool, then run skilllib link --allow-tracked");
+  expect(said(r)).not.toContain("is already in");
 });
 
