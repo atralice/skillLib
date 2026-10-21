@@ -422,9 +422,16 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     pin: (repo, name, personal) => {
       const c = addSkill(rootOf(repo), name, { personal });
       if (c.action === "skipped") return failed(`${name}: ${withoutForceHint(c.reason ?? "skipped")}`);
-      // A link git would now see (moving to skilllib.json) can be held back: said, and asked about, as Add says it.
-      if (c.uncommitted?.length || c.blocked?.length || c.inTheWay?.length) return withLinks(c, repo, name);
-      return personal ? `${name} is now personal in ${repo}: only on your machines, kept out of git` : `${name} is now pinned in ${repo}'s skilllib.json for the team`;
+      const moved = personal ? `${name} is now personal in ${repo}: only on your machines, kept out of git` : `${name} is now pinned in ${repo}'s skilllib.json for the team`;
+      // A personal copy was never committed, so a link in a folder git tracks would break for teammates: held back, and
+      // the agents reading that folder lose the skill until it's committed. Said, with what to do, as the CLI says it.
+      if (c.uncommitted?.length) {
+        const copy = `${copyDir(repo, name)}/${name}`;
+        return failed(`${moved}, but not linked in ${c.uncommitted.join(", ")}: git tracks ${c.uncommitted.length === 1 ? "it" : "them"} and ${copy} isn't committed, so agents reading ${c.uncommitted.length === 1 ? "it" : "them"} can't use ${name}. Commit ${copy}, then run skilllib link --allow-tracked`);
+      }
+      // A link git would see, or something in a link's way: asked about, as Add does.
+      if (c.blocked?.length || c.inTheWay?.length) return withLinks(c, repo, name);
+      return moved;
     },
     copyToLibrary: (repo, name) => ((s) => (s ? toLibrary(s.path) : failed(`${name} isn't in ${repo} any more`)))(find(repo, name)),
     deleteGlobal: (m) => {
