@@ -955,3 +955,38 @@ test("a pinned skill whose link git has isn't offered as personal, even with its
   const w = loadWorld();
   expect(pinFix(w, "app", local(w, "tool").local!)).toBeNull();
 });
+
+test("moving a pin isn't offered for an edited copy, nor where personal pins can't be (a folder git doesn't know)", () => {
+  // The fake .git in this repo isn't one git can read: no personal pins here.
+  writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
+  writeSkill(join(tmp, "src", "tool"));
+  importSkill(join(tmp, "src", "tool"));
+  addSkill(repo, "tool");
+  expect(pinFix(loadWorld(), "app", local(loadWorld(), "tool").local!)).toBeNull();
+  // A real repo: offered, until the copy is edited.
+  rmSync(join(repo, ".git"), { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: repo, stdio: "ignore" });
+  expect(pinFix(loadWorld(), "app", local(loadWorld(), "tool").local!)?.label).toBe("Make it personal");
+  writeFileSync(join(repo, ".claude", "skills", "tool", "SKILL.md"), "edited\n");
+  expect(pinFix(loadWorld(), "app", local(loadWorld(), "tool").local!)).toBeNull();
+});
+
+test("Pin it for the team says which link it held back, as Add does", () => {
+  rmSync(join(repo, ".git"), { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: repo, stdio: "ignore" });
+  git("init", "-q");
+  setHarnesses(["claude-code", "codex"]);
+  // .claude/skills is a folder git tracks: a new link there is seen by the team.
+  mkdirSync(join(repo, ".claude", "skills"), { recursive: true });
+  writeFileSync(join(repo, ".claude", "skills", ".keep"), "");
+  git("add", ".claude/skills/.keep");
+  git("commit", "-qm", "folder");
+  writeSkill(join(tmp, "src", "tool"));
+  importSkill(join(tmp, "src", "tool"));
+  addSkill(repo, "tool"); // personal, no skilllib.json
+  const w = loadWorld();
+  const fix = pinFix(w, "app", local(w, "tool").local!)!;
+  expect(fix.label).toBe("Pin it for the team");
+  expect(said(fix.run(w))).toContain("not linked in .claude/skills");
+});
+

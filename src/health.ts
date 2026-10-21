@@ -7,7 +7,7 @@ import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, pac
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realNative, realPath as realPathOf } from "./paths.js";
 import { isDir, skillDirsIn, treeHash } from "./skills.js";
-import { dropPersonalPin, knownProjects, personalPins, pinsIn, readableRoots, readManifest } from "./project.js";
+import { dropPersonalPin, knownProjects, personalPins, personalPinsFile, pinsIn, readableRoots, readManifest } from "./project.js";
 import { claudePlugins, cursorPluginSkills, installedPlugins, pluginNameOf, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { latestVersion, versionForHash, versionHistory } from "./versions.js";
@@ -47,7 +47,12 @@ function intoLibrary(path: string, force = false): string {
   return r.name;
 }
 
-/** Tracks a library skill in a repo's skilllib.json; throws when it couldn't. */
+/** Where a pin is, in words: the repo's skilllib.json, or your personal pins. */
+const pinsOf = (where: string, personal?: boolean) => (personal ? "your personal pins" : `${where}'s skilllib.json`);
+/** Where a new pin goes (as addSkill decides): skilllib.json when the repo has one or can't have personal pins. */
+const newPinsOf = (root: string, where: string) => pinsOf(where, !existsSync(join(root, MANIFEST_FILE)) && personalPinsFile(root) !== null);
+
+/** Tracks a library skill in a repo (its skilllib.json, or your personal pins when it has none); throws when it couldn't. */
 function track(root: string, name: string): Change {
   const c = addSkill(root, name);
   if (c.action === "skipped") throw new Error(`${name}: ${c.reason}`);
@@ -823,7 +828,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
       }`,
       at: rows(root, [s.name]),
       // It changes what the shared skilllib.json pins: a choice, never run by `doctor --fix`.
-      ...(untrackable(s) ? {} : { choices: [{ label: `Install your newest (v${s.latest})`, hint: `${where}'s skilllib.json pins it`, run: () => `${s.name}: installed v${track(root, s.name).to}` }] }),
+      ...(untrackable(s) ? {} : { choices: [{ label: `Install your newest (v${s.latest})`, hint: s.personal ? "your personal pins pin it" : `${where}'s skilllib.json pins it`, run: () => `${s.name}: installed v${track(root, s.name).to}` }] }),
     });
   if (restorable.length > 0) {
     ctx.issues.push({
@@ -878,12 +883,12 @@ function repoIssues(root: string, ctx: RepoScan): void {
       // Editing skilllib.json is the team's call: a choice, never run by `doctor --fix`.
       choices: [
         {
-          label: "Remove it from skilllib.json",
+          label: s.personal ? "Remove it from your personal pins" : "Remove it from skilllib.json",
           hint: `${where} stops pinning it`,
           run: () => {
             const r = removeSkill(root, s.name);
             if (r.action !== "removed") throw new Error(`${s.name}: ${r.reason}`);
-            return `${s.name}: removed from ${where}'s skilllib.json`;
+            return `${s.name}: removed from ${pinsOf(where, s.personal)}`;
           },
         },
       ],
@@ -901,7 +906,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
       choices: [
         {
           label: "Update to the newest versions",
-          hint: isShared(gitOf(root)?.of(MANIFEST_FILE)) ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
+          hint: behind.some((s) => !s.personal) && isShared(gitOf(root)?.of(MANIFEST_FILE)) ? "git will see the new copies and skilllib.json" : "replaces each copy with your library's newest",
           run: () => summarize(where, "updated", updateProject(root, behind.map((s) => s.name))),
         },
       ],
@@ -1013,7 +1018,8 @@ function repoIssues(root: string, ctx: RepoScan): void {
     const missing = [...new Set(partial.flatMap((s) => s.visibility.filter((v) => v.paths === 0).map((v) => v.id)))];
     const tracked = [...new Set(blindHere.flatMap(({ would }) => would.blocked))];
     // Links for a skill skilllib manages are recorded in skilllib.json: when that's committed, git sees it too.
-    const manifestShared = partial.some((s) => s.managed) && isShared(gitOf(root)?.of(MANIFEST_FILE));
+    // Personal skills' links go in your personal pins, which git never sees.
+    const manifestShared = partial.some((s) => s.managed && !s.personal) && isShared(gitOf(root)?.of(MANIFEST_FILE));
     const run = (allowTracked: boolean) => () => {
       if (allowTracked) allowTrackedLinks(root);
       // Only the skills this issue lists (not one an agent already loads from a global copy).
@@ -1109,9 +1115,9 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `adopt:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} isn't tracked`,
-        detail: "It's identical to the library copy; track it (in skilllib.json) so future library changes reach it.",
+        detail: `It's identical to the library copy; track it (in ${newPinsOf(root, where)}) so future library changes reach it.`,
         at: rows(root, [s.name]),
-        choices: [{ label: "Track it", hint: `adds it to ${where}'s skilllib.json`, run: () => `${track(root, s.name).name} tracked in ${where}` }],
+        choices: [{ label: "Track it", hint: `adds it to ${newPinsOf(root, where)}`, run: () => `${track(root, s.name).name} tracked in ${where}` }],
       });
     } else if (s.state === "untracked, differs from library" || s.state === "repo skill, differs from library") {
       // The team's copy (committed, or in a folder that's the repo's own) is never replaced or tracked from here.
@@ -1183,7 +1189,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `not-in-lib:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} is tracked, but no longer in your library`,
-        detail: `${where}'s skilllib.json pins it, but your library has no copy: if the folder goes, sync can't restore it, and your other repos can't add it. Copy ${where}'s copy back into the library.`,
+        detail: `${s.personal ? "Your personal pins have" : `${where}'s skilllib.json pins`} it, but your library has no copy: if the folder goes, sync can't restore it, and your other repos can't add it. Copy ${where}'s copy back into the library.`,
         at: rows(root, [s.name]),
         choices: [
           {

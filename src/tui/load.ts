@@ -46,7 +46,7 @@ import {
 } from "../library.js";
 import { moveGlobalSkills } from "../move.js";
 import { PROJECT_SKILLS_DIR, realPath } from "../paths.js";
-import { knownProjects, projectHere, readableRoots, readManifest, rememberProjects } from "../project.js";
+import { knownProjects, personalPinsFile, pinsIn, projectHere, readableRoots, readManifest, rememberProjects, type Manifest } from "../project.js";
 import { isDir, readSkillInfo, treeHash } from "../skills.js";
 import { foldersOf } from "../tidy.js";
 import {
@@ -64,7 +64,7 @@ import {
 } from "../plugins.js";
 import { libraryOrigins, machineSkills, recordOrigin, skillsLoadedIn, type SourcedSkill } from "../sources.js";
 import { scanUsage, skillOf } from "../usage.js";
-import { forgetLatest, latestVersion, versionHistory } from "../versions.js";
+import { forgetLatest, latestVersion, versionForHash, versionHistory } from "../versions.js";
 import { failed, followUp, said as resultSaid, type Fix, type LocalSkill, type MachineSkill, type Ops, type Plugin, type Project, type Result, type World } from "./world.js";
 import { localStamp, tildify } from "../output.js";
 
@@ -80,7 +80,7 @@ export function uniqueNames(roots: string[]): Map<string, string> {
   );
 }
 
-function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInfo>): LocalSkill {
+function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInfo>, pins: Manifest["skills"], canBePersonal: boolean): LocalSkill {
   const managed: Partial<Record<ProjectSkill["state"], Partial<LocalSkill>>> = {
     "edited locally": { edited: true },
     "edited locally, update available": { edited: true },
@@ -101,7 +101,11 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
   // A copy git tracks is the team's wherever it lives (.claude/skills too), so it's never removed or replaced from here.
   const own = other[s.state]?.source === "untracked" && isShared(state) ? { source: "repo" as const } : {};
   // A pinned skill git has (its copy, or a link skilllib.json records) can't become personal.
-  const inGit = s.managed && (isShared(state) || (readManifest(root).skills[s.name]?.links ?? []).some((d) => isShared(git?.of(`${d}/${s.name}`))));
+  const dep = pins[s.name];
+  const inGit = s.managed && (isShared(state) || (dep?.links ?? []).some((d) => isShared(git?.of(`${d}/${s.name}`))));
+  // Whether its pin can move (Make it personal / Pin it for the team): its version is in your library, its copy isn't
+  // edited, and (to become personal) the project is a repo's top folder.
+  const pinMoves = s.managed && !!dep && versionForHash(s.name, dep.hash) !== null && !s.state.startsWith("edited") && (s.personal || canBePersonal);
   return {
     name: s.name,
     source: "lib",
@@ -109,7 +113,7 @@ function localSkill(root: string, s: ProjectSkill, git: ReturnType<typeof gitInf
     path: s.path,
     // Agents that actually load it here: visibility lists every agent you use, with `paths: 0` for the blind ones.
     agents: s.visibility.filter((v) => v.paths > 0).map((v) => v.id),
-    ...(s.managed ? { version: s.version ?? undefined, ...(s.personal ? { personal: true } : {}), ...(inGit ? { inGit: true } : {}), ...managed[s.state] } : { ...other[s.state], ...own }),
+    ...(s.managed ? { version: s.version ?? undefined, ...(s.personal ? { personal: true } : {}), ...(inGit ? { inGit: true } : {}), ...(pinMoves ? { pinMoves: true } : {}), ...managed[s.state] } : { ...other[s.state], ...own }),
     ...(s.source ? { origin: `npx skills: ${s.source}` } : {}),
     ...(others.length ? { others } : {}),
     git: state,
@@ -226,12 +230,13 @@ export function loadWorld(): World {
       name: names.get(root)!,
       path: root,
       manifest: hasManifest ? (git ? git.of("skilllib.json") : "no git") : "none",
-      skills: status.map((s) => {
-        const local = localSkill(root, s, git);
+      skills: ((pins, canBePersonal) =>
+        status.map((s) => {
+          const local = localSkill(root, s, git, pins, canBePersonal);
         // A repo's own copy can say something else than your library's or the global one by that name.
         const own = s.state.includes("missing") ? "" : readSkillInfo(s.path).description;
-        return own && own !== descriptions[s.name] ? { ...local, description: own } : local;
-      }),
+          return own && own !== descriptions[s.name] ? { ...local, description: own } : local;
+        }))(pinsIn(root), personalPinsFile(root) !== null),
       ...loadedHere(root),
     };
   });
@@ -416,7 +421,9 @@ function realOps(roots: Map<string, string>, backups: Backup[], machine: Sourced
     },
     pin: (repo, name, personal) => {
       const c = addSkill(rootOf(repo), name, { personal });
-      if (c.action === "skipped") return failed(said(c, repo));
+      if (c.action === "skipped") return failed(`${name}: ${withoutForceHint(c.reason ?? "skipped")}`);
+      // A link git would now see (moving to skilllib.json) can be held back: said, and asked about, as Add says it.
+      if (c.uncommitted?.length || c.blocked?.length || c.inTheWay?.length) return withLinks(c, repo, name);
       return personal ? `${name} is now personal in ${repo}: only on your machines, kept out of git` : `${name} is now pinned in ${repo}'s skilllib.json for the team`;
     },
     copyToLibrary: (repo, name) => ((s) => (s ? toLibrary(s.path) : failed(`${name} isn't in ${repo} any more`)))(find(repo, name)),

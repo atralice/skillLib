@@ -317,3 +317,20 @@ test.skipIf(process.platform === "win32")("a personal skill stays out of git whe
   }
 });
 
+test("remotes whose URL has a space are two repos, with two pins files", () => {
+  const a = clone("sp-a", join(tmp, "My Repos", "a.git"));
+  const b = clone("sp-b", join(tmp, "My Repos", "b.git"));
+  expect(personalPinsFile(a)).not.toBe(personalPinsFile(b));
+});
+
+test("moving a pin never resets an edited copy, even with --force", () => {
+  addSkill(repo, "alpha");
+  writeFileSync(join(repo, ".claude", "skills", "alpha", "SKILL.md"), "edited\n");
+  const c = addSkill(repo, "alpha", { personal: false, force: true });
+  expect(c).toMatchObject({ action: "skipped" });
+  expect(c.reason).toContain("so its pin can't move");
+  expect(c.reason).not.toContain("--force");
+  expect(readFileSync(join(repo, ".claude", "skills", "alpha", "SKILL.md"), "utf-8")).toBe("edited\n");
+  expect(readManifest(repo).skills.alpha?.personal).toBe(true);
+});
+
