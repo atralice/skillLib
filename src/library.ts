@@ -877,8 +877,9 @@ export function addSkill(
   const target = keep ?? (version === undefined ? latestVersion(name) : getVersion(name, version));
   if (!target) return { name, action: "skipped", reason: version === undefined ? "not in the library" : `version ${version} doesn't exist` };
 
-  const plan = addPlan(root, name, target.hash, force);
-  if ("reason" in plan) return { name, action: "skipped", reason: plan.reason };
+  // A move only changes where the pin lives: it never resets the copy, even with --force (its edits stop it, said as such).
+  const plan = addPlan(root, name, target.hash, moving ? false : force);
+  if ("reason" in plan) return { name, action: "skipped", reason: moving ? `${withoutForceHint(plan.reason)}, so its pin can't move: save the edits to your library first` : plan.reason };
   const { manifest, recorded, primary, wantedLinks, to, local } = plan;
   const mine = pinsWhere(root, recorded, personal);
   if (typeof mine === "string") return { name, action: "skipped", reason: mine };

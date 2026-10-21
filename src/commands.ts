@@ -418,8 +418,8 @@ export function add(args: Args) {
   printChanges(root, changes, args);
   const pins = readManifest(root).skills;
   const done = changes.filter((c) => c.action !== "skipped" && pins[c.name]);
-  // Where a new pin went isn't obvious from the command: said once.
-  if (!args.json && done.some((c) => pins[c.name]!.personal))
+  // Where a new pin went isn't obvious from the command: said once, for new pins only (--personal says it already).
+  if (!args.json && args.personal === undefined && done.some((c) => c.action === "installed" && !c.moved && pins[c.name]!.personal))
     info(dim(`Pinned in your personal pins (${tildify(personalPinsDir())}) and kept out of git. --shared pins in skilllib.json for the team.`));
   rememberProjects([root]);
 }
@@ -915,7 +915,8 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
     if (m.left) warn(`${m.name}: ${m.left.join(", ")} now point${m.left.length === 1 ? "s" : ""} at nothing (the repo's own copy serves that package): remove ${m.left.length === 1 ? "it" : "them"}`);
   }
   // Only repos that pin in skilllib.json have something to commit: personal pins stay out of git.
-  const toCommit = [...new Set(moves.filter((m) => m.moved).flatMap((m) => m.changes.map(([r]) => r)))].filter((r) => existsSync(join(r, MANIFEST_FILE)));
+  // Only repos where a moved skill is pinned in skilllib.json: a personal pin stays out of git.
+  const toCommit = [...new Set(moves.filter((m) => m.moved).flatMap((m) => m.changes.filter(([r]) => pinsIn(r)[m.name] && !pinsIn(r)[m.name]!.personal).map(([r]) => r)))];
   if (toCommit.length) info(dim(`Commit skilllib.json and the skill folders in ${toCommit.map((r) => basename(r)).join(", ")}.`));
 }
 

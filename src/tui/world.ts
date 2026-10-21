@@ -28,6 +28,8 @@ export type LocalSkill = {
   personal?: boolean;
   /** A tracked skill git has: its copy, or a link skilllib.json records. */
   inGit?: boolean;
+  /** Its pin can move between skilllib.json and your personal pins (see pinFix). */
+  pinMoves?: boolean;
   edited?: boolean;
   missing?: boolean;
   /** Its git state; null when the repo isn't a git repo. */
@@ -413,16 +415,13 @@ function globalFixes(m: MachineSkill): Fix[] {
 }
 
 /**
- * What Global offers for a skill beyond its issues. Everything acts on the machine-wide copy;
- * the only thing that reaches repos is "Move it to the repos…", and only the repos you tick.
- */
-/**
  * Moving a library skill's pin between the repo's skilllib.json and your personal pins, when that can succeed: its
  * version is in your library, and (to make it personal) git doesn't have its copy or links, since excluding them wouldn't
  * take it out of git.
  */
 export function pinFix(w: World, repo: string, s: LocalSkill): Fix | null {
-  if (s.source !== "lib" || !w.library.some((l) => l.name === s.name)) return null;
+  // Its version in your library, its copy not edited, and a repo's top folder to be personal in: else the move would fail.
+  if (s.source !== "lib" || !s.pinMoves || !w.library.some((l) => l.name === s.name)) return null;
   if (s.personal)
     return { label: "Pin it for the team", preview: `Move ${s.name}'s pin into ${repo}'s skilllib.json. Git will see skilllib.json and ${s.dir}/${s.name}: commit them to share it.`, run: (w) => w.ops.pin(repo, s.name, false) };
   if (s.inGit || isShared(s.git)) return null;
@@ -435,6 +434,10 @@ export function pinFix(w: World, repo: string, s: LocalSkill): Fix | null {
   };
 }
 
+/**
+ * What Global offers for a skill beyond its issues. Everything acts on the machine-wide copy;
+ * the only thing that reaches repos is "Move it to the repos…", and only the repos you tick.
+ */
 export function machineActions(m: MachineSkill): Fix[] {
   if (m.broken) return []; // its issue already offers "Remove the link"
   return m.source === "global" ? globalFixes(m) : m.source === "skilllib" ? [removeAgentSkillFix()] : [];

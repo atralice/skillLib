@@ -110,7 +110,8 @@ const sorted = (skills: Manifest["skills"]) => Object.fromEntries(Object.entries
 
 /**
  * Writes a project's pins back where each came from: personal ones to your pins file, the rest to skilllib.json
- * (created only when it has some). A personal pin the repo's skilllib.json hides stays as it was. The installed
+ * (created only when it has some). A personal pin the repo's skilllib.json hides stays as it was while that pin stays;
+ * removing the skill drops both. The installed
  * copies of personal skills are kept out of git (see excludePersonal).
  */
 export function writeManifest(root: string, manifest: Manifest) {
@@ -221,7 +222,7 @@ function repoOf(root: string): Repo | null {
   const seen = changedAt(config);
   let repo: Repo | null = null;
   if (out[0] === "") {
-    const urls = (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => l.split(" "));
+    const urls = (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => [l.slice(0, l.indexOf(" ")), l.slice(l.indexOf(" ") + 1)]); // a URL can hold spaces
     const url = (urls.find(([k]) => k === "remote.origin.url") ?? urls[0])?.[1];
     const remote = url ? normalizeRemote(url) : undefined;
     repo = { file: pinsFileFor(root, remote, folder), folder, common, ...(remote ? { remote } : {}), root };
