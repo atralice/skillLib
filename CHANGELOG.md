@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* code review of 1.12.1 (personal pins) ([#129](https://github.com/atralice/skillLib/issues/129)) ([522ff28](https://github.com/atralice/skillLib/commit/522ff28fc57f3041019f6fcec2956476503f8ad4))
+* Pin it for the team says what's left when it held a link back ([#131](https://github.com/atralice/skillLib/issues/131)) ([b7c3bb8](https://github.com/atralice/skillLib/commit/b7c3bb8d513ac4409a07311e07619a491cd4c849))
+
 ## [1.12.1](https://github.com/atralice/skillLib/compare/v1.12.0...v1.12.1) (2026-10-20)
 
 Fixes from a full regression run on 1.12.0.
