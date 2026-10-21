@@ -1,12 +1,16 @@
 # Changelog
 
-## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-21)
+## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-20)
 
+Fixes from a code review of personal pins.
 
-### Bug Fixes
-
-* code review of 1.12.1 (personal pins) ([#129](https://github.com/atralice/skillLib/issues/129)) ([522ff28](https://github.com/atralice/skillLib/commit/522ff28fc57f3041019f6fcec2956476503f8ad4))
-* Pin it for the team says what's left when it held a link back ([#131](https://github.com/atralice/skillLib/issues/131)) ([b7c3bb8](https://github.com/atralice/skillLib/commit/b7c3bb8d513ac4409a07311e07619a491cd4c849))
+### Fixes
+* Two repos whose remotes are local paths with a space in them (`/Users/John Doe/…`, `My Repos/…`) no longer share one personal pins file.
+* Moving a pin (`--personal` / `--shared`) never resets an edited copy, even with `--force`: it asks you to save the edits to your library first.
+* The app offers *Make it personal* and *Pin it for the team* only where they can work: not for an edited copy, a version your library lacks, or a project that isn't a git repo's top folder.
+* *Pin it for the team* says when it couldn't link the skill in a folder git tracks, and what to do next.
+* Doctor says "your personal pins", not `skilllib.json`, in its choices and notes for personal pins (also in `doctor --json`).
+* The personal-pins note after `add` prints only for new pins; `global move` asks you to commit only in repos where the skill is pinned in `skilllib.json`.
 
 ## [1.12.1](https://github.com/atralice/skillLib/compare/v1.12.0...v1.12.1) (2026-10-20)
 
