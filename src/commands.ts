@@ -835,20 +835,13 @@ export async function check(args: Args) {
     everyPrompt: { global: tokenSum(skills, "global"), repo: tokenSum(skills, "repo") },
     note: "Uses are Claude Code transcripts only, so 0 means it wasn't seen. everyPrompt is a rough token count (chars/4) of the name and description, which sit in every prompt. The rest of SKILL.md loads only when the skill is used. brief is the report.",
     brief,
-    skills: skills.map((r) => ({
-      name: r.name,
-      where: r.where,
-      description: r.description,
-      everyPrompt: r.everyPrompt,
-      uses: r.uses,
-      ...(r.lastUsed ? { lastUsed: r.lastUsed } : {}),
-      ...(r.projects.length ? { projects: r.projects } : {}),
-      fresh: r.fresh,
-      lever: r.lever,
-      ...(r.via ? { via: r.via } : {}),
-      path: r.path,
-      ...(r.alsoInRepo ? { alsoInRepo: true } : {}),
-      ...(r.keptGlobal ? { keptGlobal: true } : {}),
+    skills: skills.map(({ lastUsed, projects, via, alsoInRepo, keptGlobal, ...rest }) => ({
+      ...rest,
+      ...(lastUsed ? { lastUsed } : {}),
+      ...(projects.length ? { projects } : {}),
+      ...(via ? { via } : {}),
+      ...(alsoInRepo ? { alsoInRepo } : {}),
+      ...(keptGlobal ? { keptGlobal } : {}),
     })),
   };
   if (args.json) return json("check", report);
