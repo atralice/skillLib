@@ -370,12 +370,12 @@ describe("for agents: flags, errors and exit codes", () => {
 
 describe("round 2: what agents rely on", () => {
   // A repo that commits .claude/skills: with Claude Code and Codex, a skill's real copy goes in
-  // .agents/skills and Claude Code needs a link in .claude/skills, which git would see.
+  // .agents/skills and Claude Code needs a link in .claude/skills.
   const tracked = () => {
     const r = join(tmp, "code", "eta");
     mkdirSync(join(r, ".claude", "skills", "team"), { recursive: true });
     writeFileSync(join(r, ".claude", "skills", "team", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
-    writeFileSync(join(r, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
+    writeFileSync(join(r, "skilllib.json"), '{ "skills": {} }\n');
     const git = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: r });
     git("init", "-q");
     git("add", ".");
@@ -383,18 +383,19 @@ describe("round 2: what agents rely on", () => {
     return r;
   };
 
-  test("global move keeps a skill global when an agent couldn't see it in the repo", () => {
+  test("global move into a repo that commits the skills folder still links it, kept out of git", () => {
     const repo = tracked();
     const r = cli(repo, "global", "move", "mine", "--to", repo, "--json");
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(0);
     const [move] = JSON.parse(r.out);
-    expect(move.moved).toBe(false);
-    expect(move.reason).toContain("Claude Code in eta couldn't see it");
-    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(true);
+    expect(move.moved).toBe(true);
+    expect(move.projects[0].change.personal).toBe(true);
+    expect(existsSync(join(tmp, ".claude", "skills", "mine"))).toBe(false);
+    expect(existsSync(join(repo, ".claude", "skills", "mine"))).toBe(true);
   });
 
-  test("add exits 1 when git kept a link out", () => {
-    const r = cli(tracked(), "add", "alpha", "--json");
+  test("add --shared exits 1 when git kept a link out", () => {
+    const r = cli(tracked(), "add", "alpha", "--shared", "--json");
     expect(r.code).toBe(1);
     // The real copy (.agents/skills) isn't committed, so a link in the committed .claude/skills would break for teammates.
     expect(JSON.parse(r.out)[0].uncommitted).toEqual([".claude/skills"]);

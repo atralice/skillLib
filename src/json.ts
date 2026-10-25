@@ -201,6 +201,33 @@ export type InstallJson = {
   global?: string[];
 }[];
 
+/** `skilllib check --json`. Computed while the command runs. Nothing is stored. */
+export type CheckJson = {
+  days: number;
+  repo: string | null;
+  /** Rough tokens of names and descriptions. Global skills load in every repo; repo skills add to that here. */
+  everyPrompt: { global: number; repo: number };
+  /** How to read uses and everyPrompt. */
+  note: string;
+  /** The short report. The skill list is there if you need a name. */
+  brief: string[];
+  skills: {
+    name: string;
+    where: "global" | "repo";
+    description: string;
+    everyPrompt: number;
+    uses: number;
+    lastUsed?: string;
+    projects?: string[];
+    fresh: string;
+    lever: "yours" | "plugin" | "built-in" | "claude.ai" | "system" | "skilllib" | "repo";
+    via?: string;
+    path: string;
+    alsoInRepo?: boolean;
+    keptGlobal?: boolean;
+  }[];
+};
+
 /** `skilllib agent-skill [install|remove] --json` */
 export type AgentSkillJson = {
   state: AgentSkillState;

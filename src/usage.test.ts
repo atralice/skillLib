@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,7 +48,9 @@ test("a plugin's copy of a skill counts as the skill", () => {
 test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a transcript folder that can't be read is skipped, not the whole count", async () => {
   const dir = mkdtempSync(join(tmpdir(), "skilllib-usage-"));
   const before = process.env.CLAUDE_CONFIG_DIR;
+  const home = process.env.SKILLLIB_HOME;
   process.env.CLAUDE_CONFIG_DIR = dir;
+  process.env.SKILLLIB_HOME = join(dir, "home");
   const locked = join(dir, "projects", "locked");
   mkdirSync(locked, { recursive: true });
   mkdirSync(join(dir, "projects", "open"));
@@ -62,13 +64,17 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a transcr
     rmSync(dir, { recursive: true, force: true });
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
+    if (home === undefined) delete process.env.SKILLLIB_HOME;
+    else process.env.SKILLLIB_HOME = home;
   }
 });
 
 test.skipIf(process.platform === "win32")("a transcript that's a looping link or a FIFO is skipped, not an error or a hang", async () => {
   const dir = mkdtempSync(join(tmpdir(), "skilllib-usage-"));
   const before = process.env.CLAUDE_CONFIG_DIR;
+  const home = process.env.SKILLLIB_HOME;
   process.env.CLAUDE_CONFIG_DIR = dir;
+  process.env.SKILLLIB_HOME = join(dir, "home");
   const project = join(dir, "projects", "p");
   mkdirSync(project, { recursive: true });
   symlinkSync("loop.jsonl", join(project, "loop.jsonl"));
@@ -79,5 +85,41 @@ test.skipIf(process.platform === "win32")("a transcript that's a looping link or
     rmSync(dir, { recursive: true, force: true });
     if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = before;
+    if (home === undefined) delete process.env.SKILLLIB_HOME;
+    else process.env.SKILLLIB_HOME = home;
+  }
+});
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a transcript is parsed once, and again only after it changes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "skilllib-usage-"));
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  const home = process.env.SKILLLIB_HOME;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  process.env.SKILLLIB_HOME = join(dir, "home");
+  const file = join(dir, "projects", "p", "a.jsonl");
+  mkdirSync(join(file, ".."), { recursive: true });
+  const line = (skill: string, at: string) =>
+    JSON.stringify({ type: "assistant", timestamp: at, cwd: "/code", message: { content: [{ type: "tool_use", id: skill, name: "Skill", input: { skill } }] } });
+  const recent = new Date().toISOString();
+  const older = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+  writeFileSync(file, `${line("old", older)}\n${line("new", recent)}\n`);
+  try {
+    expect((await scanUsage(1)).map((u) => u.skill)).toEqual(["new"]);
+    const cache = join(dir, "home", "usage-cache.json");
+    const written = statSync(cache).mtimeMs;
+    chmodSync(file, 0o000);
+    // The older use was stored even though --days 1 didn't count it, and the file isn't read again.
+    expect((await scanUsage(30)).map((u) => u.skill)).toEqual(["old", "new"]);
+    expect(statSync(cache).mtimeMs).toBe(written);
+    chmodSync(file, 0o644);
+    writeFileSync(file, `${line("other", recent)}\n`);
+    expect((await scanUsage(30)).map((u) => u.skill)).toEqual(["other"]);
+  } finally {
+    chmodSync(file, 0o644);
+    rmSync(dir, { recursive: true, force: true });
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
+    if (home === undefined) delete process.env.SKILLLIB_HOME;
+    else process.env.SKILLLIB_HOME = home;
   }
 });

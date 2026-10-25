@@ -20,7 +20,11 @@ function indexFile(name: string): string {
 }
 
 export function versionHistory(name: string): Version[] {
-  return readState<Version[]>(indexFile(name)) ?? [];
+  const hit = historyCache.get(name);
+  if (hit) return hit;
+  const history = readState<Version[]>(indexFile(name)) ?? [];
+  historyCache.set(name, history);
+  return history;
 }
 
 export function versionDir(name: string, version: number): string {
@@ -30,10 +34,16 @@ export function versionDir(name: string, version: number): string {
 // Library hashes don't change while a command runs unless skilllib changes the
 // library itself, which calls forgetLatest(); the TUI clears it on every reload.
 const latestCache = new Map<string, Version | null>();
+const historyCache = new Map<string, Version[]>();
 
 export function forgetLatest(name?: string) {
-  if (name) latestCache.delete(name);
-  else latestCache.clear();
+  if (name) {
+    latestCache.delete(name);
+    historyCache.delete(name);
+  } else {
+    latestCache.clear();
+    historyCache.clear();
+  }
 }
 
 /**
@@ -56,7 +66,9 @@ export function latestVersion(name: string): Version | null {
       if (existsSync(versionDir(name, next.version))) throw new Error(`${versionDir(name, next.version)} exists but ${indexFile(name)} doesn't list it: fix the index before adding versions`);
       mkdirSync(storeDir(name), { recursive: true });
       copySkill(source, versionDir(name, next.version));
-      writeState(indexFile(name), [...history, next]);
+      const recorded = [...history, next];
+      writeState(indexFile(name), recorded);
+      historyCache.set(name, recorded);
       result = next;
     }
   }

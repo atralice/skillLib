@@ -193,10 +193,10 @@ These are the issues `skilllib doctor` reports, with the same fixes and choices.
 
 A skill's pin goes in one of two places:
 
-- **`skilllib.json` in the repo (shared).** Commit it with the skill folders, and teammates get the same skills. This is where pins go when the repo already has a `skilllib.json`.
-- **Your personal pins (`~/.skilllib/pins/`).** One file per repo, matched by its `origin` remote, so every clone and worktree of the repo shares it. skilllib keeps the copies and links out of git through the repo's `.git/info/exclude` (only your clone; the repo's `.gitignore` doesn't change). Nothing shows up in `git status`. This is where pins go when the repo has no `skilllib.json`.
+- **Your personal pins (`~/.skilllib/pins/`).** The default. One file per repo, matched by its `origin` remote, so every clone and worktree of the repo shares it. skilllib keeps the copies and links out of git through the repo's `.git/info/exclude` (only your clone; the repo's `.gitignore` doesn't change). Nothing shows up in `git status`. A repo that already has `skilllib.json` still gets new skills here.
+- **`skilllib.json` in the repo (shared).** Only when you share a skill with the team: `skilllib add <name> --shared`, or *Pin it for the team* in the app. Commit it with the skill folders, and teammates get that skill.
 
-`skilllib add <name> --personal` or `--shared` picks the place, and moves an existing pin without changing its version. In the app, a library skill's actions offer *Make it personal* or *Pin it for the team*, and its tag says `personal v2`. A copy git already has can't become personal. A skill pinned in both places uses the repo's pin; doctor offers to drop yours (a choice: yours would keep the skill if the team unpinned it).
+`--personal` moves a shared pin back to yours, without changing its version. A copy git already has can't become personal. A skill pinned in both places uses the repo's pin; doctor offers to drop yours (a choice: yours would keep the skill if the team unpinned it). The app tags a personal skill `personal v2`.
 
 **On another machine:** keep `~/.skilllib/pins/` and `~/.skilllib/library/` in git (a dotfiles repo, say). Clone a repo there and run `skilllib sync`: your personal skills come back, out of git again. A repo without a remote keeps its pins by folder, so they stay on that machine until it gets one: adding a remote (or renaming it) keeps them. Only a repo's top folder can have personal pins, not a monorepo package's.
 
@@ -409,6 +409,7 @@ skilllib new <name> [desc]      create a skill
 
 skilllib projects               your projects and their skills
 skilllib usage [--days N]       which skills Claude Code used (a plugin's copy counts for the skill's name)
+skilllib check [--days N]        what loaded skills cost on every prompt, and which had no use
 skilllib doctor [--fix]         find (and fix) problems
 skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from status or doctor --json)
 skilllib restore [name]         put back something skilllib moved out (copies moved together come back together)
@@ -455,11 +456,13 @@ A field is only removed or changed in a major version.
 
 | Path | What |
 |---|---|
-| `<repo>/skilllib.json` | The repo's shared skills and pinned versions. **Commit it.** |
+| `<repo>/skilllib.json` | Skills you shared with the team (`--shared`). **Commit it** with the skill folders. Absent until then |
 | `~/.skilllib/pins/` | Your personal pins, one file per repo (by its remote). Keep it in git with your library to use them on other machines. |
 | `~/.skilllib/library/` | Your skills (master copies). Worth putting under git. |
 | `~/.skilllib/store/` | Every version of every skill, immutable |
 | `~/.skilllib/config.json` | Your agents, project folders, hidden projects, skills you keep global |
+| `~/.skilllib/projects.json` | Repos skilllib has seen. Rewritten only when that list changes |
+| `~/.skilllib/usage-cache.json` | Parsed Claude Code transcripts, so the next `status` doesn't read them again. Safe to delete |
 | `~/.skilllib/trash/`, `global-backup/`, `tidy-backup/`, `edit-backup/` | Everything skilllib removed, restorable from Settings › Backups |
 | `~/.skilllib/plugin-backup.json` | Plugins skilllib uninstalled (with their scope and repo), so Settings › Backups can reinstall them |
 | `~/.skilllib/review-prompt.md` | The last review prompt you copied |
@@ -469,11 +472,11 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 
 ## FAQ
 
-**Does it change my repos?** Only when you tell it to: adding, removing, linking or tidying a skill, which updates `skilllib.json` (or, for personal pins, your `~/.skilllib/pins/` and the repo's `.git/info/exclude`). It asks before linking into a folder git tracks, and before tidy changes a committed file. It never deletes the only copy of a repo's own skill.
+**Does it change my repos?** Only when you tell it to: adding, removing, linking or tidying a skill. That updates your `~/.skilllib/pins/` and the repo's `.git/info/exclude`, or `skilllib.json` when you share a skill with the team. It asks before linking a shared skill into a folder git tracks, and before tidy changes a committed file. It never deletes the only copy of a repo's own skill.
 
 **Can I share skills with my team?** Commit `skilllib.json` along with the skill folders (`.agents/skills`, and `.claude/skills` if you use Claude Code). Or keep `~/.skilllib/library` in a git repo of its own (the rest of `~/.skilllib` is personal: config, backups, the version store), and run `skilllib import` on teammates' machines from a clone of it.
 
-**Do I have to commit `skilllib.json`?** No. In a repo without one, skilllib pins in your personal pins and keeps its copies out of git, so the repo doesn't change for anyone else. See [Personal or shared pins](#personal-or-shared-pins).
+**Do I have to commit `skilllib.json`?** Only for a skill you shared with the team (`skilllib add <name> --shared`). Everything else stays in your personal pins, out of git. See [Personal or shared pins](#personal-or-shared-pins).
 
 **Why does usage only count Claude Code?** It's the only agent whose transcripts skilllib reads. Grok keeps sessions under `~/.grok/sessions`, and Cursor doesn't keep them locally. Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 

@@ -436,7 +436,10 @@ export function trackBlocker(root: string, name: string): string | null {
     return `${MANIFEST_FILE} can't be read`;
   }
   const stuck = firstStuck(root, dependencyDirs(root, name, recorded));
-  return stuck ? blockerSaid(root, stuck) : null;
+  if (stuck) return blockerSaid(root, stuck);
+  // A new pin is personal. A package can't have one, so don't offer a track that would write its skilllib.json.
+  if (!recorded && !personalPinsFile(root) && gitRepoAbove(root)) return "only the top folder of a git repo can have personal pins";
+  return null;
 }
 
 /** Whether a repo pins a skill, reading even a skilllib.json that can't be parsed (a merge conflict): if it names it, it counts. */
@@ -979,15 +982,28 @@ export function addSkill(
   };
 }
 
+/** A real git repo at `dir` or above it (a `.git` with HEAD), not an empty folder named `.git`. */
+function gitRepoAbove(dir: string): boolean {
+  let at = resolve(dir);
+  while (true) {
+    if (existsSync(join(at, ".git", "HEAD"))) return true;
+    const parent = dirname(at);
+    if (parent === at) return false;
+    at = parent;
+  }
+}
+
 /**
- * Whether a skill's pin is personal: as asked, else where it already is, else personal unless the repo has a
- * skilllib.json (then it's the team's way of pinning). A string says why it can't be personal.
+ * Whether a skill's pin is personal. As asked (`--personal` / `--shared`), else where it already is.
+ * A new pin is personal: skilllib.json is only for a skill you share with the team (`--shared`).
+ * A string says why it can't be personal.
  */
 function pinsWhere(root: string, recorded: Dependency | undefined, personal: boolean | undefined): boolean | string {
-  const want = personal ?? (recorded ? !!recorded.personal : !existsSync(join(root, MANIFEST_FILE)));
-  if (!want || personalPinsFile(root)) return want;
-  // Not a repo's top folder (a package's skilllib.json, a folder git doesn't know): only the asked-for case is refused.
-  return personal ? "only the top folder of a git repo can have personal pins" : false;
+  const want = personal ?? (recorded ? !!recorded.personal : !!personalPinsFile(root));
+  if (want && !personalPinsFile(root)) return "only the top folder of a git repo can have personal pins";
+  // A package inside a repo can't have personal pins, and a plain add must not write its skilllib.json.
+  if (personal === undefined && !recorded && !personalPinsFile(root) && gitRepoAbove(root)) return "only the top folder of a git repo can have personal pins";
+  return want;
 }
 
 const personalOf = (manifest: Manifest) => Object.fromEntries(Object.entries(manifest.skills).filter(([, d]) => d.personal));

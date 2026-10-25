@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { findIssues, runFix } from "./health.js";
 import { addSkill, importSkill, projectStatus, removeSkill, syncProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
-import { normalizeRemote, personalPins, personalPinsDir, personalPinsFile, readManifest } from "./project.js";
+import { normalizeRemote, personalPins, personalPinsDir, personalPinsFile, readManifest, rememberProjects } from "./project.js";
 import { machineSkills } from "./sources.js";
 import { forgetLatest } from "./versions.js";
 
@@ -50,6 +50,16 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
+});
+
+test("remembering a project that's already listed doesn't rewrite the list", () => {
+  rememberProjects([repo]);
+  const file = join(tmp, ".skilllib", "projects.json");
+  utimesSync(file, new Date(1_000), new Date(1_000));
+  rememberProjects([repo]);
+  expect(statSync(file).mtimeMs).toBe(1_000);
+  rememberProjects([join(tmp, "elsewhere")]);
+  expect(statSync(file).mtimeMs).toBeGreaterThan(1_000);
 });
 
 test("a remote names the repo however it was cloned", () => {
@@ -148,15 +158,15 @@ describe("a repo with skilllib.json", () => {
     git(repo, "commit", "-qm", "skilllib");
   });
 
-  test("add pins there, for the team; --personal pins in yours", () => {
+  test("add stays personal even when skilllib.json is there; --shared pins it for the team", () => {
     addSkill(repo, "alpha");
-    expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills.alpha).toBeDefined();
-    expect(personalPins(repo)).toEqual({});
-    removeSkill(repo, "alpha");
-    addSkill(repo, "alpha", { personal: true });
     expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills).toEqual({});
     expect(Object.keys(personalPins(repo))).toEqual(["alpha"]);
     expect(status(repo)).toBe("");
+    removeSkill(repo, "alpha");
+    addSkill(repo, "alpha", { personal: false });
+    expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills.alpha).toBeDefined();
+    expect(personalPins(repo)).toEqual({});
   });
 
   test("moving a pin keeps its version and says where it went", () => {
@@ -173,7 +183,7 @@ describe("a repo with skilllib.json", () => {
   });
 
   test("a committed copy can't become personal", () => {
-    addSkill(repo, "alpha");
+    addSkill(repo, "alpha", { personal: false });
     git(repo, "add", ".");
     git(repo, "commit", "-qm", "alpha");
     const c = addSkill(repo, "alpha", { personal: true });
@@ -211,7 +221,7 @@ test("syncing a monorepo package leaves the repo's personal skills out of git", 
   const pkg = join(repo, "packages", "web");
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(pkg, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
-  addSkill(pkg, "alpha");
+  addSkill(pkg, "alpha", { personal: false });
   git(repo, "add", "packages");
   git(repo, "commit", "-qm", "packages");
   syncProject(pkg);
@@ -264,7 +274,8 @@ test("a monorepo package can't have personal pins", () => {
   writeFileSync(join(pkg, "skilllib.json"), '{ "skills": {} }\n');
   expect(personalPinsFile(pkg)).toBeNull();
   expect(addSkill(pkg, "alpha", { personal: true })).toMatchObject({ action: "skipped", reason: "only the top folder of a git repo can have personal pins" });
-  expect(addSkill(pkg, "alpha")).toMatchObject({ action: "installed" });
+  expect(addSkill(pkg, "alpha")).toMatchObject({ action: "skipped", reason: "only the top folder of a git repo can have personal pins" });
+  expect(addSkill(pkg, "alpha", { personal: false })).toMatchObject({ action: "installed" });
 });
 
 test("the CLI: --personal and --shared don't go together; --json says personal", () => {
