@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
 import { enabledHarnesses } from "./config.js";
 import { gitInfo, isShared, relativeTo, type GitInfo } from "./git.js";
-import { ALL_PROJECT_DIRS, CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
+import { CURSOR_PICKS, harness, installDirs, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir, notWritable, stash } from "./library.js";
-import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
+import { AGENTS_SKILLS_DIR, GROK_SKILLS_DIR, claudeDir, grokDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, realPath, realpathOrNull, userHome } from "./paths.js";
 import { tildify } from "./output.js";
 import { readManifest, writeManifest } from "./project.js";
 import { globalDirAs, globalSkillDirs, projectSkillsLock } from "./sources.js";
@@ -75,15 +75,33 @@ function namesIn(dirs: string[]): string[] {
   return [...names].sort();
 }
 
-/** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. */
-const PROJECT_TIDY_DIRS = ALL_PROJECT_DIRS.filter((d) => d !== GROK_SKILLS_DIR);
+/** Folders tidy has always rewritten. Other agents' folders are rewritten only while that agent is enabled, so a Windsurf folder isn't tidied away for someone who hasn't turned Windsurf on. */
+const CLASSIC_TIDY = [PROJECT_SKILLS_DIR, AGENTS_SKILLS_DIR, ".cursor/skills", ".codex/skills"];
+/** Project folders tidy may rewrite. `.grok/skills` is discovered for status, and never changed. `skills/` is OpenClaw's, and a common authoring folder, so only when OpenClaw is on. */
+const tidyDirs = () => {
+  const enabled = enabledHarnesses();
+  const fromEnabled = enabled.flatMap((id) => harness(id).projectDirs);
+  return [...new Set([...CLASSIC_TIDY, ...fromEnabled])].filter((d) => d !== GROK_SKILLS_DIR && (d !== "skills" || enabled.includes("openclaw")));
+};
 /** The repo's own skill folders tidy works in: not one that links out of the repo (.agents/skills -> ~/.agents/skills holds your global skills). */
-export const repoTidyDirs = (root: string) => PROJECT_TIDY_DIRS.filter((d) => notWritable(root, d) === null);
+export const repoTidyDirs = (root: string) => tidyDirs().filter((d) => notWritable(root, d) === null);
 
-/** Global folders tidy may rewrite. `~/.grok/skills` is Grok's own folder. */
+/** Global folders tidy may rewrite: the shared ones, plus any folder an enabled agent reads. `~/.grok/skills` is Grok's own folder. */
 function globalTidyDirs(): string[] {
   const own = realPath(join(grokDir(), "skills"));
-  return globalSkillDirs().filter((d) => realPath(d) !== own);
+  const allowed = new Set(
+    [
+      join(userHome(), ".agents", "skills"),
+      join(claudeDir(), "skills"),
+      join(userHome(), ".cursor", "skills"),
+      join(userHome(), ".codex", "skills"),
+      ...enabledHarnesses().flatMap((id) => harness(id).globalDirs()),
+    ].map((d) => realPath(d)),
+  );
+  return globalSkillDirs().filter((d) => {
+    const real = realPath(d);
+    return real !== own && allowed.has(real);
+  });
 }
 
 /**

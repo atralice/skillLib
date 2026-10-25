@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { enabledHarnesses } from "./config.js";
-import { harness, type HarnessId } from "./harnesses.js";
+import { globalInstallDirs, HARNESSES, type HarnessId } from "./harnesses.js";
 import { entryExists, isLink, linkDir } from "./library.js";
-import { claudeDir, OWN_SKILL_MARKER, userHome, realPath } from "./paths.js";
+import { OWN_SKILL_MARKER } from "./paths.js";
 import { tildify } from "./output.js";
 
 /**
@@ -20,18 +20,12 @@ function shippedSkill(): string {
 }
 
 /**
- * Global folders it goes in: ~/.claude/skills for Claude Code and Cursor,
- * ~/.agents/skills for Codex and Zed. With both, the second is a link, so
- * Cursor (which reads both) sees one skill. Returns [real copy, ...links].
+ * Global folders the skilllib skill goes in: one real copy, then a link for
+ * every other folder an enabled harness needs. Claude Code's folder is the
+ * real copy when any enabled harness reads it. Returns [real copy, ...links].
  */
 export function agentSkillDirs(enabled: HarnessId[] = enabledHarnesses()): string[] {
-  const claudeSkills = join(claudeDir(), "skills");
-  const agentsSkills = join(userHome(), ".agents", "skills");
-  const needsClaude = enabled.some((id) => harness(id).globalDirs().includes(claudeSkills));
-  const needsAgents = enabled.some((id) => !harness(id).globalDirs().includes(claudeSkills));
-  // Once per real folder: ~/.claude/skills can be a link to ~/.agents/skills (installing twice would link it to itself).
-  const dirs = [...(needsClaude ? [claudeSkills] : []), ...(needsAgents ? [agentsSkills] : [])];
-  return dirs.filter((d, i) => dirs.findIndex((o) => realPath(o) === realPath(d)) === i).map((d) => join(d, AGENT_SKILL_NAME));
+  return globalInstallDirs(enabled).map((d) => join(d, AGENT_SKILL_NAME));
 }
 
 function isOurs(dir: string): boolean {
@@ -76,9 +70,9 @@ export function installAgentSkill(enabled: HarnessId[] = enabledHarnesses()): { 
   return { ok: true, dirs: [primary, ...links] };
 }
 
-/** Removes the skill from every folder skilllib put it in. */
+/** Removes the skill from every global folder skilllib might have put it in. */
 export function removeAgentSkill(): string[] {
-  const all = agentSkillDirs(["claude-code", "codex"]);
+  const all = [...new Set(HARNESSES.flatMap((h) => h.globalDirs().map((d) => join(d, AGENT_SKILL_NAME))))];
   // Decide before deleting: once the real copy is gone, links no longer show the marker.
   const removed = all.filter((d) => entryExists(d) && (isOurs(d) || isDangling(d)));
   for (const d of removed) {

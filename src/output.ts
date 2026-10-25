@@ -9,9 +9,11 @@ import type {
   ErrorJson,
   GlobalMoveJson,
   ImportJson,
+  InstallJson,
   ListJson,
   OutdatedJson,
   ProjectsJson,
+  SearchJson,
   ShowJson,
   StatusJson,
   UsageJson,
@@ -41,6 +43,8 @@ type JsonOutputs = {
   "changes --all": AllChangesJson;
   outdated: OutdatedJson;
   import: ImportJson;
+  install: InstallJson;
+  search: SearchJson;
   doctor: DoctorJson;
   apply: ApplyJson;
   "global move": GlobalMoveJson;

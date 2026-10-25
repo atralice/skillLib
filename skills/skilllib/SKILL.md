@@ -1,6 +1,6 @@
 ---
 name: skilllib
-description: Agent skills (SKILL.md) loaded in this repo and the user's skill library, via the skilllib CLI. Use for which skills you can use here and where each comes from, which library skills to add, what's out of date, broken or duplicated, and adding, removing or updating skills.
+description: Agent skills (SKILL.md) loaded in this repo and the user's skill library, via the skilllib CLI. Use for which skills you can use here and where each comes from, which library skills to add, what's out of date, broken or duplicated, adding, removing or updating skills, and installing skills from skills.sh or GitHub.
 allowed-tools: Bash(skilllib:*)
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash(skilllib:*)
 
 The user manages agent skills with the `skilllib` CLI. Their **library** (`~/.skilllib/library`, "my skills", "the registry") holds versioned skills that load nowhere until added to a repo. A repo pins its skills in `skilllib.json` (shared, committed), or in the user's personal pins (`~/.skilllib/pins`, kept out of git: `personal: true` in the output).
 
-Always pass `--json` (one line of JSON on stdout; messages go to stderr). A failure exits 1 with `{"error": "..."}` as that line. `link`, `tidy`, `global` (its listing, `keep` and `unkeep`), `restore`, `new`, `folders`, `harnesses`, `scan` and `unhide` print messages only (read the exit code). Unknown flags are errors. Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
+Always pass `--json` (one line of JSON on stdout; messages go to stderr). A failure exits 1 with `{"error": "..."}` as that line. `link`, `tidy`, `global` (its listing, `keep` and `unkeep`), `restore`, `new`, `folders`, `harnesses`, `scan`, `search` (without `--json`) and `unhide` print messages only (read the exit code). Unknown flags are errors. Never run bare `skilllib` or `skilllib ui`: that's an interactive app.
 
 ## Reading
 
@@ -42,7 +42,7 @@ Also: `usage --json` (Claude Code usage only, so "unused" is a hint; each skill 
 
 **Fixes and decisions.** `apply <id> [choice]` runs one problem's `fix`, or the choice you name: its label (safest), or its number from 1. With several choices it needs one. Prints `{id, applied, ok, message}`. Ids come from `issues` in `status --json` (Now, below) or from `doctor --json` (every repo; pass `apply` the same `--days` you gave `doctor`). A few issues span repos and offer different choices in each; then `apply` takes only the label.
 
-**Importing.** `import <dir>...` copies skill folders (each with a `SKILL.md`) into the library; skilllib doesn't download anything. For a skill on GitHub, clone the repo into a temporary folder, `import` the skill's folder, then `add` it here.
+**Importing and installing.** `import <dir>...` copies skill folders (each with a `SKILL.md`) into the library; it doesn't download anything. `install <source>...` does: `owner/repo`, `owner/repo@skill`, a `https://skills.sh/...` or GitHub URL, or a local folder. It puts each skill in the library. In a repo it also adds them here; `--global` loads them in every repo instead (and marks them kept). A repo with several skills is listed, not installed, until you pass `@name` or `--all`. `search <query>` lists matches from skills.sh. `install` and `search` accept `--json`.
 
 ## Now
 

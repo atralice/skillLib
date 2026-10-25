@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { allowTrackedLinks, enabledHarnesses, keptGlobal } from "./config.js";
 import { gitInfo, isShared, relativeTo } from "./git.js";
-import { ALL_PROJECT_DIRS, harness, HARNESSES, type HarnessId } from "./harnesses.js";
+import { harness, HARNESSES, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { addSkill, blindSaid, blindWithoutGlobal, blockerSaid, copiesDiffer, packageDirs, packageSkillFolders, strandedLinks, nestedEntries, type NestedEntry, linksOut, trackBlocker, deleteLibrarySkill, inTheWaySaid, notWritable, syncBlocker, discardEdits, importSkill, isLink, librarySkillDir, linkAll, linkEverywhere, linkGlobal, nestedSkills, projectStatus, removeSkill, stash, syncProject, unloadGlobal, updateProject, visibilityOf, type Change, type ProjectSkill } from "./library.js";
 import { tildify } from "./output.js";
 import { grokDir, GROK_SKILLS_DIR, libraryDir, MANIFEST_FILE, realNative, realPath as realPathOf } from "./paths.js";
@@ -198,7 +198,7 @@ function brokenLinksIn(root: string, opened: Set<string>): Issue[] {
   const packageFolders = packageSkillFolders(root)
     .map((f) => ({ dir: f.location, top: false }))
     .sort((a, b) => Number(aliased(a.dir)) - Number(aliased(b.dir)));
-  const folders = [...ALL_PROJECT_DIRS.map((dir) => ({ dir, top: true })), ...packageFolders].flatMap(({ dir, top }) => {
+  const folders = [...projectDirsInUse(enabledHarnesses()).map((dir) => ({ dir, top: true })), ...packageFolders].flatMap(({ dir, top }) => {
     const real = realNative(join(root, dir)) ?? join(root, dir);
     if (seen.has(real)) return [];
     seen.add(real);

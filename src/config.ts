@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { BUILD_DIRS, readState, realPath, skilllibHome, MANIFEST_FILE, userHome, writeState } from "./paths.js";
-import { ALL_PROJECT_DIRS, HARNESSES, type HarnessId } from "./harnesses.js";
+import { HARNESSES, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { isProjectCandidate, knownProjects, rememberProjects } from "./project.js";
 import { skillDirsIn } from "./skills.js";
 import { tildify } from "./output.js";
@@ -71,7 +71,7 @@ function findProjects(dir: string, depth = 4): string[] {
   if (depth < 0 || !existsSync(dir)) return [];
   if (isProjectCandidate(dir)) {
     const isRepo = existsSync(join(dir, ".git"));
-    const hasSkills = ALL_PROJECT_DIRS.some((d) => skillDirsIn(join(dir, d)).length > 0) || existsSync(join(dir, MANIFEST_FILE));
+    const hasSkills = projectDirsInUse(enabledHarnesses()).some((d) => skillDirsIn(join(dir, d)).length > 0) || existsSync(join(dir, MANIFEST_FILE));
     if (isRepo || hasSkills) return [dir];
   }
   let entries: string[] = [];
