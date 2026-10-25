@@ -1,6 +1,6 @@
 {
   "name": "skilllib",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Manage your agent skills like dependencies. One library, install from skills.sh, and every agent you use can see them.",
   "keywords": [
     "agent-skills",

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.14.0](https://github.com/atralice/skillLib/compare/v1.13.0...v1.14.0) (2026-10-25)
+
+
+### Features
+
+* pin new skills for you, and stop status from rewriting state ([#134](https://github.com/atralice/skillLib/issues/134)) ([88d7c26](https://github.com/atralice/skillLib/commit/88d7c26c6b3eab6b46dd93b3f601664ee083f803))
+* turn a Claude Code plugin off from the command line ([#137](https://github.com/atralice/skillLib/issues/137)) ([651d62f](https://github.com/atralice/skillLib/commit/651d62f2a81a36b29c5369ffc3a2a46b457592ed))
+
 ## [1.13.0](https://github.com/atralice/skillLib/compare/v1.12.2...v1.13.0) (2026-10-25)
 
 
