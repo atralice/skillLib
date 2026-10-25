@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { installGlobal, parseInstallSpec, findSkillDirs } from "./install.js";
 import { importSkill, projectStatus } from "./library.js";
@@ -55,7 +55,7 @@ describe("install", () => {
     skill(join(tmp, "pack", "one"), "one");
     skill(join(tmp, "pack", "two"), "two");
     skill(join(tmp, "pack", "one", "nested"), "nested");
-    expect(findSkillDirs(join(tmp, "pack")).map((d) => d.split("/").pop()).sort()).toEqual(["one", "two"]);
+    expect(findSkillDirs(join(tmp, "pack")).map((d) => basename(d)).sort()).toEqual(["one", "two"]);
   });
 
   test("installs a local skill into this project", () => {
