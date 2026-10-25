@@ -9,7 +9,7 @@ and every agent you use can see them.
 [![npm](https://img.shields.io/npm/v/skilllib?color=8b9dff&label=npm)](https://www.npmjs.com/package/skilllib)
 [![license](https://img.shields.io/badge/license-MIT-6bcb77)](LICENSE)
 ![node](https://img.shields.io/badge/node-%E2%89%A522-5eb8f7)
-![agents](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Zed%20%C2%B7%20Grok-c792ea)
+![agents](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Copilot%20%C2%B7%20Gemini%20%C2%B7%20OpenCode%20%C2%B7%20Zed%20%C2%B7%20Grok%20%C2%B7%20and%20more-c792ea)
 
 ```bash
 npm install -g skilllib && skilllib agent-skill install
@@ -59,7 +59,7 @@ Most agents can't turn off a global skill for just one repo. Claude Code can, bu
 - **🖥 An app when you want to look yourself.** `skilllib` opens a terminal app with the same data and fixes, and can copy a review prompt for any agent.
 - **🛟 Nothing is lost.** Your library keeps the skills you remove from a repo, and everything else skilllib removes goes to a backup you can restore with one key.
 
-Everything runs locally: no server, no account, no network calls.
+Everything runs locally: no server and no account. `skilllib install` and `skilllib search` are the exception: they talk to [skills.sh](https://skills.sh) and GitHub to fetch a skill.
 
 ---
 
@@ -72,9 +72,10 @@ It needs **Node.js 22+** and works on macOS and Linux. Windows support is newer:
 ```bash
 npm install -g skilllib
 skilllib agent-skill install
+skilllib install anthropics/skills@frontend-design
 ```
 
-This installs the `skilllib` skill where your agents look, in every repo (see [Use it from your agents](#use-it-from-your-agents)). Start a new agent session in any repo and ask away.
+`skilllib agent-skill install` puts the `skilllib` skill where your agents look, in every repo (see [Use it from your agents](#use-it-from-your-agents)). Start a new agent session in any repo and ask away. `skilllib install` puts a skill in your library and, when you run it inside a repo, adds it there so every agent you use can see it. `skilllib search react` finds skills on [skills.sh](https://skills.sh). To load one in every repo, add `--global`.
 
 ### In the app
 
@@ -84,7 +85,7 @@ skilllib    # or: npx skilllib
 
 On first run, skilllib asks two things:
 
-1. **Which agents you use:** Claude Code, Cursor, Codex, Zed, Grok. The ones installed on your machine are pre-selected.
+1. **Which agents you use.** The ones installed on your machine are pre-selected. `skilllib harnesses` lists every one skilllib knows.
 2. **Where your projects live**, e.g. `~/Projects`. It finds every git repo in there, and rescans each time it opens. Agent worktrees (`<repo>/.claude/worktrees/*`) aren't counted as projects.
 
 Then a good first session looks like this:
@@ -97,7 +98,7 @@ Then a good first session looks like this:
 
 ## Use it from your agents
 
-`skilllib agent-skill install` puts a small `skilllib` skill where your agents look: `~/.claude/skills` when one of them reads it (Claude Code, and Cursor and Grok too), and `~/.agents/skills` (a link, or the real copy) for Codex and Zed. This is the one skill that should be global, because it's about every repo. Upgrading skilllib keeps it up to date, and `skilllib agent-skill remove` takes it out. Agents use it from their next session.
+`skilllib agent-skill install` puts a small `skilllib` skill in the global skill folders your agents read: one real copy (usually `~/.claude/skills` or `~/.agents/skills`) and a link in each of the others. This is the one skill that should be global, because it's about every repo. Upgrading skilllib keeps it up to date, and `skilllib agent-skill remove` takes it out. Agents use it from their next session.
 
 Then ask in plain words. A few examples, with what the agent runs:
 
@@ -384,9 +385,13 @@ Everything the app does also works as a command, for your agents, scripts and CI
 
 ```
 skilllib                        open the app (prints `status` when piped)
+skilllib install <source>...    install from skills.sh, GitHub, or a folder (owner/repo, owner/repo@name, a URL)
+                                 in a repo, also adds them here; --global loads them in every repo; --all installs every skill in a repo
+skilllib search <query>         search skills.sh
+
 skilllib scan [folder...]       add project folders and scan them
 skilllib folders [add|remove]   show or change project folders
-skilllib harnesses [id...]      show or set your agents (claude-code cursor codex zed grok)
+skilllib harnesses [id...]      show or set your agents (skilllib harnesses lists them)
 
 skilllib status                 this repo's skills, which agents load them, and issues
 skilllib add | remove <name>    change this repo's skills
@@ -477,7 +482,7 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 - Turning off Cursor marketplace plugins: skilllib lists them and reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
 - Installing plugins from a marketplace: use `/plugin` in Claude Code. Plugins a repo's own `.claude/settings.json` turns on without installing them aren't listed in Plugins yet.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
-- Downloading skills: skilllib makes no network calls. To get a skill from GitHub, clone the repo and run `skilllib import <folder>`, or ask your agent to.
+- Downloading skills: `skilllib install owner/repo`, `owner/repo@skill`, a skills.sh or GitHub URL, or a local folder. It imports into your library and, in a repo, adds the skill here. `--global` loads it in every repo. `skilllib search <query>` looks up skills.sh. A repo with many skills is listed until you name one or pass `--all`. Everything else skilllib does stays on this machine.
 
 ---
 

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useApp, useInput, useWindowSize, type Key } from "ink";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { harness, HARNESSES, type HarnessId } from "../harnesses.js";
+import { FEATURED_HARNESSES, harness, HARNESSES, type HarnessId } from "../harnesses.js";
 import { ListPanel, Panel, wrap, type Cell, type Row } from "./components.js";
 import { color } from "./theme.js";
 import { reviewPrompt, writeSkillPrompt } from "./prompts.js";
@@ -83,7 +83,7 @@ type Modal =
   /** `placeholder`: shown while the field is empty, and what enter submits then. */
   | { kind: "input"; title: string; value: string; placeholder?: string; submit: (value: string) => void }
   /** Pick your agents; `then` runs after (the first run asks for your projects folder next). */
-  | { kind: "agents"; selected: HarnessId[]; cursor: number; then?: () => void };
+  | { kind: "agents"; selected: HarnessId[]; ids: HarnessId[]; cursor: number; then?: () => void };
 
 const bySeverity = (a: W.Issue, b: W.Issue) => W.SEVERITY_RANK[a.severity] - W.SEVERITY_RANK[b.severity];
 
@@ -1016,8 +1016,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
   // First run: pick your agents, then say where your projects live.
   useEffect(() => {
     const folder = () => !initial.roots.length && askForFolder("Where are your projects? skilllib finds the git repos in there");
-    if (!initial.agentsChosen) setModal({ kind: "agents", selected: initial.agents, cursor: 0, then: folder });
-    else folder();
+    if (!initial.agentsChosen) {
+      const installed = HARNESSES.filter((h) => h.installed()).map((h) => h.id);
+      const ids = [...FEATURED_HARNESSES, ...installed.filter((id) => !FEATURED_HARNESSES.includes(id))];
+      setModal({ kind: "agents", selected: initial.agents, ids, cursor: 0, then: folder });
+    } else folder();
   }, []);
   /** Jumps to Global, filtered to one skill. */
   function openInGlobal(name: string) {
@@ -1040,13 +1043,20 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
       cells: [{ text: text, width: 34, color: c }, { text: sub, grow: true, color: color.faint }],
       onEnter,
     });
+    const shown = [
+      ...FEATURED_HARNESSES.map((id) => harness(id)),
+      ...world.agents.filter((id) => !FEATURED_HARNESSES.includes(id)).map((id) => harness(id)),
+    ];
     return [
       header("#agents", "Agents"),
-      ...HARNESSES.map((h) =>
+      ...shown.map((h) =>
         row(`agent:${h.id}`, `${world.agents.includes(h.id) ? "[x]" : "[ ]"} ${h.icon} ${h.name}`, h.projectDirs.join(", "), () => {
           const wasOn = world.agents.includes(h.id);
           apply((w) => (w.ops.setAgents(wasOn ? w.agents.filter((a) => a !== h.id) : HARNESSES.map((x) => x.id).filter((id) => id === h.id || w.agents.includes(id))), `${h.name} ${wasOn ? "off" : "on"}`));
         }),
+      ),
+      row("agents:more", "More agents…", "Copilot, Gemini, OpenCode, Windsurf, and the rest", () =>
+        setModal({ kind: "agents", selected: world.agents, ids: HARNESSES.map((h) => h.id), cursor: 0 }),
       ),
       // The skill that lets your agents use skilllib: installing adds a global skill, so it asks first.
       row(
@@ -1196,11 +1206,13 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
 
   /** Which agents you use (first run, and Settings). */
   function agentsKeys(m: ModalOf<"agents">, input: string, key: Key) {
+    const list = m.ids.map((id) => harness(id));
     if (key.escape && !m.then) return setModal(null);
     if (key.upArrow) return setModal({ ...m, cursor: Math.max(0, m.cursor - 1) });
-    if (key.downArrow) return setModal({ ...m, cursor: Math.min(HARNESSES.length - 1, m.cursor + 1) });
+    if (key.downArrow) return setModal({ ...m, cursor: Math.min(list.length - 1, m.cursor + 1) });
     if (input === " ") {
-      const id = HARNESSES[m.cursor]!.id;
+      const id = list[m.cursor]?.id;
+      if (!id) return;
       return setModal({ ...m, selected: m.selected.includes(id) ? m.selected.filter((x) => x !== id) : [...m.selected, id] });
     }
     if (key.return) {
@@ -1500,11 +1512,11 @@ export function App({ initial, reload, loadUsage }: { initial: W.World; reload: 
         empty=""
         header={<Text color={color.muted}>{"skilllib makes your skills visible to each one. Detected ones are ticked."}</Text>}
         headerHeight={1}
-        rows={HARNESSES.map((h) => ({
+        rows={(modal.ids.map((id) => harness(id))).map((h) => ({
           key: h.id,
           cells: [
             { text: modal.selected.includes(h.id) ? "[x] " : "[ ] ", width: 4, color: modal.selected.includes(h.id) ? color.green : color.faint },
-            { text: `${h.icon} ${h.name}`, width: 18, color: h.color },
+            { text: `${h.icon} ${h.name}`, width: 22, color: h.color },
             { text: `reads ${h.projectDirs.join(", ")}`, grow: true, color: color.faint },
           ],
         }))}

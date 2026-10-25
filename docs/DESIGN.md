@@ -163,7 +163,7 @@ What `skilllib doctor` reports, one row per issue, worst first: the list shows i
 
 ### Settings
 
-Agents (`[x]` toggles which ones skilllib makes skills visible to) and the skilllib skill for them (`enter` installs it), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
+Agents (`[x]` toggles which ones skilllib makes skills visible to; **More agents…** is the rest), the skilllib skill for them (`enter` installs it), project folders, hidden repos, and backups (`↺ name`, `enter` restores).
 
 ![Settings](design/settings.svg)
 

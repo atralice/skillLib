@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { parseArgs as parseFlags } from "node:util";
 import { basename, join, resolve, sep } from "node:path";
 import {
@@ -35,8 +35,9 @@ import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } 
 import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills } from "./sources.js";
 import { addRoot, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
-import { ALL_PROJECT_DIRS, harness, HARNESSES, installDirs, onPath, type HarnessId } from "./harnesses.js";
+import { harness, HARNESSES, installDirs, onPath, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { detailWithGit, findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
+import { installFound, parseInstallSpec, resolveInstallDir, searchSkills, type InstalledSkill, type SkillHit } from "./install.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
 import type { AllChangesJson, ApplyJson, ChangeJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
@@ -544,7 +545,7 @@ export function scan(args: Args) {
   // Every agent's folder, and monorepo packages' own folders.
   const skillNames = (root: string) => [
     // Not a folder that links out of the repo: what's in it isn't the repo's (as in status).
-    ...new Set([...ALL_PROJECT_DIRS.filter((d) => !notWritable(root, d)).flatMap((d) => skillDirsIn(join(root, d))).map((d) => basename(d)), ...nestedSkills(root).map((s) => s.name)]),
+    ...new Set([...projectDirsInUse(enabledHarnesses()).filter((d) => !notWritable(root, d)).flatMap((d) => skillDirsIn(join(root, d))).map((d) => basename(d)), ...nestedSkills(root).map((s) => s.name)]),
   ];
   const withSkills = found.filter((root) => skillNames(root).length > 0);
   info(`Scanned ${roots.map((r) => tildify(r)).join(", ")}: ${found.length} project${found.length === 1 ? "" : "s"}, ${withSkills.length} with skills\n`);
@@ -809,7 +810,7 @@ export function harnessesCommand(args: Args) {
   }
   const enabled = enabledHarnesses();
   for (const h of HARNESSES) {
-    info(`${enabled.includes(h.id) ? green("◉") : dim("○")} ${h.name.padEnd(12)} ${dim(`reads ${h.projectDirs.join(", ")}${h.installed() ? " · detected" : ""}`)}`);
+    info(`${enabled.includes(h.id) ? green("◉") : dim("○")} ${h.name.padEnd(18)} ${dim(`reads ${h.projectDirs.join(", ")}${h.installed() ? " · detected" : ""}`)}`);
   }
   info(dim(`\nNew installs go to ${installDirs(enabled).join(" (real copy) + ")}${installDirs(enabled).length > 1 ? " (link)" : ""}.`));
 }
@@ -1022,4 +1023,108 @@ export function agentSkill(args: Args) {
   if (state === "installed") success(`Your agents can use skilllib ${dim(`(${agentSkillDirs().map((d) => tildify(d)).join(", ")})`)}`);
   else if (state === "outdated") warn("The skilllib skill is out of date. Run `skilllib agent-skill install` to update it.");
   else info("Your agents don't know about skilllib yet. Run `skilllib agent-skill install` so you can ask them about your skills.");
+}
+
+function installsOf(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
+/** Search skills.sh. `skilllib search <query>` */
+export async function search(args: Args) {
+  const query = args.positional.join(" ").trim();
+  if (!query) throw new Error("Usage: skilllib search <query>");
+  const hits = await searchSkills(query);
+  if (args.json) return json("search", hits);
+  if (!hits.length) return info(`No skills on skills.sh for “${query}”.`);
+  table(hits.map((h) => ({ Skill: h.name, Source: h.source, Installs: dim(installsOf(h.installs)) })));
+  info(dim("\nInstall one: skilllib install <source>   e.g. skilllib install owner/repo@skill"));
+}
+
+/**
+ * Install skills from skills.sh / GitHub (or a local folder) into the library.
+ * In a project, also adds them here. `--global` loads them in every repo instead.
+ */
+export async function install(args: Args) {
+  if (!args.positional.length) {
+    throw new Error("Usage: skilllib install <owner/repo[@skill] | url | folder>... [--global] [--all] [--force]\nSearch first: skilllib search <query>");
+  }
+  const results: InstalledSkill[] = [];
+  for (const input of args.positional) {
+    const spec = parseInstallSpec(input);
+    if (!spec) {
+      const hits = await searchSkills(input).catch(() => [] as SkillHit[]);
+      const exact = hits.filter((h) => h.skillId === input || h.name === input);
+      const pick = exact.length === 1 ? exact[0] : hits.length === 1 ? hits[0] : undefined;
+      if (!pick || !pick.source.includes("/")) {
+        process.exitCode = 1;
+        if (args.json) results.push({ name: input, source: input, status: "skipped", reason: hits.length ? `several matches: ${hits.slice(0, 8).map((h) => `${h.source}@${h.skillId}`).join(", ")}` : "not a GitHub repo, skills.sh URL, or folder" });
+        else if (hits.length) {
+          warn(`“${input}” matches several skills. Pass one of these:`);
+          for (const h of hits.slice(0, 8)) info(`  skilllib install ${h.source}@${h.skillId} ${dim(installsOf(h.installs))}`);
+        } else error(`${input}: not a GitHub repo, skills.sh URL, or folder. Try skilllib search ${input}`);
+        continue;
+      }
+      args.positional.push(`${pick.source}@${pick.skillId}`);
+      continue;
+    }
+    let resolved: Awaited<ReturnType<typeof resolveInstallDir>>;
+    try {
+      resolved = await resolveInstallDir(spec);
+    } catch (err) {
+      process.exitCode = 1;
+      const reason = err instanceof Error ? err.message : String(err);
+      if (args.json) results.push({ name: input, source: input, status: "skipped", reason });
+      else error(reason);
+      continue;
+    }
+    try {
+      if (!resolved.dirs.length) {
+        process.exitCode = 1;
+        const reason = "skill" in spec && spec.skill ? `no skill named ${spec.skill} in ${spec.owner}/${spec.repo}` : "no SKILL.md found";
+        if (args.json) results.push({ name: input, source: resolved.source, status: "skipped", reason });
+        else error(`${resolved.source}: ${reason}`);
+        continue;
+      }
+      if (resolved.many && !args.all) {
+        process.exitCode = 1;
+        const names = resolved.dirs.map((d) => basename(d));
+        const reason = `${names.length} skills. Pass @name, or --all. ${names.slice(0, 12).join(", ")}`;
+        if (args.json) results.push({ name: input, source: resolved.source, status: "skipped", reason });
+        else {
+          warn(`${resolved.source} has ${names.length} skills. Install one, or all of them:`);
+          const base = "owner" in spec ? `${spec.owner}/${spec.repo}` : resolved.source;
+          for (const name of names.slice(0, 12)) info(`  skilllib install ${base}@${name}`);
+          if (names.length > 12) info(dim(`  … and ${names.length - 12} more`));
+          info(dim(`  skilllib install ${base} --all`));
+        }
+        continue;
+      }
+      const installed = installFound(resolved.dirs, "owner" in spec ? `${spec.owner}/${spec.repo}` : resolved.source, {
+        force: args.force,
+        global: args.global,
+        allowTracked: args.allowTracked,
+      });
+      results.push(...installed);
+      if (!args.json) {
+        for (const row of installed) {
+          if (row.status === "exists" || row.status === "skipped") {
+            process.exitCode = 1;
+            warn(`${row.name}: ${row.reason}`);
+          } else {
+            const where = row.global ? `global ${row.global.map((d) => tildify(d)).join(", ")}` : row.project ? `this project (${row.project.action})` : "your library";
+            success(`${row.name} ${row.status === "unchanged" ? "already in your library" : "installed"} → ${where}`);
+          }
+        }
+        if (!args.global && !projectHere() && installed.some((r) => r.status !== "exists" && r.status !== "skipped")) {
+          info(dim("Not in a project, so nothing was added here. In a repo: skilllib add <name>. Everywhere: skilllib install <source> --global"));
+        }
+      }
+    } finally {
+      if (resolved.tmp) rmSync(resolved.tmp, { recursive: true, force: true });
+    }
+  }
+  if (args.json) json("install", results);
+  else if (results.some((r) => r.project && r.project.action !== "skipped")) info(dim("Commit skilllib.json and the skill folders."));
 }

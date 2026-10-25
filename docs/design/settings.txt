@@ -5,13 +5,13 @@
 │   ✓ Health          28   ││   [x] ◎ Codex                       .agents/skills, .codex/skills                      │
 │   Projects ───────────── ││   [ ] ℤ Zed                         .agents/skills                                     │
 │   ◆ web-app          ✕   ││   [ ] ✶ Grok                        .agents/skills, .grok/skills, .claude/skills, .cu… │
-│     api-server       ✕   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
-│     docs-site        ⚠   ││   Project folders ──────────────────────────────────────────────────────────────────── │
-│     mobile-app       ⚠   ││   ~/Projects                        scanned for git repos                              │
-│     billing              ││   + Add a folder…                                                                      │
-│     blog                 ││   Backups ──────────────────────────────────────────────────────────────────────────── │
-│     cli-tools            ││   No backups yet                    anything skilllib removes lands here               │
-│     dotfiles             ││                                                                                        │
+│     api-server       ✕   ││   More agents…                      Copilot, Gemini, OpenCode, Windsurf, and the rest  │
+│     docs-site        ⚠   ││   [x] ◆ skilllib skill              your agents can use skilllib                       │
+│     mobile-app       ⚠   ││   Project folders ──────────────────────────────────────────────────────────────────── │
+│     billing              ││   ~/Projects                        scanned for git repos                              │
+│     blog                 ││   + Add a folder…                                                                      │
+│     cli-tools            ││   Backups ──────────────────────────────────────────────────────────────────────────── │
+│     dotfiles             ││   No backups yet                    anything skilllib removes lands here               │
 │     design-system        ││                                                                                        │
 │     e2e-tests            ││                                                                                        │
 │     infra                ││                                                                                        │

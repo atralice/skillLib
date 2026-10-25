@@ -5,14 +5,18 @@ import { error, isJsonMode, json, setJsonMode } from "./output.js";
 import { refreshAgentSkill } from "./agentSkill.js";
 
 const HELP = `
-skilllib — one library of agent skills (Claude Code, Cursor, Codex, Zed, Grok), installed per project
+skilllib — one library of agent skills, installed per project, visible to every agent you use
 
   skilllib                       Open the interactive app (run it from anywhere)
+  skilllib install <source>...   Install skills from skills.sh, GitHub, or a folder
+                                 (owner/repo, owner/repo@skill, a skills.sh URL, or a path)
+                                 In a repo, also adds them here. --global loads them everywhere
+  skilllib search <query>        Search skills.sh
 
 Set up:
   skilllib scan [folder...]      Add folders that contain your projects and scan them
   skilllib folders [add|remove]  Show or change your project folders
-  skilllib harnesses [id...]     Show or set the agents you use (claude-code cursor codex zed grok)
+  skilllib harnesses [id...]     Show or set the agents you use (skilllib harnesses lists them)
   skilllib import <dir>...       Add skill folders to the library (--force replaces)
   skilllib import --global       Copy your global skills (every agent's folder) into the library
   skilllib global [keep|unkeep <name>...]  Your global skills; mark ones you keep global on purpose
@@ -51,7 +55,7 @@ Agents:
                                  Teach your agents to use skilllib, so you can ask them
                                  "which skills can you use here?" in any repo
   --json                         Machine-readable output (status list show projects outdated
-                                 usage doctor apply add remove sync update import global move agent-skill)
+                                 usage doctor apply add remove sync update import global move agent-skill install search)
 
 Options: --force (overwrite local edits)  --allow-tracked (link into git-tracked skill folders)  --days N
 `.trim();
@@ -92,6 +96,8 @@ const FLAGS_OF: Record<string, string[]> = {
   doctor: ["fix", "days"],
   apply: ["days"],
   usage: ["days"],
+  install: ["force", "global", "all", "allow-tracked"],
+  search: [],
   "agent-skill": [],
   version: [],
   help: [],
@@ -172,6 +178,10 @@ async function main() {
       return commands.usage(args);
     case "agent-skill":
       return commands.agentSkill(args);
+    case "install":
+      return commands.install(args);
+    case "search":
+      return commands.search(args);
     case "--version":
     case "-v":
     case "version":

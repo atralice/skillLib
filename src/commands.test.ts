@@ -349,12 +349,14 @@ describe("for agents: flags, errors and exit codes", () => {
     expect(JSON.parse(cli(repo(), "frobnicate", "--json").out).error).toContain("Unknown command: frobnicate");
   });
 
-  test("sync takes no skill names, and install is not a command", () => {
+  test("sync takes no skill names, and install refuses a folder that isn't there", () => {
     const web = repo();
     const sync = cli(web, "sync", "alpha");
     expect(sync.code).toBe(1);
     expect(sync.err).toContain("sync takes no skill names");
-    expect(cli(web, "install", "alpha").code).toBe(1);
+    const missing = cli(web, "install", "./no-such-skill");
+    expect(missing.code).toBe(1);
+    expect(missing.err).toContain("doesn't exist");
     expect(existsSync(join(web, ".claude", "skills", "alpha"))).toBe(false);
   });
 

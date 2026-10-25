@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realNative, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
-import { ALL_PROJECT_DIRS, harness, installDirs, type HarnessId } from "./harnesses.js";
+import { ALL_PROJECT_DIRS, harness, installDirs, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { allowsTrackedLinks, enabledHarnesses, setKeepGlobal } from "./config.js";
 import { excludePersonal, knownProjects, personalPinsFile, readManifest, writeManifest, type Dependency, type Manifest } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
@@ -413,7 +413,7 @@ export function blindSaid(name: string, blind: Blind[], label: (root: string) =>
  */
 function dependencyDirs(root: string, name: string, dep: Dependency | undefined): string[] {
   // .grok/skills is the team's folder. Adopting it would make add overwrite it and remove delete it.
-  const untracked = ALL_PROJECT_DIRS.find((d) => d !== GROK_SKILLS_DIR && existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
+  const untracked = projectDirsInUse(enabledHarnesses()).find((d) => d !== GROK_SKILLS_DIR && existsSync(join(root, d, name, "SKILL.md")) && !isLink(join(root, d, name)));
   const primary = dep ? (dep.dir ?? PROJECT_SKILLS_DIR) : (untracked ?? installDirs(enabledHarnesses())[0]!);
   // The fewest folders, counted from where the real copy is: no link an agent doesn't need.
   const wanted = installDirs(enabledHarnesses(), primary);
@@ -520,7 +520,7 @@ export function projectStatus(root: string): ProjectSkill[] {
   const byName = new Map<string, string[]>();
   // A skills folder that links out of the repo (.claude/skills -> ~/.claude/skills) isn't the repo's: what's in it
   // is someone else's (your global skills, say), so it's never listed, tracked, linked or removed as the repo's.
-  for (const dir of ALL_PROJECT_DIRS.filter((d) => writableDir(root, d))) {
+  for (const dir of projectDirsInUse(enabled).filter((d) => writableDir(root, d))) {
     for (const path of skillDirsIn(join(root, dir))) {
       const name = basename(path);
       if (seen.has(name)) continue;

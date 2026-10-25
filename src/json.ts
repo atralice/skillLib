@@ -187,6 +187,20 @@ export type UsageJson = {
   unusedLibrarySkills: string[];
 };
 
+/** `skilllib search --json` */
+export type SearchJson = { name: string; source: string; skillId: string; installs: number }[];
+
+/** `skilllib install --json` */
+export type InstallJson = {
+  name: string;
+  source: string;
+  status: "added" | "updated" | "unchanged" | "exists" | "skipped";
+  reason?: string;
+  project?: Change;
+  /** Global folders written, when `--global`. */
+  global?: string[];
+}[];
+
 /** `skilllib agent-skill [install|remove] --json` */
 export type AgentSkillJson = {
   state: AgentSkillState;

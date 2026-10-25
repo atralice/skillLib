@@ -438,6 +438,12 @@ describe("harnesses", () => {
     expect(installDirs(["grok"])).toEqual([".agents/skills"]);
     expect(installDirs(["claude-code", "grok"])).toEqual([".claude/skills"]);
     expect(installDirs(["claude-code", "cursor", "codex", "zed", "grok"])).toEqual([".agents/skills", ".claude/skills"]);
+    expect(installDirs(["gemini-cli"])).toEqual([".agents/skills"]);
+    expect(installDirs(["claude-code", "gemini-cli"])).toEqual([".agents/skills", ".claude/skills"]);
+    expect(installDirs(["github-copilot"])).toEqual([".agents/skills"]);
+    expect(installDirs(["claude-code", "github-copilot"])).toEqual([".claude/skills"]);
+    expect(installDirs(["windsurf"])).toEqual([".windsurf/skills"]);
+    expect(installDirs(["claude-code", "windsurf"])).toEqual([".claude/skills", ".windsurf/skills"]);
     expect(installDirs([])).toEqual([".claude/skills"]);
   });
 
