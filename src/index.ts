@@ -44,6 +44,7 @@ Library:
   skilllib projects              Your projects and their skills
   skilllib usage [--days N]      Which skills agents used (from Claude Code transcripts)
   skilllib check [--days N]      What global skills and this repo's cost, and whether each was used or is current
+  skilllib plugin off|on <id>    Turn a Claude Code plugin off or on (it stays installed)
 
 Health:
   skilllib doctor [--fix]        Broken links, duplicates, out-of-date projects
@@ -56,7 +57,7 @@ Agents:
                                  Teach your agents to use skilllib, so you can ask them
                                  "which skills can you use here?" in any repo
   --json                         Machine-readable output (status list show projects outdated
-                                 usage doctor apply add remove sync update import global move agent-skill install search check)
+                                 usage doctor apply add remove sync update import global move agent-skill install search check plugin)
 
 Options: --force (overwrite local edits)  --allow-tracked (link into git-tracked skill folders)  --days N
 `.trim();
@@ -98,6 +99,7 @@ const FLAGS_OF: Record<string, string[]> = {
   apply: ["days"],
   usage: ["days"],
   check: ["days"],
+  plugin: [],
   install: ["force", "global", "all", "allow-tracked"],
   search: [],
   "agent-skill": [],
@@ -180,6 +182,8 @@ async function main() {
       return commands.usage(args);
     case "check":
       return commands.check(args);
+    case "plugin":
+      return commands.pluginCommand(args);
     case "agent-skill":
       return commands.agentSkill(args);
     case "install":

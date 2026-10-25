@@ -249,7 +249,7 @@ Every plugin issue is *your call*: turning plugins on or off, or updating them, 
 
 The details list its skills with their uses, what else it brings, where it's installed and its version. Its actions:
 
-- **Turn it on / off**: `claude plugin enable|disable --scope <scope>`, run in its repo for a project or local install. A plugin synced from claude.ai is switched by its `"<name>@synced"` line in `~/.claude/settings.json`; so is any plugin when the `claude` command isn't available.
+- **Turn it on / off**: `skilllib plugin off <id>` and `skilllib plugin on <id>` (`name@marketplace`). That switches the copy that loads in every repo and leaves a per-repo install on. The same switch is `claude plugin enable|disable --scope <scope>`, run in its repo for a project or local install. A plugin synced from claude.ai is switched by its `"<name>@synced"` line in `~/.claude/settings.json`; so is any plugin when the `claude` command isn't available.
 - **Update to vN**, when its marketplace (as Claude Code last fetched it) declares a newer version or commit: `claude plugin update`. If the marketplace asks to run a command, skilllib doesn't confirm it for you: it tells you to run the update yourself.
 - **Uninstall**: `claude plugin uninstall --keep-data`, where it's installed. Settings › Backups reinstalls it, in the same repo for a project install.
 - **Replace *plugin* with library skills…** copies all its skills into your library (grouped under the plugin), adds them to the repos you tick, and uninstalls the plugin. A plugin can't be half removed, so it's all its skills at once; the confirmation says what else it brings that goes too. If the `claude` command isn't available, skilllib turns the plugin off instead and tells you to finish with `/plugin uninstall`. Plugins synced from claude.ai can't be removed from here: skilllib copies their skills, turns the plugin off, and tells you to remove it on claude.ai.
@@ -410,6 +410,7 @@ skilllib new <name> [desc]      create a skill
 skilllib projects               your projects and their skills
 skilllib usage [--days N]       which skills Claude Code used (a plugin's copy counts for the skill's name)
 skilllib check [--days N]        what loaded skills cost on every prompt, and which had no use
+skilllib plugin off|on <id>      turn a Claude Code plugin off or on (it stays installed)
 skilllib doctor [--fix]         find (and fix) problems
 skilllib apply <id> [choice]    apply one problem's fix, or the choice you pick (ids from status or doctor --json)
 skilllib restore [name]         put back something skilllib moved out (copies moved together come back together)
@@ -425,7 +426,7 @@ Flags: `--personal` / `--shared` (for `add`: pin in your personal pins or in the
 
 A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, a link something else is in the way of (a file or another copy), an unknown `tidy` name or `--keep` folder, or (with `--all`, and `projects`) a repo left out because its `skilllib.json` can't be read. What it did do is still done, and listed. An unknown or misspelled flag is an error too, so a typo never runs silently. With `--json`, an error that stops a command prints `{"error": "…"}` on stdout as well as the message on stderr. The commands SKILL.md lists as messages-only print nothing on stdout otherwise: read their exit code.
 
-**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move` and `agent-skill`. The output is shaped to keep agents fast and cheap:
+**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move`, `agent-skill`, `check` and `plugin`. The output is shaped to keep agents fast and cheap:
 
 - **`status --json`** answers everything about the repo in one call:
   - the repo's skills, with their source, version, state and git state

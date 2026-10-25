@@ -228,6 +228,15 @@ export type CheckJson = {
   }[];
 };
 
+/** `skilllib plugin off|on <id> --json`. One Claude Code install: the copy that loads in every repo, or the only per-repo install. */
+export type PluginJson = {
+  id: string;
+  /** The state just set. */
+  on: boolean;
+  ok: boolean;
+  message: string;
+};
+
 /** `skilllib agent-skill [install|remove] --json` */
 export type AgentSkillJson = {
   state: AgentSkillState;

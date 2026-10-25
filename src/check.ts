@@ -119,7 +119,7 @@ export function checkBrief(rows: CheckRow[], ctx: { days: number; repo: string |
     );
   }
   if (plugins.length > 3) lines.push(`${plugins.length - 3} more plugins are in the same spot.`);
-  if (plugins.length) lines.push("Claude Code plugins turn off from skilllib. Cursor plugins turn off in Cursor.");
+  if (plugins.length) lines.push("Turn a Claude Code plugin off with skilllib plugin off <id>. Cursor plugins turn off in Cursor.");
   if (yours.length) {
     const names = yours.sort((a, b) => b.everyPrompt - a.everyPrompt).slice(0, 5).map((r) => r.name);
     const more = yours.length > 5 ? `, and ${yours.length - 5} more` : "";
