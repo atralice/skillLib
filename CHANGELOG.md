@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/atralice/skillLib/compare/v1.12.2...v1.13.0) (2026-10-25)
+
+
+### Features
+
+* install skills from skills.sh and reach the other agents ([#132](https://github.com/atralice/skillLib/issues/132)) ([e719763](https://github.com/atralice/skillLib/commit/e71976395f990bed770f1843eaa0f45736de381a))
+
 ## [1.12.2](https://github.com/atralice/skillLib/compare/v1.12.1...v1.12.2) (2026-10-21)
 
 Fixes from a code review of personal pins.
