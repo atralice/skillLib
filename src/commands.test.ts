@@ -658,3 +658,64 @@ test("--allow-tracked is for that command only: nothing is remembered", () => {
   cli(web, "add", "alpha", "--allow-tracked");
   expect(readConfig().allowTracked ?? []).toEqual([]);
 });
+
+describe("plugin off and on", () => {
+  const savedPath = process.env.PATH;
+
+  function install(id: string, entries: { scope: string; projectPath?: string }[]) {
+    const [name, marketplace] = id.split("@");
+    const root = join(tmp, ".claude", "plugins", "marketplaces", marketplace!, "plugins", name!);
+    mkdirSync(join(root, "skills", "alpha"), { recursive: true });
+    writeFileSync(join(root, "skills", "alpha", "SKILL.md"), "---\ndescription: d\n---\nx\n");
+    mkdirSync(join(tmp, ".claude", "plugins"), { recursive: true });
+    const plugins = existsSync(join(tmp, ".claude", "plugins", "installed_plugins.json"))
+      ? (JSON.parse(readFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), "utf-8")) as { plugins: Record<string, unknown[]> }).plugins
+      : {};
+    plugins[id] = entries.map((e) => ({ ...e, installPath: root }));
+    writeFileSync(join(tmp, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins }));
+  }
+
+  beforeEach(() => {
+    process.env.PATH = join(tmp, "no-claude");
+  });
+
+  afterEach(() => {
+    process.env.PATH = savedPath;
+  });
+
+  test("off writes the Claude Code switch, and on puts it back from the name alone", () => {
+    install("pt@mk", [{ scope: "user" }]);
+    writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ model: "opus", enabledPlugins: { "pt@mk": true } }));
+    const off = cli(tmp, "plugin", "off", "pt@mk");
+    expect(off.code).toBe(0);
+    expect(off.out).toContain("pt@mk is off");
+    expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"))).toEqual({ model: "opus", enabledPlugins: { "pt@mk": false } });
+    const on = cli(tmp, "--json", "plugin", "on", "pt");
+    expect(on.code).toBe(0);
+    expect(JSON.parse(on.out)).toMatchObject({ id: "pt@mk", on: true, ok: true });
+    expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins["pt@mk"]).toBe(true);
+  });
+
+  test("a per-repo install stays on", () => {
+    const web = join(tmp, "web");
+    install("pt@mk", [{ scope: "user" }, { scope: "project", projectPath: web }]);
+    writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+    mkdirSync(join(web, ".claude"), { recursive: true });
+    writeFileSync(join(web, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "pt@mk": true } }));
+    const off = cli(tmp, "plugin", "off", "pt@mk");
+    expect(off.code).toBe(0);
+    expect(off.out).toContain("Still on in web (project)");
+    expect(JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).enabledPlugins["pt@mk"]).toBe(false);
+    expect(JSON.parse(readFileSync(join(web, ".claude", "settings.json"), "utf-8")).enabledPlugins["pt@mk"]).toBe(true);
+  });
+
+  test("an unknown id and a Cursor plugin are refused", () => {
+    expect(cli(tmp, "plugin", "off", "nope@mk").err).toContain("No Claude Code plugin nope@mk");
+    const root = join(tmp, ".cursor", "plugins", "cache", "mk", "tools", "1.0.0", "skills", "alpha");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "SKILL.md"), "---\ndescription: d\n---\nx\n");
+    const cursor = cli(tmp, "plugin", "off", "tools@mk");
+    expect(cursor.code).toBe(1);
+    expect(cursor.err).toContain("Cursor");
+  });
+});

@@ -18,6 +18,7 @@ import type {
   StatusJson,
   UsageJson,
   CheckJson,
+  PluginJson,
 } from "./json.js";
 
 let jsonMode = false;
@@ -51,6 +52,7 @@ type JsonOutputs = {
   "global move": GlobalMoveJson;
   usage: UsageJson;
   check: CheckJson;
+  plugin: PluginJson;
   "agent-skill": AgentSkillJson;
   /** Any command that fails: exit code 1, and the reason (also on stderr). */
   error: ErrorJson;

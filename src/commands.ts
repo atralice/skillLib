@@ -39,8 +39,8 @@ import { harness, HARNESSES, installDirs, onPath, projectDirsInUse, type Harness
 import { detailWithGit, findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
 import { installFound, parseInstallSpec, resolveInstallDir, searchSkills, type InstalledSkill, type SkillHit } from "./install.js";
 import { byWeight, checkBrief, freshLabel, libraryFresh, promptTokens, tokenSum, type CheckLever, type CheckRow } from "./check.js";
-import { pluginBackups, restorePlugin } from "./plugins.js";
-import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
+import { cursorPlugins, installedPlugins, pluginBackups, pluginNameOf, restorePlugin, setPluginOn, type InstalledPlugin } from "./plugins.js";
+import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, PluginJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
 import { applyTidy, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -847,6 +847,52 @@ export async function check(args: Args) {
   if (args.json) return json("check", report);
   if (!skills.length) return info("No skills loaded.");
   info(brief.join("\n"));
+}
+
+/**
+ * Turns a Claude Code plugin off or on. The copy that loads in every repo; a per-repo
+ * install is left as it is, and the message says where. One per-repo install, and no
+ * global copy, is switched itself.
+ */
+export function pluginCommand(args: Args) {
+  const [action, id, extra] = args.positional;
+  if ((action !== "off" && action !== "on") || !id || extra) throw new Error("Usage: skilllib plugin off|on <id>");
+  const on = action === "on";
+  const targets = pluginTargets(id);
+  const results = targets.map((p) => setPluginOn(p, on));
+  const ok = results.every((r) => r.ok);
+  const message = [...results.map((r) => r.message), stillOnElsewhere(targets)].filter(Boolean).join(" ");
+  if (!ok) process.exitCode = 1;
+  const body = { id: targets[0]!.id, on, ok, message } satisfies PluginJson;
+  if (args.json) return json("plugin", body);
+  if (ok) success(message);
+  else error(message);
+}
+
+/** Claude Code installs of `id` (or its name, when only one plugin has it) that this command switches. */
+function pluginTargets(id: string): InstalledPlugin[] {
+  const claude = installedPlugins().filter((p) => p.agent === "claude-code");
+  const exact = claude.filter((p) => p.id === id);
+  const matches = exact.length ? exact : claude.filter((p) => pluginNameOf(p.id) === id);
+  if (!matches.length) {
+    const cursor = cursorPlugins().some((p) => p.id === id || pluginNameOf(p.id) === id);
+    throw new Error(cursor ? `${id} is a Cursor plugin. Turn it off in Cursor (Settings → Plugins).` : `No Claude Code plugin ${id}.`);
+  }
+  const ids = [...new Set(matches.map((p) => p.id))];
+  if (ids.length > 1) throw new Error(`Several plugins match ${id}: ${ids.join(", ")}. Pass the id.`);
+  const everywhere = matches.filter((p) => !p.projectPath);
+  if (everywhere.length) return everywhere;
+  if (matches.length === 1) return matches;
+  const where = matches.map((p) => `${basename(p.projectPath!)} (${p.scope})`).join(", ");
+  throw new Error(`${matches[0]!.id} is installed in more than one repo (${where}). This command switches the copy that loads in every repo, and these are per-repo installs.`);
+}
+
+/** Per-repo installs of the same plugin that this command left on. */
+function stillOnElsewhere(targets: InstalledPlugin[]): string {
+  const id = targets[0]!.id;
+  const switched = new Set(targets.map((p) => p.projectPath).filter((p): p is string => !!p));
+  const left = installedPlugins().filter((p) => p.agent === "claude-code" && p.id === id && p.projectPath && !switched.has(p.projectPath) && p.on !== false);
+  return left.length ? `Still on in ${left.map((p) => `${basename(p.projectPath!)} (${p.scope})`).join(", ")}.` : "";
 }
 
 export function show(args: Args) {

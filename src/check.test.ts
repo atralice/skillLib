@@ -67,7 +67,7 @@ test("the brief says whether the cost is heavy, and only offers cuts that can be
     ],
     { days: 30, repo: "web" },
   ).join("\n");
-  for (const fact of ["7 skills", "~7,600 tokens", "plus ~100 from this repo", "Heavy", "You can drop ~5,400", "vercel@x", "Turn the plugin off", "can't unload", "Cursor"]) {
+  for (const fact of ["7 skills", "~7,600 tokens", "plus ~100 from this repo", "Heavy", "You can drop ~5,400", "vercel@x", "Turn the plugin off", "skilllib plugin off", "can't unload", "Cursor"]) {
     expect(lines).toContain(fact);
   }
   expect(lines).not.toContain("kept@x");
