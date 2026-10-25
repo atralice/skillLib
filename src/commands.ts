@@ -33,13 +33,14 @@ import { dim, error, green, info, json, red, success, table, tildify, truncate, 
 import { libraryFor, statusIssues, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
 import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
-import { libraryOrigins, machineSkills } from "./sources.js";
+import { libraryOrigins, machineSkills, skillsLoadedIn } from "./sources.js";
 import { addRoot, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { harness, HARNESSES, installDirs, onPath, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { detailWithGit, findIssues, runFix, usageIssues, type Choice, type Issue } from "./health.js";
 import { installFound, parseInstallSpec, resolveInstallDir, searchSkills, type InstalledSkill, type SkillHit } from "./install.js";
+import { byWeight, checkBrief, freshLabel, libraryFresh, promptTokens, tokenSum, type CheckLever, type CheckRow } from "./check.js";
 import { pluginBackups, restorePlugin } from "./plugins.js";
-import type { AllChangesJson, ApplyJson, ChangeJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
+import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
 import { applyTidy, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -421,7 +422,7 @@ export function add(args: Args) {
   const done = changes.filter((c) => c.action !== "skipped" && pins[c.name]);
   // Where a new pin went isn't obvious from the command: said once, for new pins only (--personal says it already).
   if (!args.json && args.personal === undefined && done.some((c) => c.action === "installed" && !c.moved && pins[c.name]!.personal))
-    info(dim(`Pinned in your personal pins (${tildify(personalPinsDir())}) and kept out of git. --shared pins in skilllib.json for the team.`));
+    info(dim(`Pinned for you (${tildify(personalPinsDir())}), kept out of git. To share it with the team: skilllib add <name> --shared, then commit skilllib.json and the skill folders.`));
   rememberProjects([root]);
 }
 
@@ -771,6 +772,88 @@ export async function usage(args: Args) {
     info("");
     warn(`Library skills unused in the last ${args.days} days: ${unused.join(", ")}`);
   }
+}
+
+const LEVER: Record<string, CheckLever> = { plugin: "plugin", "built-in": "built-in", "claude.ai": "claude.ai", system: "system", skilllib: "skilllib" };
+
+/** Global skills and, in a repo, that repo's. Reads the folders and transcripts, then stops. */
+export async function check(args: Args) {
+  const root = projectHere();
+  const usage = await usageBySkill(args.days);
+  const kept = keptGlobal();
+  const machine = machineSkills().filter((m) => !m.broken);
+  const loaded = root ? skillsLoadedIn(root, machine) : machine;
+  const local = root ? projectStatus(root) : [];
+  const localByName = new Map(local.map((s) => [s.name, s]));
+  const seen = new Set<string>();
+  const rows: CheckRow[] = [];
+  for (const g of loaded) {
+    seen.add(g.name);
+    const here = localByName.get(g.name);
+    const u = usage.get(g.name);
+    const repoFresh = here && here.state !== "folder missing" ? freshLabel(here.state, here.version, here.latest) : null;
+    const lever = LEVER[g.kind] ?? "yours";
+    rows.push({
+      name: g.name,
+      where: "global",
+      description: g.description,
+      everyPrompt: promptTokens(g.name, g.description),
+      uses: u?.uses ?? 0,
+      lastUsed: u ? u.lastUsed.slice(0, 10) : null,
+      projects: [...(u?.projects ?? [])].map((p) => basename(p)),
+      fresh: lever === "yours" ? (repoFresh ?? libraryFresh(g.path, g.name)) : lever,
+      path: g.path,
+      lever,
+      ...(lever !== "yours" && lever !== "skilllib" ? { via: g.origin } : {}),
+      ...(here ? { alsoInRepo: true } : {}),
+      ...(kept.has(g.name) ? { keptGlobal: true } : {}),
+    });
+  }
+  for (const s of local) {
+    if (seen.has(s.name) || s.state === "folder missing") continue;
+    const u = usage.get(s.name);
+    const { description } = readSkillInfo(s.path);
+    rows.push({
+      name: s.name,
+      where: "repo",
+      description,
+      everyPrompt: promptTokens(s.name, description),
+      uses: u?.uses ?? 0,
+      lastUsed: u ? u.lastUsed.slice(0, 10) : null,
+      projects: [...(u?.projects ?? [])].map((p) => basename(p)),
+      fresh: freshLabel(s.state, s.version, s.latest),
+      path: s.path,
+      lever: "repo",
+    });
+  }
+  const skills = byWeight(rows);
+  const repoName = root ? basename(root) : null;
+  const brief = checkBrief(skills, { days: args.days, repo: repoName });
+  const report: CheckJson = {
+    days: args.days,
+    repo: repoName,
+    everyPrompt: { global: tokenSum(skills, "global"), repo: tokenSum(skills, "repo") },
+    note: "Uses are Claude Code transcripts only, so 0 means it wasn't seen. everyPrompt is a rough token count (chars/4) of the name and description, which sit in every prompt. The rest of SKILL.md loads only when the skill is used. brief is the report.",
+    brief,
+    skills: skills.map((r) => ({
+      name: r.name,
+      where: r.where,
+      description: r.description,
+      everyPrompt: r.everyPrompt,
+      uses: r.uses,
+      ...(r.lastUsed ? { lastUsed: r.lastUsed } : {}),
+      ...(r.projects.length ? { projects: r.projects } : {}),
+      fresh: r.fresh,
+      lever: r.lever,
+      ...(r.via ? { via: r.via } : {}),
+      path: r.path,
+      ...(r.alsoInRepo ? { alsoInRepo: true } : {}),
+      ...(r.keptGlobal ? { keptGlobal: true } : {}),
+    })),
+  };
+  if (args.json) return json("check", report);
+  if (!skills.length) return info("No skills loaded.");
+  info(brief.join("\n"));
 }
 
 export function show(args: Args) {

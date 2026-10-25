@@ -11,7 +11,7 @@ import { forgetLatest } from "../versions.js";
 import { loadWorld, uniqueNames } from "./load.js";
 import { reviewPrompt } from "./prompts.js";
 import { usableHere } from "../here.js";
-import { deleteLibraryFix, failed, followUp, issueOf, issuesAt, machineActions, pinFix, pluginIssues, replacePluginFix, repoIssues, said, unlisted, usable, type World } from "./world.js";
+import { deleteLibraryFix, failed, issueOf, issuesAt, machineActions, pinFix, pluginIssues, replacePluginFix, repoIssues, said, unlisted, usable, type World } from "./world.js";
 
 let tmp: string;
 let repo: string;
@@ -100,45 +100,32 @@ test("a group moved together stays grouped in your library", () => {
   expect(w.library.map((l) => l.origin)).toEqual(["group: cloudflare set", "group: cloudflare set"]);
 });
 
-test("moving to a repo that commits Claude Code's folder keeps it global until you allow the link, then finishes", () => {
+test("moving to a repo that commits Claude Code's folder still links it, kept out of git", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
-  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n');
   writeSkill(join(repo, ".claude", "skills", "team"));
   writeSkill(join(repo, ".agents", "skills", "other"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   setHarnesses(["claude-code", "codex"]);
-  // In ~/.claude/skills: Claude Code runs them now, so it must still see them in app before they stop loading globally.
   for (const name of ["tool-a", "tool-b"]) writeSkill(join(tmp, ".claude", "skills", name));
 
-  let w = loadWorld();
-  const r = w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools");
-  if (typeof r === "string" || !("then" in r)) throw new Error(`expected a follow-up: ${typeof r === "string" ? r : r.message}`);
-  expect(r.message).toStartWith("tool-a: added, but Claude Code in app couldn't see it (git tracks .claude/skills: allow links there, then move it again), so it still loads globally");
-  expect(r.then.label).toBe("Also link them in .claude/skills, then stop loading them globally");
-  for (const name of ["tool-a", "tool-b"]) expect(existsSync(join(tmp, ".claude", "skills", name, "SKILL.md"))).toBe(true);
-
-  w = loadWorld();
-  expect(r.then.run(w)).toBe("Linked 2 skills in .claude/skills in app; tool-a, tool-b now load only in app");
+  const w = loadWorld();
+  expect(w.ops.moveGlobal(w.machine.filter((m) => m.name.startsWith("tool-")), ["app"], "tools")).toBe("tool-a, tool-b now load only in app");
   for (const name of ["tool-a", "tool-b"]) {
     expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
     expect(existsSync(join(tmp, ".claude", "skills", name))).toBe(false);
   }
-
-  // Remembered for this repo: the next one links without asking.
-  writeSkill(join(tmp, ".claude", "skills", "tool-c"));
-  w = loadWorld();
-  expect(w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-c"), ["app"])).toBe("tool-c now loads only in app");
-  expect(isLink(join(repo, ".claude", "skills", "tool-c"))).toBe(true);
+  expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills).toEqual({});
+  expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf-8" })).toBe("");
 });
 
-test("moving to a repo where a link would break for teammates keeps it global, saying why, and offers no link", () => {
+test("moving to a repo where a shared link would break for teammates still links it for you", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
-  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -146,17 +133,17 @@ test("moving to a repo where a link would break for teammates keeps it global, s
   writeSkill(join(tmp, ".claude", "skills", "tool-a"));
 
   const w = loadWorld();
-  const r = w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-a"), ["app"]);
-  expect(r).toMatchObject({ failed: true });
-  expect(said(r)).toContain("git tracks .claude/skills but not the skill's copy: commit it");
-  expect(existsSync(join(tmp, ".claude", "skills", "tool-a", "SKILL.md"))).toBe(true);
+  expect(w.ops.moveGlobal(w.machine.filter((m) => m.name === "tool-a"), ["app"])).toBe("tool-a now loads only in app");
+  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(true);
+  expect(existsSync(join(tmp, ".claude", "skills", "tool-a"))).toBe(false);
+  expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf-8" })).toBe("");
 });
 
-test("adding library skills to a repo that commits Claude Code's folder asks once, for all of them, and remembers it", () => {
+test("adding library skills to a repo that commits Claude Code's folder links them for you, out of git", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
-  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n');
   writeSkill(join(repo, ".claude", "skills", "team"));
   writeSkill(join(repo, ".agents", "skills", "other"));
   git("add", ".");
@@ -167,34 +154,24 @@ test("adding library skills to a repo that commits Claude Code's folder asks onc
     importSkill(join(tmp, "src", name));
   }
 
-  // One skill (Your skills › Add to repos…): the same question as Move to repos.
   let w = loadWorld();
-  const one = w.ops.addTo(["app"], ["tool-a"]);
-  expect(said(one)).toBe("Added tool-a v1 in app; not linked in .claude/skills: git tracks it");
-  expect(followUp(one)?.label).toBe("Also link it in .claude/skills");
+  expect(w.ops.addTo(["app"], ["tool-a"])).toBe("Added tool-a v1 in app");
+  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(true);
 
-  // A group (Add all N to repos…): one question for all of them.
-  const r = w.ops.addTo(["app"], ["tool-a", "tool-b"]);
-  expect(said(r)).toBe("Added 2 skills to app; not linked in .claude/skills in app: git tracks it");
-  const then = followUp(r)!;
-  expect(then.label).toBe("Also link them in .claude/skills");
-  w = loadWorld();
-  expect(then.run(w)).toBe("Linked 2 skills in .claude/skills in app");
-  for (const name of ["tool-a", "tool-b"]) {
-    expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
-    expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills[name].links).toEqual([".claude/skills"]);
-  }
+  expect(w.ops.addTo(["app"], ["tool-a", "tool-b"])).toBe("Added 2 skills to app");
+  for (const name of ["tool-a", "tool-b"]) expect(isLink(join(repo, ".claude", "skills", name))).toBe(true);
+  expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills).toEqual({});
 
-  // Remembered for this repo: the next one links without asking.
   expect(loadWorld().ops.addTo(["app"], ["tool-c"])).toBe("Added tool-c v1 in app");
   expect(isLink(join(repo, ".claude", "skills", "tool-c"))).toBe(true);
+  expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf-8" })).toBe("");
 });
 
-test("adding a skill whose copy git doesn't share says why it isn't linked, without offering a link that would break", () => {
+test("adding a skill whose copy git doesn't share still links it for you, out of git", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
-  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n');
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -202,16 +179,17 @@ test("adding a skill whose copy git doesn't share says why it isn't linked, with
   writeSkill(join(tmp, "src", "tool-a"));
   importSkill(join(tmp, "src", "tool-a"));
 
-  const r = loadWorld().ops.addTo(["app"], ["tool-a"]);
-  expect(r).toBe("Added tool-a v1 in app; not linked in .claude/skills: git tracks it and .agents/skills/tool-a isn't committed, so teammates would get broken links");
-  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(false);
+  expect(loadWorld().ops.addTo(["app"], ["tool-a"])).toBe("Added tool-a v1 in app");
+  expect(isLink(join(repo, ".claude", "skills", "tool-a"))).toBe(true);
+  expect(JSON.parse(readFileSync(join(repo, "skilllib.json"), "utf-8")).skills).toEqual({});
+  expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf-8" })).toBe("");
 });
 
 test("linking never puts an uncommitted skill in a folder git tracks, and doesn't ask to", () => {
   rmSync(join(repo, ".git"), { recursive: true });
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "ignore" });
   git("init", "-q");
-  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
+  writeFileSync(join(repo, "skilllib.json"), '{ "skills": {} }\n');
   writeSkill(join(repo, ".claude", "skills", "team"));
   git("add", ".");
   git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
@@ -924,7 +902,7 @@ test("moving a pin is offered only where it can succeed: never to make the team'
   for (const name of ["team", "mine"]) {
     writeSkill(join(tmp, "src", name));
     importSkill(join(tmp, "src", name));
-    addSkill(repo, name);
+    addSkill(repo, name, { personal: false });
   }
   git("add", "skilllib.json", ".claude/skills/team");
   git("commit", "-qm", "team");
@@ -948,7 +926,7 @@ test("a pinned skill whose link git has isn't offered as personal, even with its
   writeFileSync(join(repo, "skilllib.json"), JSON.stringify({ skills: {} }, null, 2) + "\n");
   writeSkill(join(tmp, "src", "tool"));
   importSkill(join(tmp, "src", "tool"));
-  addSkill(repo, "tool");
+  addSkill(repo, "tool", { personal: false });
   // The copy is in .agents/skills (not committed); only Claude Code's link in .claude/skills is.
   git("add", "skilllib.json", ".claude/skills/tool");
   git("commit", "-qm", "link only");

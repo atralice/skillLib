@@ -201,32 +201,79 @@ const repos = new Map<string, { repo: Repo | null; config: string | null; seen: 
 const changedAt = (path: string) => statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? -1;
 
 /**
+ * The git folder of a checkout's top, read from disk. Null when `root` isn't one (a package inside a repo has no
+ * .git of its own). A worktree's `.git` file points at the main checkout's git folder.
+ */
+function gitCommon(root: string): string | null {
+  const gitPath = join(root, ".git");
+  const st = statSync(gitPath, { throwIfNoEntry: false });
+  if (!st) return null;
+  // An empty .git (a folder someone made, not `git init`) isn't a repo: git itself can't read it.
+  if (st.isDirectory()) return existsSync(join(gitPath, "HEAD")) ? gitPath : null;
+  if (!st.isFile()) return null;
+  const gitdir = readFileSync(gitPath, "utf-8").match(/^gitdir:\s*(.+?)\s*$/m)?.[1];
+  if (!gitdir) return null;
+  const dir = resolve(root, gitdir);
+  if (!existsSync(dir)) return null;
+  let common = dir;
+  try {
+    const resolved = resolve(dir, readFileSync(join(dir, "commondir"), "utf-8").trim());
+    if (existsSync(resolved)) common = resolved;
+  } catch {
+    // A submodule's git dir is its own common dir.
+  }
+  return existsSync(join(common, "HEAD")) ? common : null;
+}
+
+/** Remote urls in a repo's config, in file order. Null when another file is included: git reads that, this doesn't. */
+function remoteUrls(configPath: string): [string, string][] | null {
+  let text: string;
+  try {
+    text = readFileSync(configPath, "utf-8");
+  } catch {
+    return [];
+  }
+  // ponytail: include.path falls back to git. Remotes in the repo's own config are the usual case.
+  if (/^\s*\[include/m.test(text)) return null;
+  const urls: [string, string][] = [];
+  let section = "";
+  for (const line of text.split(/\r?\n/)) {
+    const header = line.match(/^\s*\[([^\]]+)\]\s*$/);
+    if (header) {
+      const remote = header[1]!.match(/^remote\s+"(.+)"$/) ?? header[1]!.match(/^remote\s+(\S+)$/);
+      section = remote?.[1] ?? "";
+      continue;
+    }
+    const url = section ? line.match(/^\s*url\s*=\s*(.*?)\s*$/) : null;
+    if (url) urls.push([`remote.${section}.url`, url[1]!]);
+  }
+  return urls;
+}
+
+/**
  * What names a repo across clones, worktrees and machines: its origin remote (else its first). A repo with no remote
- * is named by its folder, and its pins stay on this machine. Asked of git once per folder, and again only when git's
- * config changes (a remote added or renamed) or a .git appears (git init), so the app sees those while it's open.
+ * is named by its folder, and its pins stay on this machine. Read from `.git` (no git process); again only when
+ * git's config changes or a `.git` appears, so the app sees a new remote while it's open.
  */
 function repoOf(root: string): Repo | null {
   const real = realPath(root);
   const hit = repos.get(real);
   if (hit && (hit.config ? changedAt(hit.config) === hit.seen : !existsSync(join(root, ".git")))) return hit.repo;
-  const out = gitIn(root, ["rev-parse", "--show-prefix", "--git-common-dir"])?.split("\n");
-  if (!out) {
+  const commonPath = gitCommon(root);
+  if (!commonPath) {
     repos.set(real, { repo: null, config: null, seen: 0 });
     return null;
   }
   // As the disk spells it (the native realpath): Windows can hand out a short name (RUNNER~1) for one checkout and
   // the long one for its worktree, and the key must be the same for both.
-  const common = realNative(resolve(root, out[1]!.trim())) ?? resolve(root, out[1]!.trim());
+  const common = realNative(commonPath) ?? commonPath;
   const folder = basename(common) === ".git" ? dirname(common) : common;
   const config = join(common, "config");
   const seen = changedAt(config);
-  let repo: Repo | null = null;
-  if (out[0] === "") {
-    const urls = (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => [l.slice(0, l.indexOf(" ")), l.slice(l.indexOf(" ") + 1)]); // a URL can hold spaces
-    const url = (urls.find(([k]) => k === "remote.origin.url") ?? urls[0])?.[1];
-    const remote = url ? normalizeRemote(url) : undefined;
-    repo = { file: pinsFileFor(root, remote, folder), folder, common, ...(remote ? { remote } : {}), root };
-  }
+  const urls = remoteUrls(config) ?? (gitIn(root, ["config", "--get-regexp", "^remote\\..*\\.url$"]) ?? "").split("\n").filter(Boolean).map((l) => [l.slice(0, l.indexOf(" ")), l.slice(l.indexOf(" ") + 1)] as [string, string]);
+  const url = (urls.find(([k]) => k === "remote.origin.url") ?? urls[0])?.[1];
+  const remote = url ? normalizeRemote(url) : undefined;
+  const repo: Repo = { file: pinsFileFor(root, remote, folder), folder, common, ...(remote ? { remote } : {}), root };
   repos.set(real, { repo, config, seen });
   return repo;
 }
@@ -372,7 +419,11 @@ export function isProjectCandidate(root: string): boolean {
 export function rememberProjects(roots: string[]) {
   const incoming = roots.map((r) => resolve(r)).filter((r) => isProjectCandidate(r) && !isAgentWorktree(r));
   const all = onePerFolder([...knownProjects(), ...incoming]).sort();
-  writeState(projectsFile(), all);
+  const path = projectsFile();
+  const prev = readState<string[]>(path);
+  // status remembers the repo you're in. The list usually didn't change: don't rewrite the file.
+  if (Array.isArray(prev) && prev.length === all.length && prev.every((p, i) => p === all[i])) return;
+  writeState(path, all);
 }
 
 /** Repos whose skilllib.json can be read, and the ones that can't (a merge conflict): those are reported, not fatal. */

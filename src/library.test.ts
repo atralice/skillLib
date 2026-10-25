@@ -999,32 +999,29 @@ test("a package's skills folder that links out of the repo isn't a nested skill"
 
 test("global move only waits for agents that load the global copy", () => {
   setHarnesses(["claude-code", "codex"]);
-  // The repo already has the copy in .claude/skills; git tracks .agents/skills, so Codex's link is held back.
+  // The repo already has the copy in .claude/skills, and git tracks .agents/skills.
   writeSkill(local("alpha"), "v1");
   writeSkill(join(project, ".agents", "skills", "team"), "team");
-  writeFileSync(join(project, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   execFileSync("git", ["init", "-q"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", ".agents"], { cwd: project });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: project });
   writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
-  // Codex can't see it in the repo, but it never read ~/.claude/skills: nothing is lost, so the move goes ahead.
+  // Codex never read ~/.claude/skills. The pin is personal, so its link is kept out of git and the move goes ahead.
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: true });
-  // Held back: git tracks .agents/skills and doesn't share the .claude copy, so a link there would break for teammates.
-  expect(mv!.changes[0]![1].uncommitted).toEqual([".agents/skills"]);
+  expect(mv!.changes[0]![1].uncommitted).toBeUndefined();
 });
 
 test("global move never unloads a skill an agent in another repo only ever saw globally", () => {
   setHarnesses(["claude-code", "codex"]);
   writeSkill(join(tmp, ".claude", "skills", "alpha"), "v1");
-  // In app1, git tracks .claude/skills and the copy isn't committed: Claude Code there runs the global copy.
+  // In app1, a shared pin: git tracks .claude/skills and the copy isn't committed, so Claude Code there runs the global copy.
   const app1 = join(tmp, "app1");
   writeSkill(join(app1, ".claude", "skills", "team"), "team");
-  writeFileSync(join(app1, "skilllib.json"), '{ "skills": {} }\n'); // the team pins with skilllib
   execFileSync("git", ["init", "-q"], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "add", "."], { cwd: app1 });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "team"], { cwd: app1 });
-  expect(addSkill(app1, "alpha").uncommitted).toEqual([".claude/skills"]);
+  expect(addSkill(app1, "alpha", { personal: false }).uncommitted).toEqual([".claude/skills"]);
   rememberProjects([app1, project]);
   const [mv] = moveGlobalSkills([{ name: "alpha", path: join(tmp, ".claude", "skills", "alpha"), links: [], harnesses: ["claude-code"] }], [project]);
   expect(mv).toMatchObject({ moved: false, changes: [] });

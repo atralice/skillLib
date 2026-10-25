@@ -26,8 +26,8 @@ Set up:
 In a project (a git repo or a folder with skilllib.json; never your home folder):
   skilllib status                This project's skills, which agents load them, and issues
   skilllib add <name>...         Install library skills where your harnesses look
-                                 (pinned in skilllib.json when the repo has one, else in your
-                                 personal pins, kept out of git; --personal / --shared to choose)
+                                 (your personal pins, kept out of git; --shared writes
+                                 skilllib.json to commit with the team)
   skilllib remove <name>...      Remove skills from this project
   skilllib link [--all]          Make every skill here usable by all your agents (adds links)
   skilllib tidy [--all|--global] One real copy per skill, plus only the links your agents need
@@ -43,6 +43,7 @@ Library:
   skilllib new <name> [desc]     Create a skill in the library
   skilllib projects              Your projects and their skills
   skilllib usage [--days N]      Which skills agents used (from Claude Code transcripts)
+  skilllib check [--days N]      What global skills and this repo's cost, and whether each was used or is current
 
 Health:
   skilllib doctor [--fix]        Broken links, duplicates, out-of-date projects
@@ -55,7 +56,7 @@ Agents:
                                  Teach your agents to use skilllib, so you can ask them
                                  "which skills can you use here?" in any repo
   --json                         Machine-readable output (status list show projects outdated
-                                 usage doctor apply add remove sync update import global move agent-skill install search)
+                                 usage doctor apply add remove sync update import global move agent-skill install search check)
 
 Options: --force (overwrite local edits)  --allow-tracked (link into git-tracked skill folders)  --days N
 `.trim();
@@ -96,6 +97,7 @@ const FLAGS_OF: Record<string, string[]> = {
   doctor: ["fix", "days"],
   apply: ["days"],
   usage: ["days"],
+  check: ["days"],
   install: ["force", "global", "all", "allow-tracked"],
   search: [],
   "agent-skill": [],
@@ -104,7 +106,7 @@ const FLAGS_OF: Record<string, string[]> = {
 };
 
 /** Commands that take no names or paths: run them in the repo they're about (or with --all). */
-const NO_ARGS = new Set(["", "ui", "status", "outdated", "list", "projects", "link", "doctor", "usage", "version"]);
+const NO_ARGS = new Set(["", "ui", "status", "outdated", "list", "projects", "link", "doctor", "usage", "check", "version"]);
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -176,6 +178,8 @@ async function main() {
       return commands.apply(args);
     case "usage":
       return commands.usage(args);
+    case "check":
+      return commands.check(args);
     case "agent-skill":
       return commands.agentSkill(args);
     case "install":

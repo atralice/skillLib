@@ -1,7 +1,7 @@
-import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { claudeDir } from "./paths.js";
+import { claudeDir, readJson, skilllibHome } from "./paths.js";
 
 export type UsageSource = "invoked" | "slash" | "file read";
 
@@ -95,23 +95,70 @@ function transcriptFiles(sinceMs: number): string[] {
   });
 }
 
+type CachedFile = { size: number; mtimeMs: number; uses: SkillUse[] };
+type UsageCache = { files: Record<string, CachedFile> };
+
+function usageCacheFile(): string {
+  return join(skilllibHome(), "usage-cache.json");
+}
+
+function readUsageCache(): UsageCache {
+  const data = readJson<UsageCache>(usageCacheFile());
+  return data?.files && typeof data.files === "object" ? data : { files: {} };
+}
+
+/** Writes the cache, or leaves the old one: a missed save only means the next scan reads the transcripts again. */
+function writeUsageCache(cache: UsageCache) {
+  const path = usageCacheFile();
+  const temp = `${path}.${process.pid}.tmp`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(temp, JSON.stringify(cache));
+    renameSync(temp, path);
+  } catch {
+    rmSync(temp, { force: true });
+  }
+}
+
+async function usesIn(file: string): Promise<SkillUse[]> {
+  const uses: SkillUse[] = [];
+  const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
+  for await (const line of lines) uses.push(...usesFromTranscriptLine(line));
+  return uses;
+}
+
 /** Every skill use recorded in Claude Code transcripts over the last `days` days. */
 export async function scanUsage(days: number): Promise<SkillUse[]> {
   const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const files = transcriptFiles(sinceMs);
+  const cache = readUsageCache();
+  let dirty = false;
+  // A transcript that's gone doesn't stay in the cache. Ones outside this window stay, for a longer --days.
+  for (const file of Object.keys(cache.files)) {
+    if (!files.includes(file) && !existsSync(file)) {
+      delete cache.files[file];
+      dirty = true;
+    }
+  }
   const seen = new Map<string, SkillUse>();
-  for (const file of transcriptFiles(sinceMs)) {
+  for (const file of files) {
     // One transcript that can't be read (root-owned after sudo, deleted mid-scan) is skipped, not the whole count.
     try {
-      const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
-      for await (const line of lines) {
-        for (const use of usesFromTranscriptLine(line)) {
-          if (Date.parse(use.at) >= sinceMs) seen.set(use.key, use);
-        }
+      const st = statSync(file);
+      // Whole milliseconds: JSON keeps those exactly, so a saved entry still matches next time.
+      const mtimeMs = Math.round(st.mtimeMs);
+      const hit = cache.files[file];
+      const uses = hit && hit.size === st.size && hit.mtimeMs === mtimeMs && Array.isArray(hit.uses) ? hit.uses : await usesIn(file);
+      if (uses !== hit?.uses) {
+        cache.files[file] = { size: st.size, mtimeMs, uses };
+        dirty = true;
       }
+      for (const use of uses) if (Date.parse(use.at) >= sinceMs) seen.set(use.key, use);
     } catch {
       continue;
     }
   }
+  if (dirty) writeUsageCache(cache);
   return [...seen.values()];
 }
 

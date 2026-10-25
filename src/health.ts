@@ -49,10 +49,10 @@ function intoLibrary(path: string, force = false): string {
 
 /** Where a pin is, in words: the repo's skilllib.json, or your personal pins. */
 const pinsOf = (where: string, personal?: boolean) => (personal ? "your personal pins" : `${where}'s skilllib.json`);
-/** Where a new pin goes (as addSkill decides): skilllib.json when the repo has one or can't have personal pins. */
-const newPinsOf = (root: string, where: string) => pinsOf(where, !existsSync(join(root, MANIFEST_FILE)) && personalPinsFile(root) !== null);
+/** Where a new pin goes (as addSkill decides): your personal pins at a repo's top, else its skilllib.json. */
+const newPinsOf = (root: string, where: string) => pinsOf(where, personalPinsFile(root) !== null);
 
-/** Tracks a library skill in a repo (its skilllib.json, or your personal pins when it has none); throws when it couldn't. */
+/** Tracks a library skill where a new pin goes; throws when it couldn't. */
 function track(root: string, name: string): Change {
   const c = addSkill(root, name);
   if (c.action === "skipped") throw new Error(`${name}: ${c.reason}`);
@@ -1094,13 +1094,13 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `local:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} isn't in your library`,
-        detail: "Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it (in skilllib.json, or your personal pins when it has none).",
+        detail: `Import it into the library to reuse it in other projects and keep it backed up. The repo then tracks it in ${newPinsOf(root, where)}.`,
         at: rows(root, [s.name]),
         choices: [
           {
             label: "Import into the library",
             // Tracking it writes skilllib.json.
-            hint: `copies it into Your skills${gitNote(root, [join(root, MANIFEST_FILE)])}`,
+            hint: `copies it into Your skills${personalPinsFile(root) ? "" : gitNote(root, [join(root, MANIFEST_FILE)])}`,
             run: () => {
               intoLibrary(s.path);
               track(root, s.name);
@@ -1167,7 +1167,7 @@ function repoIssues(root: string, ctx: RepoScan): void {
         id: `npx:${root}:${s.name}`,
         severity: "suggestion",
         title: `${s.name} in ${where} came from npx skills, not your library`,
-        detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (${committed(s) ? "committed" : `${untrackable(s)}, so skilllib can't track it here`})` : `; ${where} then tracks it (in skilllib.json, or your personal pins when it has none)`}.`,
+        detail: `Installed with \`npx skills add\`${s.source ? ` (${s.source})` : ""}. Import it into your library to reuse it in other projects and keep it backed up${teams ? `; ${where}'s copy stays as it is (${committed(s) ? "committed" : `${untrackable(s)}, so skilllib can't track it here`})` : `; ${where} then tracks it in ${newPinsOf(root, where)}`}.`,
         at: rows(root, [s.name]),
         choices: [
           {

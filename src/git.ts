@@ -40,13 +40,16 @@ function git(root: string, args: string[], input?: string): string | null {
 export function gitInfo(root: string, extraDirs: string[] = []): GitInfo | null {
   // The project can be a folder inside the repo (a nested skilllib.json): ask git, don't look for .git here.
   // `prefix` is where the project sits in the repo ("packages/web/", or "" at the top).
+  // A .git here is the top of this checkout, so the prefix is empty. A nested project (its own skilllib.json,
+  // no .git) still asks git where it sits in the repo.
   let inRepo: string;
-  try {
-    inRepo = execFileSync("git", ["rev-parse", "--show-prefix"], { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch {
-    // Not a repo git can read. A .git folder here (a fresh or partial one) still makes this the top, as before.
-    if (!existsSync(join(root, ".git"))) return null;
-    inRepo = "";
+  if (existsSync(join(root, ".git"))) inRepo = "";
+  else {
+    try {
+      inRepo = execFileSync("git", ["rev-parse", "--show-prefix"], { cwd: root, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return null;
+    }
   }
   // Each folder at its real place in the repo: git lists nothing through a folder that's a link (.agents/skills → .claude/skills),
   // so a link's skills are asked where they really are. One that leads out of the repo has no state here.
