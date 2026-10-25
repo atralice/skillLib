@@ -6,7 +6,6 @@
 import { isShared, type GitState } from "../git.js";
 import type { HarnessId } from "../harnesses.js";
 import { runFix, type Choice, type Issue as Found } from "../health.js";
-import { matchScore } from "../search.js";
 
 export type Source = "lib" | "repo" | "untracked" | "global" | "plugin" | "claude.ai" | "cursor" | "grok" | "system" | "skilllib";
 export type Filter = "all" | "local" | "global" | "plugins" | "vendor";
@@ -682,7 +681,12 @@ export function groupLabel(g: GroupKey, names: string[]): string {
 
 /** Substring, or word initials ("cfw" → cloudflare-workers): the TUI's search. */
 export function matches(name: string, query: string): boolean {
-  return matchScore(name, query) !== null;
+  if (!query) return true;
+  const text = name.toLowerCase();
+  const q = query.toLowerCase();
+  if (text.includes(q)) return true;
+  const initials = text.split(/[-_\s./]+/).filter(Boolean).map((w) => w[0]).join("");
+  return q.length >= 2 && initials.startsWith(q);
 }
 
 /** One row of the add box: a group title, a library skill, or a way to make a new one. */

@@ -72,17 +72,6 @@ export function rough(n: number): string {
   return String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-const sum = (rows: CheckRow[]) => rows.reduce((n, r) => n + r.everyPrompt, 0);
-
-function groups(rows: CheckRow[]): Map<string, CheckRow[]> {
-  const by = new Map<string, CheckRow[]>();
-  for (const r of rows) {
-    const key = r.via ?? r.name;
-    by.set(key, [...(by.get(key) ?? []), r]);
-  }
-  return by;
-}
-
 /**
  * A few lines: the cost, whether that's heavy, and the only cuts that are real.
  * Plugins and claude.ai skills can be turned off. Built-ins ship with the agent.
@@ -90,13 +79,13 @@ function groups(rows: CheckRow[]): Map<string, CheckRow[]> {
 export function checkBrief(rows: CheckRow[], ctx: { days: number; repo: string | null }): string[] {
   const global = rows.filter((r) => r.where === "global");
   const repo = rows.filter((r) => r.where === "repo");
-  const globalTokens = sum(global);
+  const globalTokens = tokenSum(global);
   const unused = rows.filter((r) => r.uses === 0);
   const unusedGlobal = global.filter((r) => r.uses === 0 && r.lever !== "skilllib");
-  const unusedTokens = sum(unusedGlobal);
+  const unusedTokens = tokenSum(unusedGlobal);
   const n = (count: number) => `${count} skill${count === 1 ? "" : "s"}`;
   const lines = [
-    `${n(rows.length)}. ~${rough(globalTokens)} tokens of names and descriptions in every prompt${ctx.repo ? `, plus ~${rough(sum(repo))} from this repo` : ""}.`,
+    `${n(rows.length)}. ~${rough(globalTokens)} tokens of names and descriptions in every prompt${ctx.repo ? `, plus ~${rough(tokenSum(repo))} from this repo` : ""}.`,
     `${unused.length} had no Claude Code use in ${ctx.days} days. A zero is a hint: Cursor and Codex aren't in these transcripts.`,
   ];
   if (!globalTokens) return [...lines, "Nothing global is loading."];
@@ -108,11 +97,11 @@ export function checkBrief(rows: CheckRow[], ctx: { days: number; repo: string |
         : "Fine. Most of what loads has been used.",
   );
 
-  const plugins = [...groups(global.filter((r) => r.lever === "plugin")).entries()]
-    .map(([id, skills]) => ({
+  const plugins = Object.entries(Object.groupBy(global.filter((r) => r.lever === "plugin"), (r) => r.via ?? r.name))
+    .map(([id, skills = []]) => ({
       id,
-      tokens: sum(skills),
-      idle: sum(skills.filter((s) => s.uses === 0)),
+      tokens: tokenSum(skills),
+      idle: tokenSum(skills.filter((s) => s.uses === 0)),
       skills: skills.length,
       used: skills.filter((s) => s.uses > 0).length,
     }))
@@ -120,7 +109,7 @@ export function checkBrief(rows: CheckRow[], ctx: { days: number; repo: string |
     .sort((a, b) => b.tokens - a.tokens);
   const yours = unusedGlobal.filter((r) => r.lever === "yours");
   const synced = unusedGlobal.filter((r) => r.lever === "claude.ai");
-  const drop = plugins.reduce((n, p) => n + p.tokens, 0) + sum(yours) + sum(synced);
+  const drop = plugins.reduce((n, p) => n + p.tokens, 0) + tokenSum(yours) + tokenSum(synced);
   if (drop > 0) lines.push(`You can drop ~${rough(drop)} tokens.`);
   for (const p of plugins.slice(0, 3)) {
     lines.push(
@@ -134,14 +123,14 @@ export function checkBrief(rows: CheckRow[], ctx: { days: number; repo: string |
   if (yours.length) {
     const names = yours.sort((a, b) => b.everyPrompt - a.everyPrompt).slice(0, 5).map((r) => r.name);
     const more = yours.length > 5 ? `, and ${yours.length - 5} more` : "";
-    lines.push(`~${rough(sum(yours))} are your own global skills with no use (${names.join(", ")}${more}). Move them into the repos that need them, or delete them.`);
+    lines.push(`~${rough(tokenSum(yours))} are your own global skills with no use (${names.join(", ")}${more}). Move them into the repos that need them, or delete them.`);
   }
-  if (synced.length) lines.push(`~${rough(sum(synced))} are claude.ai skills with no use. Turn them off on claude.ai.`);
+  if (synced.length) lines.push(`~${rough(tokenSum(synced))} are claude.ai skills with no use. Turn them off on claude.ai.`);
 
   const builtins = unusedGlobal.filter((r) => r.lever === "built-in");
   if (builtins.length) {
     const who = [...new Set(builtins.map((r) => r.via ?? "the agent"))].join(", ");
-    lines.push(`~${rough(sum(builtins))} are ${who} built-ins with no use. They ship with the agent. skilllib can't unload them.`);
+    lines.push(`~${rough(tokenSum(builtins))} are ${who} built-ins with no use. They ship with the agent. skilllib can't unload them.`);
   }
   return lines;
 }
