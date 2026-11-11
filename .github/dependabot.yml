@@ -1,0 +1,9 @@
+# Keeps the pinned actions current: one PR per update, titled as a Conventional Commit that doesn't release.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
