@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import { AGENTS_SKILLS_DIR, BUILD_DIRS, claudeDir, GROK_SKILLS_DIR, isRepoSkillLocation, libraryDir, MANIFEST_FILE, PROJECT_SKILLS_DIR, readState, realNative, realpathOrNull, skilllibHome, userHome, writeState } from "./paths.js";
 import { ALL_PROJECT_DIRS, harness, installDirs, projectDirsInUse, type HarnessId } from "./harnesses.js";
 import { allowsTrackedLinks, enabledHarnesses, setKeepGlobal } from "./config.js";
-import { excludePersonal, knownProjects, personalPinsFile, readManifest, writeManifest, type Dependency, type Manifest } from "./project.js";
+import { excludePersonal, knownProjects, mainCheckout, personalPinsFile, pinsIn, readManifest, writeManifest, type Dependency, type Manifest } from "./project.js";
 import { globalSkillDirs, libraryOrigins, originFor, projectSkillsLock, recordOrigin } from "./sources.js";
 import { copySkill, isDir, readSkillInfo, skillDirsIn, treeHash } from "./skills.js";
 import { localStamp, tildify } from "./output.js";
@@ -804,7 +804,32 @@ export type Change = {
   backedUp?: string;
   /** The pin moved: to your personal pins, or to the repo's skilllib.json. */
   moved?: "personal" | "shared";
+  /**
+   * Run in a git worktree, on a personal skill: what the same change did in the repo's main checkout (`path`), when
+   * it had something to do there. `skipped` (with `reason`) left that checkout as it was.
+   */
+  main?: { path: string; action: Change["action"]; reason?: string };
 };
+
+/**
+ * Repeats a personal skill's change in the main checkout when `root` is a worktree of it: the pin is one file for
+ * both, so without this the main checkout says "folder missing" (after add), "out of sync" (update) or keeps a copy
+ * git now sees (remove), and an agent that loads a worktree session's skills from the main checkout never gets the
+ * skill. Never forced, never a copy git tracks there, and a failure there (a sandbox that can't write it) is
+ * reported, not thrown: the worktree's change already happened.
+ */
+function inMain(root: string, change: Change, apply: (main: string) => Change | undefined): Change {
+  if (change.action === "skipped") return change;
+  const main = mainCheckout(root);
+  if (!main) return change;
+  let done: Change | undefined;
+  try {
+    done = apply(main);
+  } catch (err) {
+    done = { name: change.name, action: "skipped", reason: err instanceof Error ? err.message : String(err) };
+  }
+  return done ? { ...change, main: { path: main, action: done.action, ...(done.reason ? { reason: done.reason } : {}) } } : change;
+}
 
 /**
  * What add would do in a repo, checked before anything is written: where the copy and its links go and what's there,
@@ -865,7 +890,22 @@ export function addRefusal(root: string, name: string, hash: string): string | n
  * keep their recorded folders. Refuses to clobber local edits unless forced;
  * forced, content the library doesn't have goes to ~/.skilllib/edit-backup first.
  */
-export function addSkill(
+export function addSkill(root: string, name: string, options: { force?: boolean; version?: number; allowTracked?: boolean; personal?: boolean } = {}): Change {
+  const was = options.personal === false ? pinsIn(root)[name] : undefined;
+  const change = addHere(root, name, options);
+  return inMain(root, change, (main) => {
+    // Moved to skilllib.json: the main checkout's copy was yours, and git brings the team's.
+    if (change.moved === "shared") return dropLeftCopy(main, name, was);
+    const dep = readManifest(main).skills[name];
+    // Only your own pin: one the main checkout's skilllib.json has is the team's, and git brings its copy.
+    if (!dep?.personal) return undefined;
+    const at = `${dep.dir ?? PROJECT_SKILLS_DIR}/${name}`;
+    if (isGitTracked(main, at)) return { name, action: "skipped", reason: `${at} is committed on the branch checked out there` };
+    return syncSkill(main, name)[0];
+  });
+}
+
+function addHere(
   root: string,
   name: string,
   { force = false, version, allowTracked = false, personal }: { force?: boolean; version?: number; allowTracked?: boolean; personal?: boolean } = {},
@@ -1009,8 +1049,25 @@ function pinsWhere(root: string, recorded: Dependency | undefined, personal: boo
 const personalOf = (manifest: Manifest) => Object.fromEntries(Object.entries(manifest.skills).filter(([, d]) => d.personal));
 
 export function removeSkill(root: string, name: string, { force = false } = {}): Change {
+  const was = readManifest(root).skills[name];
+  return inMain(root, removeHere(root, name, { force }), (main) => dropLeftCopy(main, name, was));
+}
+
+/**
+ * A personal pin (`was`) went from a worktree: the copy it left in the main checkout is no longer out of git, so it
+ * goes too, unless it's the team's there (pinned by that checkout's skilllib.json, or committed). Edits are kept.
+ */
+function dropLeftCopy(main: string, name: string, was: Dependency | undefined): Change | undefined {
+  const at = `${was?.dir ?? PROJECT_SKILLS_DIR}/${name}`;
+  if (!was?.personal || readManifest(main).skills[name] || !entryExists(join(main, at)) || isGitTracked(main, at)) return undefined;
+  const gone = removeHere(main, name, { gone: was });
+  return gone.action === "skipped" ? { ...gone, reason: `${at} has local edits there, so it was left: git sees it now` } : gone;
+}
+
+/** `gone`: the pin this checkout's copy had, already dropped from another checkout of the repo. */
+function removeHere(root: string, name: string, { force = false, gone }: { force?: boolean; gone?: Dependency } = {}): Change {
   const manifest = readManifest(root);
-  const recorded = manifest.skills[name];
+  const recorded = gone ?? manifest.skills[name];
   if (!recorded) return { name, action: "skipped", reason: "not managed by skilllib in this project" };
 
   const home = recorded.dir ?? PROJECT_SKILLS_DIR;
@@ -1034,8 +1091,10 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   if (ownStuck || fileAt(dir)) {
     // Its copy isn't skilllib's to touch (a folder outside the repo, a file of yours): only the pin goes, so
     // skilllib.json stops asking for it. Every file and link stays as it is.
-    delete manifest.skills[name];
-    writeManifest(root, manifest);
+    if (!gone) {
+      delete manifest.skills[name];
+      writeManifest(root, manifest);
+    }
     const why = ownStuck ? blockerSaid(root, ownStuck) : `${home}/${name} is a file, not a skill folder`;
     // Its links in the repo's own folders stay too (they reach that copy): named, so nobody thinks they're gone.
     const keptLinks = (recorded.links ?? []).flatMap((d) => {
@@ -1063,8 +1122,11 @@ export function removeSkill(root: string, name: string, { force = false } = {}):
   // Forced over local edits, or pinned from another library: the copy goes to ~/.skilllib/edit-backup, as update and sync do.
   const backedUp = local !== null && !inLibrary ? stash(dir, "edit-backup") : undefined;
   if (!backedUp) rmSync(dir, { recursive: true, force: true });
-  delete manifest.skills[name];
-  writeManifest(root, manifest);
+  // A pin already gone took its exclude lines with it: this checkout's skilllib.json is never rewritten for it.
+  if (!gone) {
+    delete manifest.skills[name];
+    writeManifest(root, manifest);
+  }
   const left = [...leftLinks, ...takenLinks];
   return { name, action: "removed", ...(left.length ? { reason: left.join("; ") } : {}), ...(backedUp ? { backedUp } : {}) };
 }

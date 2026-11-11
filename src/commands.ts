@@ -137,6 +137,14 @@ function warnHeldLinks(root: string, c: Change, where = "here") {
   if (c.inTheWay?.length) warn(`${c.name}: not linked everywhere ${where}: ${inTheWaySaid(root, c.inTheWay)}. Clear the way, then run skilllib link.`);
 }
 
+/** A worktree's personal change is repeated in the main checkout (some agents load the session's skills from there): what it did. */
+function sayMain(c: Change) {
+  if (!c.main) return;
+  const fix = c.action === "removed" || c.moved ? "" : " An agent that loads skills from there needs `skilllib sync` run in it.";
+  if (c.main.action === "skipped") warn(`${c.name}: the main checkout (${tildify(c.main.path)}) was left as it was: ${c.main.reason}.${fix}`);
+  else info(dim(`    also ${c.main.action} in the main checkout (${tildify(c.main.path)})`));
+}
+
 /**
  * Prints what changed. A skipped skill is a failure: the command exits 1, so
  * scripts and agents can tell (the other skills' changes still happened).
@@ -154,6 +162,7 @@ function printChanges(root: string, changes: Change[], args: Args) {
       if (c.reason) info(dim(`    ${c.reason}`));
     }
     if (c.backedUp) info(dim(`    local edits saved to ${tildify(c.backedUp)}; \`skilllib restore ${c.name}\` brings them back`));
+    sayMain(c);
   }
   const done = changes.filter((c) => c.action !== "skipped").length;
   const skipped = changes.length - done;
@@ -1237,6 +1246,7 @@ export async function install(args: Args) {
           } else {
             const where = row.global ? `global ${row.global.map((d) => tildify(d)).join(", ")}` : row.project ? `this project (${row.project.action})` : "your library";
             success(`${row.name} ${row.status === "unchanged" ? "already in your library" : "installed"} → ${where}`);
+            if (row.project) sayMain(row.project);
           }
         }
         if (!args.global && !projectHere() && installed.some((r) => r.status !== "exists" && r.status !== "skipped")) {
