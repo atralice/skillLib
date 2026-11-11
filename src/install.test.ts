@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { dropOutsideLinks, installGlobal, parseInstallSpec, findSkillDirs } from "./install.js";
+import { dropOutsideLinks, installGlobal, nameRootSkill, parseInstallSpec, findSkillDirs } from "./install.js";
 import { importSkill, librarySkillDir, projectStatus } from "./library.js";
 import { keptGlobal } from "./config.js";
 
@@ -139,5 +139,23 @@ describe("install", () => {
     expect(JSON.parse(json.stdout)[0].project).toMatchObject({ action: "installed", personal: true, dirs: [".claude/skills"] });
     const text = spawnSync(process.execPath, [join(import.meta.dir, "index.ts"), "install", src], { cwd: repo, env: process.env, encoding: "utf-8" });
     expect(text.stdout + text.stderr).not.toContain("Commit skilllib.json");
+  });
+
+  test("a downloaded repo that is one skill takes the name in its SKILL.md, or the repo's name when it has none", () => {
+    const dl = join(tmp, "dl");
+    skill(join(dl, "skills-abc123"), "frontend-design");
+    const named = nameRootSkill(dl, join(dl, "skills-abc123"), "skills");
+    expect(named).toBe(join(dl, "frontend-design"));
+    expect(findSkillDirs(named).map((d) => basename(d))).toEqual(["frontend-design"]);
+
+    const dl2 = join(tmp, "dl2");
+    mkdirSync(join(dl2, "tool-abc123"), { recursive: true });
+    writeFileSync(join(dl2, "tool-abc123", "SKILL.md"), "---\ndescription: d\n---\nbody\n");
+    expect(nameRootSkill(dl2, join(dl2, "tool-abc123"), "tool")).toBe(join(dl2, "tool"));
+
+    // A repo of several skills has no SKILL.md at its root: its folder keeps its name.
+    const dl3 = join(tmp, "dl3");
+    skill(join(dl3, "pack-abc123", "one"), "one");
+    expect(nameRootSkill(dl3, join(dl3, "pack-abc123"), "pack")).toBe(join(dl3, "pack-abc123"));
   });
 });

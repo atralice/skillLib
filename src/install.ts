@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
@@ -132,6 +132,22 @@ function skillNamed(dirs: string[], skill: string | undefined): string[] {
   return dirs.filter((d) => basename(d) === want || readSkillInfo(d).name === want);
 }
 
+/**
+ * A downloaded repo that is one skill (SKILL.md at its root) sits in a folder GitHub names after the archive.
+ * The skill's name is its folder's name, so the folder is renamed: to the name SKILL.md gives, or the repo's.
+ * Returns the root to use from now on.
+ */
+export function nameRootSkill(dest: string, root: string, repo: string): string {
+  if (root === dest || !isSkillDir(root)) return root;
+  const given = readSkillInfo(root).name;
+  // readSkillInfo falls back to the folder's name: that is the archive's name, the one to replace.
+  const name = given !== basename(root) && NAME.test(given) && given !== "." && given !== ".." ? given : repo;
+  const named = join(dest, name);
+  if (named === root) return root;
+  renameSync(root, named);
+  return named;
+}
+
 /** Downloads a public GitHub repo tarball and returns the extracted root. Caller deletes `tmp`. */
 export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp: string; root: string; dropped: number }> {
   const dest = mkdtempSync(join(tmpdir(), "skilllib-"));
@@ -179,7 +195,7 @@ export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp
   rmSync(archive, { force: true });
   const dropped = dropOutsideLinks(dest).length;
   const top = readdirSync(dest);
-  const root = top.length === 1 && statSync(join(dest, top[0]!)).isDirectory() ? join(dest, top[0]!) : dest;
+  const root = nameRootSkill(dest, top.length === 1 && statSync(join(dest, top[0]!)).isDirectory() ? join(dest, top[0]!) : dest, repo);
   return { tmp: dest, root, dropped };
 }
 
