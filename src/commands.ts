@@ -40,7 +40,7 @@ import { detailWithGit, findIssues, runFix, usageIssues, type Choice, type Issue
 import { installFound, parseInstallSpec, resolveInstallDir, searchSkills, type InstalledSkill, type SkillHit } from "./install.js";
 import { byWeight, checkBrief, freshLabel, libraryFresh, promptTokens, tokenSum, type CheckLever, type CheckRow } from "./check.js";
 import { cursorPlugins, installedPlugins, pluginBackups, pluginNameOf, restorePlugin, setPluginOn, type InstalledPlugin } from "./plugins.js";
-import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, GlobalMoveJson, ImportJson, OutdatedJson, PluginJson, ProjectsJson, UsageJson } from "./json.js";
+import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, GlobalMoveJson, ImportJson, InstallJson, OutdatedJson, PluginJson, ProjectsJson, UsageJson } from "./json.js";
 import { moveGlobalSkills } from "./move.js";
 import { applyTidy, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
@@ -1234,7 +1234,6 @@ export async function install(args: Args) {
       if (!args.json) {
         for (const row of installed) {
           if (row.status === "exists" || row.status === "skipped") {
-            process.exitCode = 1;
             warn(`${row.name}: ${row.reason}`);
           } else {
             const where = row.global ? `global ${row.global.map((d) => tildify(d)).join(", ")}` : row.project ? `this project (${row.project.action})` : "your library";
@@ -1249,6 +1248,20 @@ export async function install(args: Args) {
       if (resolved.tmp) rmSync(resolved.tmp, { recursive: true, force: true });
     }
   }
-  if (args.json) json("install", results);
-  else if (results.some((r) => r.project && r.project.action !== "skipped")) info(dim("Commit skilllib.json and the skill folders."));
+  // In both modes: agents read the exit code. A skill that wasn't installed, or a link held back, isn't all that was asked.
+  if (results.some((r) => r.status === "exists" || r.status === "skipped" || (r.project && incomplete(r.project)))) process.exitCode = 1;
+  if (args.json) {
+    const root = projectHere();
+    json(
+      "install",
+      results.map((r): InstallJson[number] => (r.project && root ? { ...r, project: withDirs(root, [r.project])[0]! } : r)),
+    );
+  } else {
+    const root = projectHere();
+    const pins = root ? readManifest(root).skills : {};
+    const added = results.filter((r) => r.project && r.project.action !== "skipped" && pins[r.name]);
+    // Where the pin went decides what there is to commit, as `add` says it.
+    if (added.some((r) => !pins[r.name]!.personal)) info(dim("Commit skilllib.json and the skill folders."));
+    else if (added.length) info(dim(`Pinned for you (${tildify(personalPinsDir())}), kept out of git. To share it with the team: skilllib add <name> --shared, then commit skilllib.json and the skill folders.`));
+  }
 }

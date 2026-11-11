@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -113,5 +113,31 @@ describe("install", () => {
     expect(existsSync(join(inLibrary, "file-out"))).toBe(false);
     expect(existsSync(join(inLibrary, "dir-out"))).toBe(false);
     expect(readFileSync(join(inLibrary, "ref.md"), "utf-8")).toBe("inside");
+  });
+
+  test("install --json exits 1 when the library already has a different version of the skill", () => {
+    const src = join(tmp, "src", "alpha");
+    skill(src, "alpha");
+    const run = () => spawnSync(process.execPath, [join(import.meta.dir, "index.ts"), "install", src, "--json"], { cwd: project, env: process.env, encoding: "utf-8" });
+    expect(run().status).toBe(0);
+    writeFileSync(join(src, "SKILL.md"), "---\nname: alpha\ndescription: d\n---\nanother body\n");
+    const second = run();
+    expect(second.status).toBe(1);
+    expect(second.stdout.trim().split("\n")).toHaveLength(1);
+    expect(JSON.parse(second.stdout)[0]).toMatchObject({ name: "alpha", status: "exists" });
+  });
+
+  test("in a real git repo the pin is personal: the row says so, and nothing says to commit skilllib.json", () => {
+    const repo = join(tmp, "real");
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q", repo]);
+    const src = join(tmp, "src", "alpha");
+    skill(src, "alpha");
+    const json = spawnSync(process.execPath, [join(import.meta.dir, "index.ts"), "install", src, "--json"], { cwd: repo, env: process.env, encoding: "utf-8" });
+    expect(json.status).toBe(0);
+    expect(existsSync(join(repo, "skilllib.json"))).toBe(false);
+    expect(JSON.parse(json.stdout)[0].project).toMatchObject({ action: "installed", personal: true, dirs: [".claude/skills"] });
+    const text = spawnSync(process.execPath, [join(import.meta.dir, "index.ts"), "install", src], { cwd: repo, env: process.env, encoding: "utf-8" });
+    expect(text.stdout + text.stderr).not.toContain("Commit skilllib.json");
   });
 });
