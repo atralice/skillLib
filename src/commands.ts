@@ -1201,6 +1201,8 @@ export async function install(args: Args) {
       else error(reason);
       continue;
     }
+    // Said, not silent: a skill that relied on such a link may miss a file.
+    if (resolved.dropped) warn(`${resolved.source}: left out ${resolved.dropped} ${resolved.dropped === 1 ? "link that points" : "links that point"} outside the repo`);
     try {
       if (!resolved.dirs.length) {
         process.exitCode = 1;

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
@@ -81,6 +81,32 @@ function escapes(root: string, path: string): boolean {
   return real !== base && !real.startsWith(base + sep);
 }
 
+/**
+ * Removes every link under `root` that points outside `root`, or at nothing. For downloaded content only:
+ * copySkill follows links, so a link out of the download would copy a file of the user's into the library.
+ * The link is removed, never what it points to. Returns the links removed.
+ */
+export function dropOutsideLinks(root: string): string[] {
+  const base = realpathOrNull(root);
+  if (!base) return [];
+  const dropped: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      const st = lstatSync(path);
+      if (st.isSymbolicLink()) {
+        if (escapes(base, path)) {
+          unlinkSync(path);
+          dropped.push(path);
+        }
+        // A link that stays inside the download isn't followed here: its target is walked where it really is.
+      } else if (st.isDirectory()) walk(path);
+    }
+  };
+  walk(base);
+  return dropped;
+}
+
 /** Skill folders under `root`. A directory with SKILL.md is one skill; we don't look inside it. */
 export function findSkillDirs(root: string, depth = 0): string[] {
   if (depth > 6 || !isDir(root)) return [];
@@ -107,7 +133,7 @@ function skillNamed(dirs: string[], skill: string | undefined): string[] {
 }
 
 /** Downloads a public GitHub repo tarball and returns the extracted root. Caller deletes `tmp`. */
-export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp: string; root: string }> {
+export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp: string; root: string; dropped: number }> {
   const dest = mkdtempSync(join(tmpdir(), "skilllib-"));
   const archive = join(dest, "repo.tar.gz");
   const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/HEAD`;
@@ -151,9 +177,10 @@ export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp
     throw new Error(`couldn't extract ${owner}/${repo}`);
   }
   rmSync(archive, { force: true });
+  const dropped = dropOutsideLinks(dest).length;
   const top = readdirSync(dest);
   const root = top.length === 1 && statSync(join(dest, top[0]!)).isDirectory() ? join(dest, top[0]!) : dest;
-  return { tmp: dest, root };
+  return { tmp: dest, root, dropped };
 }
 
 export type InstalledSkill = {
@@ -239,7 +266,7 @@ export function installFound(
 }
 
 /** Local folder, or a downloaded GitHub repo. `many` is a repo with several skills and no name picked. */
-export async function resolveInstallDir(spec: InstallSpec): Promise<{ tmp?: string; dirs: string[]; source: string; many: boolean }> {
+export async function resolveInstallDir(spec: InstallSpec): Promise<{ tmp?: string; dirs: string[]; source: string; many: boolean; dropped?: number }> {
   if ("local" in spec) {
     const path = resolve(spec.local);
     if (!existsSync(path)) throw new Error(`${path} doesn't exist`);
@@ -249,5 +276,5 @@ export async function resolveInstallDir(spec: InstallSpec): Promise<{ tmp?: stri
   const got = await downloadGitHub(spec.owner, spec.repo);
   const source = spec.skill ? `${spec.owner}/${spec.repo}@${spec.skill}` : `${spec.owner}/${spec.repo}`;
   const dirs = skillNamed(findSkillDirs(got.root), spec.skill);
-  return { tmp: got.tmp, dirs, source, many: !spec.skill && dirs.length > 1 };
+  return { tmp: got.tmp, dirs, source, many: !spec.skill && dirs.length > 1, dropped: got.dropped };
 }

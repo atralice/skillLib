@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { installGlobal, parseInstallSpec, findSkillDirs } from "./install.js";
-import { importSkill, projectStatus } from "./library.js";
+import { dropOutsideLinks, installGlobal, parseInstallSpec, findSkillDirs } from "./install.js";
+import { importSkill, librarySkillDir, projectStatus } from "./library.js";
 import { keptGlobal } from "./config.js";
 
 let tmp: string;
@@ -89,5 +89,29 @@ describe("install", () => {
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(link, "SKILL.md"), "utf-8")).toContain("alpha");
     expect([...keptGlobal()]).toContain("alpha");
+  });
+
+  test.skipIf(process.platform === "win32")("a downloaded repo's links that point outside it are left out, and the files they point to stay", () => {
+    const dl = join(tmp, "dl");
+    skill(join(dl, "repo", "leaky"), "leaky");
+    mkdirSync(join(dl, "repo", "shared"));
+    writeFileSync(join(dl, "repo", "shared", "ref.md"), "inside");
+    writeFileSync(join(tmp, "outside.txt"), "private");
+    mkdirSync(join(tmp, "outside-dir"));
+    writeFileSync(join(tmp, "outside-dir", "a.txt"), "private");
+    symlinkSync(join(tmp, "outside.txt"), join(dl, "repo", "leaky", "file-out"));
+    symlinkSync(join(tmp, "outside-dir"), join(dl, "repo", "leaky", "dir-out"));
+    symlinkSync(join(tmp, "nothing-here"), join(dl, "repo", "leaky", "dangling"));
+    symlinkSync(join(dl, "repo", "shared", "ref.md"), join(dl, "repo", "leaky", "ref.md"));
+
+    expect(dropOutsideLinks(dl).map((p) => basename(p)).sort()).toEqual(["dangling", "dir-out", "file-out"]);
+    expect(readFileSync(join(tmp, "outside.txt"), "utf-8")).toBe("private");
+    expect(existsSync(join(tmp, "outside-dir", "a.txt"))).toBe(true);
+
+    importSkill(join(dl, "repo", "leaky"));
+    const inLibrary = librarySkillDir("leaky");
+    expect(existsSync(join(inLibrary, "file-out"))).toBe(false);
+    expect(existsSync(join(inLibrary, "dir-out"))).toBe(false);
+    expect(readFileSync(join(inLibrary, "ref.md"), "utf-8")).toBe("inside");
   });
 });
