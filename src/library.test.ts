@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { writeState } from "./paths.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
@@ -682,6 +682,26 @@ describe("round 2: sync, discard, remove and state files never lose a copy", () 
     expect(() => versionHistory("alpha")).toThrow("isn't valid JSON");
     expect(() => latestVersion("alpha")).toThrow("isn't valid JSON");
     expect(readFileSync(join(tmp, "home", "store", "alpha", "1", "SKILL.md"), "utf-8")).toContain("v1");
+  });
+
+  test("a version that was copied but never recorded (the run stopped) is recorded on the next run", () => {
+    expect(latestVersion("alpha")!.version).toBe(1);
+    writeSkill(lib("alpha"), "v2");
+    // What a run leaves when it stops between the copy and the index.
+    cpSync(lib("alpha"), join(tmp, "home", "store", "alpha", "2"), { recursive: true });
+    forgetLatest();
+    expect(latestVersion("alpha")).toMatchObject({ version: 2 });
+    forgetLatest();
+    expect(versionHistory("alpha").map((v) => v.version)).toEqual([1, 2]);
+  });
+
+  test("an unlisted version folder with other content is an error, and it is not written over", () => {
+    expect(latestVersion("alpha")!.version).toBe(1);
+    writeSkill(lib("alpha"), "v2");
+    writeSkill(join(tmp, "home", "store", "alpha", "2"), "half a copy");
+    forgetLatest();
+    expect(() => latestVersion("alpha")).toThrow("exists but");
+    expect(readFileSync(join(tmp, "home", "store", "alpha", "2", "SKILL.md"), "utf-8")).toContain("half a copy");
   });
 
   test("a project backup whose origin was lost isn't restored to a guessed place", () => {

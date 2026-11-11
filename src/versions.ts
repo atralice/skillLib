@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { libraryDir, readState, skilllibHome, writeState } from "./paths.js";
 import { copySkill, treeHash } from "./skills.js";
@@ -62,10 +62,27 @@ export function latestVersion(name: string): Version | null {
       result = last;
     } else {
       const next: Version = { version: (last?.version ?? 0) + 1, hash, date: new Date().toISOString() };
-      // A stored version is immutable: never write over one, even if the index lost track of it.
-      if (existsSync(versionDir(name, next.version))) throw new Error(`${versionDir(name, next.version)} exists but ${indexFile(name)} doesn't list it: fix the index before adding versions`);
-      mkdirSync(storeDir(name), { recursive: true });
-      copySkill(source, versionDir(name, next.version));
+      const dir = versionDir(name, next.version);
+      // A stored version is immutable: never write over one. One that is whole but unlisted (a run stopped after
+      // the copy, before the index) holds exactly this content: it only needs recording.
+      const unlisted = () => {
+        if (treeHash(dir) !== hash) throw new Error(`${dir} exists but ${indexFile(name)} doesn't list it, and it isn't your library's copy: move that folder away, then run skilllib again`);
+      };
+      if (existsSync(dir)) unlisted();
+      else {
+        mkdirSync(storeDir(name), { recursive: true });
+        // Copied under another name, then renamed: a run that stops mid-copy leaves no half version named as one.
+        const temp = join(storeDir(name), `.${next.version}.${process.pid}.tmp`);
+        copySkill(source, temp);
+        try {
+          renameSync(temp, dir);
+        } catch (err) {
+          rmSync(temp, { recursive: true, force: true });
+          // Another run recorded this version meanwhile: fine when it holds the same content.
+          if (!existsSync(dir)) throw err;
+          unlisted();
+        }
+      }
       const recorded = [...history, next];
       writeState(indexFile(name), recorded);
       historyCache.set(name, recorded);
