@@ -33,7 +33,7 @@ In a project (a git repo or a folder with skilllib.json; never your home folder)
   skilllib tidy [--all|--global] One real copy per skill, plus only the links your agents need
                                  (--dry-run to preview, --allow-git to change what git sees,
                                  <name> --keep <folder> to pick the copy that wins)
-  skilllib sync [--all]          Install exactly the versions in skilllib.json
+  skilllib sync [--all]          Install exactly the pinned versions (your personal pins and skilllib.json)
   skilllib outdated [--all]      Skills with a newer version in the library
   skilllib update [name...]      Move to the newest versions (--all: every project)
 
