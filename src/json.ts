@@ -196,7 +196,8 @@ export type InstallJson = {
   source: string;
   status: "added" | "updated" | "unchanged" | "exists" | "skipped";
   reason?: string;
-  project?: Change;
+  /** The change in this repo, as `add` prints it: with `dirs`, and `personal` when the pin is yours. */
+  project?: ChangeJson;
   /** Global folders written, when `--global`. */
   global?: string[];
 }[];

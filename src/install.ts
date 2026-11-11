@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { enabledHarnesses, setKeepGlobal } from "./config.js";
@@ -18,11 +18,33 @@ export type SkillHit = { name: string; source: string; skillId: string; installs
 
 const SEARCH_API = process.env.SKILLLIB_SKILLS_API || "https://skills.sh";
 const MAX_BYTES = 32 * 1024 * 1024;
+// Agents wait on these commands: a connection that stalls must end, not hang.
+const SEARCH_TIMEOUT_MS = 15_000;
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+const TAR_TIMEOUT_MS = 60_000;
+const timedOut = (err: unknown) => err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+// What the archive unpacks to: a small download can hold a very large tree, which would then be hashed and copied.
+const MAX_EXTRACTED_BYTES = 256 * 1024 * 1024;
+
+function extractedBytes(dir: string): number {
+  let total = 0;
+  for (const name of readdirSync(dir)) {
+    const st = lstatSync(join(dir, name));
+    total += st.isDirectory() ? extractedBytes(join(dir, name)) : st.size;
+    if (total > MAX_EXTRACTED_BYTES) return total;
+  }
+  return total;
+}
 const SKIP = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
 
 export async function searchSkills(query: string): Promise<SkillHit[]> {
   const url = `${SEARCH_API}/api/search?${new URLSearchParams({ q: query, limit: "20" })}`;
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
+  } catch (err) {
+    throw new Error(timedOut(err) ? `skills.sh search timed out after ${SEARCH_TIMEOUT_MS / 1000}s` : `skills.sh search failed (${err instanceof Error ? err.message : err})`);
+  }
   if (!res.ok) throw new Error(`skills.sh search failed (${res.status})`);
   const data = (await res.json()) as { skills?: { name?: string; source?: string; skillId?: string; id?: string; installs?: number }[] };
   return (data.skills ?? []).map((s) => ({
@@ -33,7 +55,7 @@ export async function searchSkills(query: string): Promise<SkillHit[]> {
   }));
 }
 
-export type InstallSpec = { owner: string; repo: string; skill?: string } | { local: string };
+export type InstallSpec = { owner: string; repo: string; skill?: string; ref?: string } | { local: string };
 
 const NAME = /^[A-Za-z0-9_.-]+$/;
 
@@ -45,14 +67,16 @@ export function parseInstallSpec(input: string): InstallSpec | null {
     return { local: trimmed.replace(/^~(?=$|[\\/])/, userHome()) };
   }
   let text = trimmed;
+  // Pasted without the scheme: still that site's URL, not an owner named "github.com".
+  const asUrl = /^(www\.)?(github\.com|skills\.sh)\//.test(trimmed) ? `https://${trimmed}` : trimmed;
   try {
-    const url = new URL(trimmed);
+    const url = new URL(asUrl);
     const host = url.hostname.replace(/^www\./, "");
     const parts = url.pathname.split("/").filter(Boolean);
     if (host === "skills.sh" && parts.length >= 2) text = parts.length >= 3 ? `${parts[0]}/${parts[1]}@${parts.slice(2).join("/")}` : `${parts[0]}/${parts[1]}`;
     else if (host === "github.com" && parts.length >= 2) {
       const repo = parts[1]!.replace(/\.git$/, "");
-      if (parts[2] === "tree" && parts.length >= 5) return namePair(parts[0]!, repo, parts.slice(4).join("/"));
+      if (parts[2] === "tree" && parts.length >= 4) return namePair(parts[0]!, repo, parts.slice(4).join("/") || undefined, parts[3]!);
       return namePair(parts[0]!, repo);
     } else return null;
   } catch {
@@ -69,9 +93,11 @@ export function parseInstallSpec(input: string): InstallSpec | null {
   return null;
 }
 
-function namePair(owner: string, repo: string, skill?: string): InstallSpec | null {
+function namePair(owner: string, repo: string, skill?: string, ref?: string): InstallSpec | null {
   if (!NAME.test(owner) || !NAME.test(repo) || owner === "." || repo === "." || owner === ".." || repo === "..") return null;
-  return skill ? { owner, repo, skill } : { owner, repo };
+  // A branch or tag from a tree/ URL: one path part. (One with a "/" can't be told from the folder after it.)
+  if (ref !== undefined && (!NAME.test(ref) || ref === "." || ref === "..")) return null;
+  return { owner, repo, ...(skill ? { skill } : {}), ...(ref ? { ref } : {}) };
 }
 
 function escapes(root: string, path: string): boolean {
@@ -79,6 +105,32 @@ function escapes(root: string, path: string): boolean {
   const real = realpathOrNull(path);
   if (!base || !real) return true;
   return real !== base && !real.startsWith(base + sep);
+}
+
+/**
+ * Removes every link under `root` that points outside `root`, or at nothing. For downloaded content only:
+ * copySkill follows links, so a link out of the download would copy a file of the user's into the library.
+ * The link is removed, never what it points to. Returns the links removed.
+ */
+export function dropOutsideLinks(root: string): string[] {
+  const base = realpathOrNull(root);
+  if (!base) return [];
+  const dropped: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      const st = lstatSync(path);
+      if (st.isSymbolicLink()) {
+        if (escapes(base, path)) {
+          unlinkSync(path);
+          dropped.push(path);
+        }
+        // A link that stays inside the download isn't followed here: its target is walked where it really is.
+      } else if (st.isDirectory()) walk(path);
+    }
+  };
+  walk(base);
+  return dropped;
 }
 
 /** Skill folders under `root`. A directory with SKILL.md is one skill; we don't look inside it. */
@@ -100,27 +152,49 @@ export function findSkillDirs(root: string, depth = 0): string[] {
   });
 }
 
-function skillNamed(dirs: string[], skill: string | undefined): string[] {
+/** The skill folders a name picks. A path (`skills/foo`) picks that folder; a bare name picks by folder or SKILL.md name. */
+export function skillNamed(root: string, dirs: string[], skill: string | undefined): string[] {
   if (!skill) return dirs;
-  const want = skill.split("/").filter(Boolean).pop()!;
+  const parts = skill.split("/").filter(Boolean);
+  if (parts.length > 1) {
+    const exact = dirs.filter((d) => relative(root, d).split(sep).join("/") === parts.join("/"));
+    if (exact.length) return exact;
+  }
+  const want = parts.pop()!;
   return dirs.filter((d) => basename(d) === want || readSkillInfo(d).name === want);
 }
 
+/**
+ * A downloaded repo that is one skill (SKILL.md at its root) sits in a folder GitHub names after the archive.
+ * The skill's name is its folder's name, so the folder is renamed: to the name SKILL.md gives, or the repo's.
+ * Returns the root to use from now on.
+ */
+export function nameRootSkill(dest: string, root: string, repo: string): string {
+  if (root === dest || !isSkillDir(root)) return root;
+  const given = readSkillInfo(root).name;
+  // readSkillInfo falls back to the folder's name: that is the archive's name, the one to replace.
+  const name = given !== basename(root) && NAME.test(given) && given !== "." && given !== ".." ? given : repo;
+  const named = join(dest, name);
+  if (named === root) return root;
+  renameSync(root, named);
+  return named;
+}
+
 /** Downloads a public GitHub repo tarball and returns the extracted root. Caller deletes `tmp`. */
-export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp: string; root: string }> {
+export async function downloadGitHub(owner: string, repo: string, ref = "HEAD"): Promise<{ tmp: string; root: string; dropped: number }> {
   const dest = mkdtempSync(join(tmpdir(), "skilllib-"));
   const archive = join(dest, "repo.tar.gz");
-  const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/HEAD`;
+  const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/${encodeURIComponent(ref)}`;
   let res: Response;
   try {
-    res = await fetch(url, { redirect: "follow" });
+    res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   } catch (err) {
     rmSync(dest, { recursive: true, force: true });
     throw new Error(`couldn't download ${owner}/${repo} (${err instanceof Error ? err.message : err})`);
   }
   if (!res.ok || !res.body) {
     rmSync(dest, { recursive: true, force: true });
-    throw new Error(res.status === 404 ? `${owner}/${repo} not found on GitHub` : `couldn't download ${owner}/${repo} (${res.status})`);
+    throw new Error(res.status === 404 ? `${owner}/${repo}${ref === "HEAD" ? "" : ` (${ref})`} not found on GitHub` : `couldn't download ${owner}/${repo} (${res.status})`);
   }
   const host = new URL(res.url).hostname;
   if (host !== "codeload.github.com" && host !== "github.com") {
@@ -144,16 +218,19 @@ export async function downloadGitHub(owner: string, repo: string): Promise<{ tmp
       ),
       createWriteStream(archive),
     );
-    execFileSync("tar", ["-xzf", archive, "-C", dest], { stdio: "ignore" });
+    execFileSync("tar", ["-xzf", archive, "-C", dest], { stdio: "ignore", timeout: TAR_TIMEOUT_MS });
+    if (extractedBytes(dest) > MAX_EXTRACTED_BYTES) throw new Error(`${owner}/${repo} is larger than ${MAX_EXTRACTED_BYTES / 1024 / 1024}MB once unpacked`);
   } catch (err) {
     rmSync(dest, { recursive: true, force: true });
+    if (timedOut(err)) throw new Error(`couldn't download ${owner}/${repo} (timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s)`);
     if (err instanceof Error && /larger than|couldn't download/.test(err.message)) throw err;
     throw new Error(`couldn't extract ${owner}/${repo}`);
   }
   rmSync(archive, { force: true });
+  const dropped = dropOutsideLinks(dest).length;
   const top = readdirSync(dest);
-  const root = top.length === 1 && statSync(join(dest, top[0]!)).isDirectory() ? join(dest, top[0]!) : dest;
-  return { tmp: dest, root };
+  const root = nameRootSkill(dest, top.length === 1 && statSync(join(dest, top[0]!)).isDirectory() ? join(dest, top[0]!) : dest, repo);
+  return { tmp: dest, root, dropped };
 }
 
 export type InstalledSkill = {
@@ -239,15 +316,22 @@ export function installFound(
 }
 
 /** Local folder, or a downloaded GitHub repo. `many` is a repo with several skills and no name picked. */
-export async function resolveInstallDir(spec: InstallSpec): Promise<{ tmp?: string; dirs: string[]; source: string; many: boolean }> {
+export async function resolveInstallDir(spec: InstallSpec): Promise<{ tmp?: string; dirs: string[]; source: string; many: boolean; dropped?: number }> {
   if ("local" in spec) {
     const path = resolve(spec.local);
     if (!existsSync(path)) throw new Error(`${path} doesn't exist`);
     const dirs = isSkillDir(path) ? [path] : findSkillDirs(path);
     return { dirs, source: path, many: dirs.length > 1 };
   }
-  const got = await downloadGitHub(spec.owner, spec.repo);
+  const got = await downloadGitHub(spec.owner, spec.repo, spec.ref);
   const source = spec.skill ? `${spec.owner}/${spec.repo}@${spec.skill}` : `${spec.owner}/${spec.repo}`;
-  const dirs = skillNamed(findSkillDirs(got.root), spec.skill);
-  return { tmp: got.tmp, dirs, source, many: !spec.skill && dirs.length > 1 };
+  let dirs: string[];
+  try {
+    dirs = skillNamed(got.root, findSkillDirs(got.root), spec.skill);
+  } catch (err) {
+    // The caller only gets `tmp` to remove when this returns.
+    rmSync(got.tmp, { recursive: true, force: true });
+    throw err;
+  }
+  return { tmp: got.tmp, dirs, source, many: !spec.skill && dirs.length > 1, dropped: got.dropped };
 }
