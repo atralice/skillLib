@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, setHarnesses, setHidden } from "./config.js";
 import { importSkill } from "./library.js";
+import { usageWindowOf } from "./commands.js";
 import { projectHere } from "./project.js";
 
 let tmp: string;
@@ -718,4 +719,13 @@ describe("plugin off and on", () => {
     expect(cursor.code).toBe(1);
     expect(cursor.err).toContain("Cursor");
   });
+});
+
+test("an unused issue's id carries a --days that isn't the usual, and apply reads it back", () => {
+  expect(usageWindowOf("unused@90:/code/web", 30)).toBe(90);
+  expect(usageWindowOf("plugin-unused@7:/code/web:tools@acme", 30)).toBe(7);
+  expect(usageWindowOf("unused@90:library", 30)).toBe(90);
+  // The usual window isn't written, so these ids are as they always were.
+  expect(usageWindowOf("unused:/code/web", 30)).toBe(30);
+  expect(usageWindowOf("tidy:/code/web", 45)).toBe(45);
 });

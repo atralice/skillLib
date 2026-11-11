@@ -407,8 +407,8 @@ test("usage hints: skills a repo hasn't used, and library skills in no repo; ski
   Bun.sleepSync(5); // file times have sub-millisecond precision; "0 days" means added before now
   const issues = usageIssues([project], machineSkills(), library, { ...none, days: 0 });
   expect(issues.map((i) => [i.id, i.title])).toEqual([
-    [`unused:${project}`, "web: 2 skills unused in 0 days"],
-    ["unused:library", "1 skill in Your skills: in no repo, unused in 0 days"],
+    [`unused@0:${project}`, "web: 2 skills unused in 0 days"],
+    ["unused@0:library", "1 skill in Your skills: in no repo, unused in 0 days"],
   ]);
   // Only what skilllib installed is offered for removal; the repo's own is the team's.
   expect(issues[0]?.choices?.map((c) => c.label)).toEqual(["Remove the 1 skill skilllib installed from web"]);

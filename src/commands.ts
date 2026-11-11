@@ -32,7 +32,7 @@ import { gitInfo, isShared, relativeTo } from "./git.js";
 import { dim, error, green, info, json, red, success, table, tildify, truncate, warn, yellow } from "./output.js";
 import { libraryFor, statusIssues, usableHere } from "./here.js";
 import { agentSkillDirs, agentSkillState, installAgentSkill, removeAgentSkill } from "./agentSkill.js";
-import { scanUsage, summarize, usesByProject, type UsageSummary } from "./usage.js";
+import { scanUsage, summarize, usesByProject, USAGE_DAYS, type UsageSummary } from "./usage.js";
 import { libraryOrigins, machineSkills, skillsLoadedIn } from "./sources.js";
 import { addRoot, discoverProjects, enabledHarnesses, expandHome, keptGlobal, readConfig, removeRoot, setHarnesses, setHidden, setKeepGlobal, visibleProjects } from "./config.js";
 import { harness, HARNESSES, installDirs, onPath, projectDirsInUse, type HarnessId } from "./harnesses.js";
@@ -44,7 +44,6 @@ import type { AllChangesJson, ApplyJson, ChangeJson, CheckJson, DoctorJson, Glob
 import { moveGlobalSkills } from "./move.js";
 import { applyTidy, describeStep, folderLabel, foldersOf, gitVisibleSteps, planGlobalTidy, planProjectTidy, type TidyReport } from "./tidy.js";
 
-const USAGE_DAYS = 30;
 
 export type Args = {
   positional: string[];
@@ -705,6 +704,12 @@ export async function doctor(args: Args) {
   if (!args.fix && issues.some((i) => i.fix)) info(dim("\nRun `skilllib doctor --fix` to apply the fixes, or one at a time with `skilllib apply <id>`."));
 }
 
+/** The usage window an issue id was made with: `unused@90:…` says 90 days; any other id, the window given. */
+export function usageWindowOf(id: string, fallback: number): number {
+  const window = id.match(/^(?:plugin-)?unused@(\d+):/)?.[1];
+  return window ? Number(window) : fallback;
+}
+
 /**
  * Applies one issue from `status --json` or `doctor --json`: its fix, or the choice you name (its number, from 1, or its label).
  * skilllib apply <issue-id> [choice]
@@ -713,9 +718,11 @@ export async function apply(args: Args) {
   const [id, pick] = args.positional;
   if (!id) throw new Error("Usage: skilllib apply <issue-id> [choice]   (ids and choices: skilllib status --json or doctor --json)");
   // As status sees it here (this repo, even one skilllib hasn't seen yet), then as doctor does (every repo).
-  // Only usage issues (`unused:…`, `plugin-unused:…`) need the transcripts, and they depend on --days: pass the one doctor had.
-  const found = [...statusIssues(findProjectRoot()), ...(await allIssues(args, /^(plugin-)?unused:/.test(id)))].filter((i) => i.id === id);
-  if (!found.length) throw new Error(`No issue ${id} right now (it may be fixed already; for an unused:… issue, pass doctor's --days). See skilllib status --json or doctor --json`);
+  // Only usage issues (`unused:…`, `plugin-unused:…`) need the transcripts. They depend on the window: the id carries
+  // one that isn't the usual, so apply looks at the list doctor showed.
+  const usage = /^(plugin-)?unused(@\d+)?:/.test(id);
+  const found = [...statusIssues(findProjectRoot()), ...(await allIssues({ ...args, days: usageWindowOf(id, args.days) }, usage))].filter((i) => i.id === id);
+  if (!found.length) throw new Error(`No issue ${id} right now (it may be fixed already; an unused:… id from doctor --days N is unused@N:…). See skilllib status --json or doctor --json`);
   const optionsOf = (i: Issue) => i.choices ?? (i.fix ? [i.fix] : []);
   const labels = (i: Issue) => optionsOf(i).map((c) => c.label).join("\0");
   const byLabel = pick === undefined ? undefined : found.find((i) => optionsOf(i).some((c) => c.label.toLowerCase() === pick.toLowerCase()));

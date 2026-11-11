@@ -3,6 +3,9 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { claudeDir, readJson, skilllibHome } from "./paths.js";
 
+/** The usual window for "used lately", in days: what --days defaults to. */
+export const USAGE_DAYS = 30;
+
 export type UsageSource = "invoked" | "slash" | "file read";
 
 export type SkillUse = { skill: string; source: UsageSource; cwd: string; at: string; key: string };
