@@ -245,3 +245,9 @@ export type AgentSkillJson = {
   /** After `remove`: the folders it was removed from. */
   removed?: string[];
 };
+
+/** `skilllib help --json`: the help text. */
+export type HelpJson = { help: string };
+
+/** `skilllib --version --json`: the version, as a JSON string. */
+export type VersionJson = string;

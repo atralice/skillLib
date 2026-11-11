@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfig, setHarnesses, setHidden } from "./config.js";
@@ -728,4 +728,27 @@ test("an unused issue's id carries a --days that isn't the usual, and apply read
   // The usual window isn't written, so these ids are as they always were.
   expect(usageWindowOf("unused:/code/web", 30)).toBe(30);
   expect(usageWindowOf("tidy:/code/web", 45)).toBe(45);
+});
+
+test("help --json is one line of JSON", () => {
+  const r = cli(tmp, "help", "--json");
+  expect(r.code).toBe(0);
+  expect(r.out.trim().split("\n")).toHaveLength(1);
+  expect(JSON.parse(r.out).help).toContain("skilllib install");
+});
+
+// A read-only folder can't be made on Windows this way, and root can write anywhere.
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("add --json in a sandbox that can't write ~/.skilllib still prints one result and exits 0", () => {
+  const repo = join(tmp, "code", "web");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  const home = join(tmp, ".skilllib");
+  chmodSync(home, 0o555);
+  try {
+    const r = cli(repo, "add", "alpha", "--json");
+    expect(r.out.trim().split("\n")).toHaveLength(1);
+    expect(JSON.parse(r.out)[0]).toMatchObject({ name: "alpha", action: "installed" });
+    expect(r.code).toBe(0);
+  } finally {
+    chmodSync(home, 0o755);
+  }
 });

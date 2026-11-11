@@ -222,19 +222,25 @@ function lastUsed(summary: UsageSummary | undefined): string {
 // ─── Commands ───────────────────────────────────────────
 
 /** Skills in the current project and how they compare to the library. */
+/**
+ * Remembering a repo is a convenience. A skilllib folder that can't be written (an agent's sandbox) must not fail a
+ * command that did its work, or add a second JSON document (an error) after the one printed.
+ */
+function rememberQuietly(roots: string[]) {
+  try {
+    rememberProjects(roots);
+  } catch {
+    // next time
+  }
+}
+
 export async function status(args: Args) {
   if (args.json) {
     // The skilllib skill runs this wherever an agent is: outside a repo it lists the global skills.
     const root = findProjectRoot();
     const usage = await usageBySkill(args.days, root);
     json("status", usableHere(root, new Map([...usage].map(([name, u]) => [name, u.uses]))));
-    // Remembering the repo is a convenience: a skilllib folder an agent's sandbox can't write must not add a second
-    // JSON document (an error) after the one printed.
-    try {
-      if (projectHere()) rememberProjects([root]);
-    } catch {
-      // next time
-    }
+    if (projectHere()) rememberQuietly([root]);
     return;
   }
   const root = requireProject();
@@ -301,7 +307,7 @@ export async function status(args: Args) {
   if (globals) info(`\n${globals} global ${globals === 1 ? "skill also loads" : "skills also load"} here ${dim("(your global folders, plugins, claude.ai): `skilllib` lists them")}`);
   const problems = here.issues.reduce((n, i) => n + i.problems.length, 0);
   if (problems) warn(`${problems} ${problems === 1 ? "issue" : "issues"} here or in your global skills: \`skilllib doctor\` lists them with fixes`);
-  rememberProjects([root]);
+  rememberQuietly([root]);
 }
 
 /** `skilllib` piped: this project's status; outside one, where to look instead (no error, it's an overview). */
@@ -422,7 +428,7 @@ export function add(args: Args) {
   // Where a new pin went isn't obvious from the command: said once, for new pins only (--personal says it already).
   if (!args.json && args.personal === undefined && done.some((c) => c.action === "installed" && !c.moved && pins[c.name]!.personal))
     info(dim(`Pinned for you (${tildify(personalPinsDir())}), kept out of git. To share it with the team: skilllib add <name> --shared, then commit skilllib.json and the skill folders.`));
-  rememberProjects([root]);
+  rememberQuietly([root]);
 }
 
 export function remove(args: Args) {
@@ -458,7 +464,7 @@ export function sync(args: Args) {
     (root) => syncProject(root, { force: args.force }),
     (root) => (hasPins(root) ? success("Installed versions match what's pinned") : info(dim("No skilllib.json or personal pins: nothing to sync"))),
   );
-  if (!args.all) rememberProjects(roots);
+  if (!args.all) rememberQuietly(roots);
 }
 
 /** Moves skills to their newest library version (all, or the ones named). */
@@ -1024,7 +1030,7 @@ function moveGlobal(args: Args, names: string[], yours: ReturnType<typeof machin
   const skills = yours.filter((m) => names.includes(m.name));
   const moves = moveGlobalSkills(skills, roots, { allowTracked: args.allowTracked });
   // Repos named by path join your projects, so doctor checks them from now on.
-  rememberProjects(roots);
+  rememberQuietly(roots);
   if (moves.some((m) => !m.moved)) process.exitCode = 1;
   if (args.json) {
     return json(

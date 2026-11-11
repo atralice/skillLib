@@ -19,6 +19,8 @@ import type {
   UsageJson,
   CheckJson,
   PluginJson,
+  HelpJson,
+  VersionJson,
 } from "./json.js";
 
 let jsonMode = false;
@@ -54,6 +56,8 @@ type JsonOutputs = {
   check: CheckJson;
   plugin: PluginJson;
   "agent-skill": AgentSkillJson;
+  help: HelpJson;
+  version: VersionJson;
   /** Any command that fails: exit code 1, and the reason (also on stderr). */
   error: ErrorJson;
 };
