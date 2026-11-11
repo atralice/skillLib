@@ -11,6 +11,7 @@ import { dropPersonalPin, knownProjects, personalPins, personalPinsFile, pinsIn,
 import { claudePlugins, cursorPluginSkills, installedPlugins, pluginNameOf, removePlugin, setPluginOn, turnOffIn, uninstallPlugin, updatePlugin, type ClaudePlugin, type InstalledPlugin } from "./plugins.js";
 import { skillsLoadedIn, type SourcedSkill } from "./sources.js";
 import { latestVersion, versionForHash, versionHistory } from "./versions.js";
+import { USAGE_DAYS } from "./usage.js";
 import { agentSkillState, installAgentSkill } from "./agentSkill.js";
 import { applyTidy, repoTidyDirs, folderLabel, describeStep, gitVisibleSteps, planGlobalTidy, planProjectTidy, type Conflict, type TidyPlan } from "./tidy.js";
 
@@ -1288,6 +1289,9 @@ export function usageIssues(
   if (!enabledHarnesses().includes("claude-code")) return [];
   const issues: Issue[] = [];
   const since = Date.now() - uses.days * 24 * 60 * 60 * 1000;
+  // An id from a window that isn't the usual one says so: `apply` then looks with that window, not the usual one
+  // (a shorter window flags more skills than the list the user saw).
+  const win = uses.days === USAGE_DAYS ? "" : `@${uses.days}`;
 
   for (const root of projects) {
     const where = basename(root);
@@ -1298,7 +1302,7 @@ export function usageIssues(
     // not match its pin either), not one something is in the way of.
     const removable = unused.filter((s) => removesClean(root, s));
     issues.push({
-      id: `unused:${root}`,
+      id: `unused${win}:${root}`,
       severity: "suggestion",
       title: `${where}: ${plural(unused.length, "skill")} unused in ${plural(uses.days, "day")}`,
       detail: `${unused.map((s) => s.name).join(", ")}: no Claude Code session in ${where} used ${unused.length === 1 ? "it" : "them"}. Each one's name and description still takes context in every session there.${
@@ -1337,7 +1341,7 @@ export function usageIssues(
       const name = pluginNameOf(p.id);
       if (p.skills.some((path) => uses.asUsed!(`${name}:${basename(path)}`) > 0)) continue;
       issues.push({
-        id: `plugin-unused:${installId(p)}`,
+        id: `plugin-unused${win}:${installId(p)}`,
         severity: "suggestion",
         title: `${p.id}${installedIn(p)}: its skills weren't used in ${plural(uses.days, "day")}`,
         detail: `No Claude Code session used ${p.skills.map((path) => `/${name}:${basename(path)}`).join(", ")}. Each one's name and description still takes context in every session.${
@@ -1361,7 +1365,7 @@ export function usageIssues(
   });
   if (idle.length) {
     issues.push({
-      id: "unused:library",
+      id: `unused${win}:library`,
       severity: "suggestion",
       title: `${plural(idle.length, "skill")} in Your skills: in no repo, unused in ${plural(uses.days, "day")}`,
       detail: `${idle.sort().join(", ")}. They load nowhere, so they take no context: add the ones you want to a repo, or delete the ones you've outgrown.`,

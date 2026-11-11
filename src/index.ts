@@ -131,8 +131,8 @@ async function main() {
   if (!["--version", "-v", "version", "help", "--help", "-h"].includes(command ?? "")) refreshAgentSkill();
   switch (command) {
     case undefined:
-      // Interactive when a person is at the terminal; plain status for scripts and pipes.
-      return process.stdin.isTTY && process.stdout.isTTY ? (await import("./tui/index.js")).tui() : commands.overview(args);
+      // Interactive when a person is at the terminal; plain status for scripts and pipes, and whenever --json asks.
+      return !isJsonMode() && process.stdin.isTTY && process.stdout.isTTY ? (await import("./tui/index.js")).tui() : commands.overview(args);
     case "ui":
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("`skilllib ui` needs an interactive terminal. Agents and scripts: use `skilllib status --json`.");
       return (await import("./tui/index.js")).tui();
@@ -194,12 +194,15 @@ async function main() {
     case "-v":
     case "version":
       // With --json, still one JSON document: the version as a string.
-      console.log(isJsonMode() ? JSON.stringify(packageVersion()) : packageVersion());
+      if (isJsonMode()) json("version", packageVersion());
+      else console.log(packageVersion());
       return;
     case "help":
     case "--help":
     case "-h":
-      console.log(HELP);
+      // With --json, still one JSON document.
+      if (isJsonMode()) json("help", { help: HELP });
+      else console.log(HELP);
       return;
     default:
       if (isJsonMode()) throw new Error(`Unknown command: ${command} (skilllib help lists them)`);
