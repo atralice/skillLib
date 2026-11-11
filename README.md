@@ -109,7 +109,7 @@ Then ask in plain words. A few examples, with what the agent runs:
 | *Which skills do I use most? Which ones never?* | `usage --json` (Claude Code usage only, so "never" is a hint) |
 | *Move my global skills into the repos that actually use them.* | `usage --json` to see where each is used, then `global move <name> --to <repo>`, or `global keep <name>` for the ones you want everywhere |
 | *Is anything broken or out of date? Fix it.* | `status --json` or `doctor --json`, then `doctor --fix` for the safe repairs and `apply <id> <choice>` for each decision you approve |
-| *Add the skill from github.com/acme/skills to my library.* | Clones the repo into a temporary folder, then `import <dir>` and `add <name>`. skilllib itself downloads nothing |
+| *Add the skill from github.com/acme/skills to my library.* | `install acme/skills@<name> --json`. It downloads the repo, puts the skill in your library, and in a repo adds it here. `search <query> --json` finds a skill first |
 
 The agent asks before it changes anything, unless you asked for that exact change. Anything skilllib removes can be restored: see [Backups](#backups).
 
@@ -381,7 +381,7 @@ A skill is a folder with a `SKILL.md`. These are all the places your agents load
 
 ## Command line
 
-Everything the app does also works as a command, for your agents, scripts and CI:
+Most of what the app does also works as a command, for your agents, scripts and CI. A few actions have no command of their own yet. Deleting a library skill and updating or uninstalling a plugin run only through `skilllib apply`, when `doctor` reports them. Deleting a global skill and pinning an older version are app-only.
 
 ```
 skilllib                        open the app (prints `status` when piped)
@@ -426,7 +426,7 @@ Flags: `--personal` / `--shared` (for `add`: pin in your personal pins or in the
 
 A command exits 1 when it couldn't do all you asked: a skill skipped (not in the library, or local edits in the way), links git-tracked folders blocked, a link something else is in the way of (a file or another copy), an unknown `tidy` name or `--keep` folder, or (with `--all`, and `projects`) a repo left out because its `skilllib.json` can't be read. What it did do is still done, and listed. An unknown or misspelled flag is an error too, so a typo never runs silently. With `--json`, an error that stops a command prints `{"error": "…"}` on stdout as well as the message on stderr. The commands SKILL.md lists as messages-only print nothing on stdout otherwise: read their exit code.
 
-**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move`, `agent-skill`, `check` and `plugin`. The output is shaped to keep agents fast and cheap:
+**`--json`** prints one line of JSON on stdout, for scripts and agents. Messages and warnings go to stderr. It works with `status`, `list`, `show`, `projects`, `outdated`, `usage`, `doctor`, `apply`, `add`, `remove`, `sync`, `update`, `import`, `global move`, `agent-skill`, `install`, `search`, `check` and `plugin`. The output is shaped to keep agents fast and cheap:
 
 - **`status --json`** answers everything about the repo in one call:
   - the repo's skills, with their source, version, state and git state
@@ -481,12 +481,13 @@ Environment variables: `SKILLLIB_HOME` moves `~/.skilllib`, `$VISUAL` / `$EDITOR
 
 **Why does usage only count Claude Code?** It's the only agent whose transcripts skilllib reads. Grok keeps sessions under `~/.grok/sessions`, and Cursor doesn't keep them locally. Codex's format hasn't been tested yet. That's why "unused" is a strong hint, not proof.
 
+**Can it download skills?** Yes: `skilllib install owner/repo`, `owner/repo@skill`, a skills.sh or GitHub URL, or a local folder. It puts the skill in your library and, in a repo, adds it here. `--global` loads it in every repo. `skilllib search <query>` searches skills.sh. A repo with many skills is listed until you name one or pass `--all`. Everything else skilllib does stays on this machine.
+
 **What's not supported yet?**
 - Grok plugins: they stay off until named in `~/.grok/config.toml`, and skilllib doesn't read that list yet.
 - Turning off Cursor marketplace plugins: skilllib lists them and reports ones that duplicate your skills, but Cursor doesn't record which plugins are on in a file skilllib can read.
 - Installing plugins from a marketplace: use `/plugin` in Claude Code. Plugins a repo's own `.claude/settings.json` turns on without installing them aren't listed in Plugins yet.
 - Unloading a `npx skills` skill doesn't update that tool's lock file.
-- Downloading skills: `skilllib install owner/repo`, `owner/repo@skill`, a skills.sh or GitHub URL, or a local folder. It imports into your library and, in a repo, adds the skill here. `--global` loads it in every repo. `skilllib search <query>` looks up skills.sh. A repo with many skills is listed until you name one or pass `--all`. Everything else skilllib does stays on this machine.
 
 ---
 
