@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setHarnesses } from "./config.js";
-import { dropOutsideLinks, installGlobal, nameRootSkill, parseInstallSpec, findSkillDirs } from "./install.js";
+import { dropOutsideLinks, installGlobal, nameRootSkill, parseInstallSpec, findSkillDirs, skillNamed } from "./install.js";
 import { importSkill, librarySkillDir, projectStatus } from "./library.js";
 import { keptGlobal } from "./config.js";
 
@@ -44,7 +44,10 @@ describe("parseInstallSpec", () => {
       owner: "vercel-labs",
       repo: "agent-skills",
       skill: "skills/web-design-guidelines",
+      ref: "main",
     });
+    expect(parseInstallSpec("github.com/anthropics/skills")).toEqual({ owner: "anthropics", repo: "skills" });
+    expect(parseInstallSpec("https://github.com/anthropics/skills/tree/v2")).toEqual({ owner: "anthropics", repo: "skills", ref: "v2" });
     expect(parseInstallSpec("../skills")).toEqual({ local: expect.stringContaining("skills") });
     expect(parseInstallSpec("not a source")).toBeNull();
   });
@@ -157,5 +160,14 @@ describe("install", () => {
     const dl3 = join(tmp, "dl3");
     skill(join(dl3, "pack-abc123", "one"), "one");
     expect(nameRootSkill(dl3, join(dl3, "pack-abc123"), "pack")).toBe(join(dl3, "pack-abc123"));
+  });
+
+  test("a path picks that one skill folder; a bare name picks every folder with that name", () => {
+    const root = join(tmp, "pack");
+    skill(join(root, "a", "foo"), "foo");
+    skill(join(root, "b", "foo"), "foo");
+    const dirs = findSkillDirs(root);
+    expect(skillNamed(root, dirs, "b/foo")).toEqual([join(root, "b", "foo")]);
+    expect(skillNamed(root, dirs, "foo").sort()).toEqual([join(root, "a", "foo"), join(root, "b", "foo")]);
   });
 });
