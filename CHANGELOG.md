@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.15.0](https://github.com/atralice/skillLib/compare/v1.14.0...v1.15.0) (2026-11-11)
+
+
+### Features
+
+* repeat a worktree's personal skill changes in the main checkout ([#138](https://github.com/atralice/skillLib/issues/138)) ([e1499c6](https://github.com/atralice/skillLib/commit/e1499c681b72c65e44f18f1ab9e1cabbd2556986))
+
+
+### Bug Fixes
+
+* help and docs match the code, pinned release job, AGENTS.md ([#141](https://github.com/atralice/skillLib/issues/141)) ([38e1299](https://github.com/atralice/skillLib/commit/38e12995e30cf88feeab03302bd69afba112c46a))
+* install is safe, names skills correctly, and reports failures ([#139](https://github.com/atralice/skillLib/issues/139)) ([eae8420](https://github.com/atralice/skillLib/commit/eae8420bcf3016c6377a398d64f113ce95829a38))
+* the CLI keeps its --json contract with agents ([#140](https://github.com/atralice/skillLib/issues/140)) ([430ed90](https://github.com/atralice/skillLib/commit/430ed9059d311f8a67973cb897094694e393017f))
+
 ## [1.14.0](https://github.com/atralice/skillLib/compare/v1.13.0...v1.14.0) (2026-10-25)
 
 
