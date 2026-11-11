@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setHarnesses } from "./config.js";
 import { findIssues, runFix } from "./health.js";
-import { addSkill, importSkill, projectStatus, removeSkill, syncProject } from "./library.js";
+import { addSkill, importSkill, projectStatus, removeSkill, syncProject, updateProject } from "./library.js";
 import { moveGlobalSkills } from "./move.js";
 import { normalizeRemote, personalPins, personalPinsDir, personalPinsFile, readManifest, rememberProjects } from "./project.js";
 import { machineSkills } from "./sources.js";
@@ -102,6 +102,89 @@ describe("a repo without skilllib.json", () => {
     expect(personalPinsFile(tree)).toBe(personalPinsFile(solo));
     expect(syncProject(tree)).toMatchObject([{ name: "alpha", action: "installed" }]);
     expect(status(tree)).toBe("");
+  });
+
+  describe("in a worktree", () => {
+    let tree: string;
+    beforeEach(() => {
+      tree = join(repo, ".claude", "worktrees", "wt");
+      git(repo, "worktree", "add", "-q", tree);
+      // As a real repo ignores its agents' worktrees.
+      writeFileSync(join(repo, ".git", "info", "exclude"), "/.claude/worktrees/\n");
+    });
+    const copy = (root: string) => join(root, ".claude", "skills", "alpha", "SKILL.md");
+    // The main checkout as skilllib reports it: the disk's own spelling (Windows can hand tests a short name).
+    const main = () => realpathSync.native(repo);
+    const bump = () => {
+      writeSkill(join(tmp, "src", "alpha"), "v2");
+      importSkill(join(tmp, "src", "alpha"), { force: true });
+      forgetLatest();
+    };
+
+    test("add installs in the main checkout too, out of git in both", () => {
+      expect(addSkill(tree, "alpha")).toEqual({ name: "alpha", action: "installed", to: 1, main: { path: main(), action: "installed" } });
+      expect(existsSync(copy(tree))).toBe(true);
+      expect(existsSync(copy(repo))).toBe(true);
+      expect(status(repo)).toBe("");
+      expect(status(tree)).toBe("");
+      // Already in both: nothing more to say about the main checkout.
+      expect(addSkill(tree, "alpha").main).toBeUndefined();
+    });
+
+    test("add in the main checkout leaves its worktrees alone", () => {
+      expect(addSkill(repo, "alpha").main).toBeUndefined();
+      expect(existsSync(copy(tree))).toBe(false);
+    });
+
+    test("a skill already in the worktree reaches the main checkout on the next add", () => {
+      addSkill(tree, "alpha");
+      rmSync(join(repo, ".claude", "skills"), { recursive: true });
+      expect(addSkill(tree, "alpha")).toMatchObject({ action: "unchanged", main: { action: "installed" } });
+      expect(existsSync(copy(repo))).toBe(true);
+    });
+
+    test("update and remove follow, and remove leaves git nothing to see", () => {
+      addSkill(tree, "alpha");
+      bump();
+      expect(updateProject(tree)).toMatchObject([{ name: "alpha", from: 1, to: 2, main: { path: main(), action: "updated" } }]);
+      expect(readFileSync(copy(repo), "utf-8")).toContain("v2");
+      expect(removeSkill(tree, "alpha")).toMatchObject({ action: "removed", main: { path: main(), action: "removed" } });
+      expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
+      expect(status(repo)).toBe("");
+    });
+
+    test("edits in the main checkout's copy are kept, and said", () => {
+      addSkill(tree, "alpha");
+      writeFileSync(copy(repo), "mine\n");
+      bump();
+      expect(updateProject(tree)[0]!.main).toMatchObject({ action: "skipped", reason: expect.stringContaining("local edits") });
+      expect(removeSkill(tree, "alpha").main).toMatchObject({ action: "skipped", reason: expect.stringContaining("local edits") });
+      expect(readFileSync(copy(repo), "utf-8")).toBe("mine\n");
+    });
+
+    test("a pin moved to skilllib.json takes its copy out of the main checkout, whose own skilllib.json stays as committed", () => {
+      const theirs = '{"skills":{"zed":{"version":1,"hash":"h"},"beta":{"version":1,"hash":"h"}}}';
+      writeFileSync(join(repo, "skilllib.json"), theirs);
+      git(repo, "add", "skilllib.json");
+      git(repo, "commit", "-qm", "pins");
+      addSkill(tree, "alpha");
+      expect(addSkill(tree, "alpha", { personal: false })).toMatchObject({ moved: "shared", main: { path: main(), action: "removed" } });
+      expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
+      expect(readFileSync(join(repo, "skilllib.json"), "utf-8")).toBe(theirs);
+      expect(status(repo)).toBe("");
+    });
+
+    test("a shared pin, or a copy the main checkout's branch commits, stays git's business", () => {
+      expect(addSkill(tree, "alpha", { personal: false }).main).toBeUndefined();
+      expect(existsSync(copy(repo))).toBe(false);
+      removeSkill(tree, "alpha");
+      writeSkill(join(repo, ".claude", "skills", "alpha"), "the team's");
+      git(repo, "add", "-f", ".claude/skills");
+      git(repo, "commit", "-qm", "team skill");
+      expect(addSkill(tree, "alpha").main).toMatchObject({ action: "skipped", reason: expect.stringContaining("committed") });
+      expect(removeSkill(tree, "alpha").main).toBeUndefined();
+      expect(readFileSync(copy(repo), "utf-8")).toContain("the team's");
+    });
   });
 
   test("moving it to skilllib.json takes back a link git would see while git doesn't share the copy", () => {

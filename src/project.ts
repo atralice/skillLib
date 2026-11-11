@@ -278,6 +278,22 @@ function repoOf(root: string): Repo | null {
   return repo;
 }
 
+/**
+ * The main checkout of the repo `root` is a linked worktree of (`git worktree add`, an agent's
+ * <repo>/.claude/worktrees/<name>). Null in the main checkout itself, in a submodule, and under a bare repo.
+ * Personal pins are one file for both, but each has its own copies: a change made in the worktree is repeated
+ * there (see library.ts, inMain), since some agents load a worktree session's project skills from the main checkout.
+ */
+export function mainCheckout(root: string): string | null {
+  const repo = repoOf(root);
+  if (!repo?.file) return null;
+  const main = repo.folder;
+  // As the disk spells both: `folder` is a native real path, and `root` can come spelled another way (a Windows short
+  // name, another case on macOS). Compared as given, a main checkout would pass for a worktree of itself.
+  if ((realNative(main) ?? main) === (realNative(root) ?? root) || !statSync(join(main, ".git"), { throwIfNoEntry: false })?.isDirectory()) return null;
+  return isProjectCandidate(main) ? main : null;
+}
+
 /** A repo's first commit: what tells it from another repo cloned into the same folder later. Null before any commit. */
 const firstCommit = (root: string) => gitIn(root, ["rev-list", "--max-parents=0", "HEAD"])?.split("\n")[0] || null;
 
