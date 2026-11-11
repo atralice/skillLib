@@ -288,7 +288,9 @@ export function mainCheckout(root: string): string | null {
   const repo = repoOf(root);
   if (!repo?.file) return null;
   const main = repo.folder;
-  if (realPath(main) === realPath(root) || !statSync(join(main, ".git"), { throwIfNoEntry: false })?.isDirectory()) return null;
+  // As the disk spells both: `folder` is a native real path, and `root` can come spelled another way (a Windows short
+  // name, another case on macOS). Compared as given, a main checkout would pass for a worktree of itself.
+  if ((realNative(main) ?? main) === (realNative(root) ?? root) || !statSync(join(main, ".git"), { throwIfNoEntry: false })?.isDirectory()) return null;
   return isProjectCandidate(main) ? main : null;
 }
 

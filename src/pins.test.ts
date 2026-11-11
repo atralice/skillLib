@@ -113,6 +113,8 @@ describe("a repo without skilllib.json", () => {
       writeFileSync(join(repo, ".git", "info", "exclude"), "/.claude/worktrees/\n");
     });
     const copy = (root: string) => join(root, ".claude", "skills", "alpha", "SKILL.md");
+    // The main checkout as skilllib reports it: the disk's own spelling (Windows can hand tests a short name).
+    const main = () => realpathSync.native(repo);
     const bump = () => {
       writeSkill(join(tmp, "src", "alpha"), "v2");
       importSkill(join(tmp, "src", "alpha"), { force: true });
@@ -120,7 +122,7 @@ describe("a repo without skilllib.json", () => {
     };
 
     test("add installs in the main checkout too, out of git in both", () => {
-      expect(addSkill(tree, "alpha")).toEqual({ name: "alpha", action: "installed", to: 1, main: { path: repo, action: "installed" } });
+      expect(addSkill(tree, "alpha")).toEqual({ name: "alpha", action: "installed", to: 1, main: { path: main(), action: "installed" } });
       expect(existsSync(copy(tree))).toBe(true);
       expect(existsSync(copy(repo))).toBe(true);
       expect(status(repo)).toBe("");
@@ -144,9 +146,9 @@ describe("a repo without skilllib.json", () => {
     test("update and remove follow, and remove leaves git nothing to see", () => {
       addSkill(tree, "alpha");
       bump();
-      expect(updateProject(tree)).toMatchObject([{ name: "alpha", from: 1, to: 2, main: { path: repo, action: "updated" } }]);
+      expect(updateProject(tree)).toMatchObject([{ name: "alpha", from: 1, to: 2, main: { path: main(), action: "updated" } }]);
       expect(readFileSync(copy(repo), "utf-8")).toContain("v2");
-      expect(removeSkill(tree, "alpha")).toMatchObject({ action: "removed", main: { path: repo, action: "removed" } });
+      expect(removeSkill(tree, "alpha")).toMatchObject({ action: "removed", main: { path: main(), action: "removed" } });
       expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
       expect(status(repo)).toBe("");
     });
@@ -166,7 +168,7 @@ describe("a repo without skilllib.json", () => {
       git(repo, "add", "skilllib.json");
       git(repo, "commit", "-qm", "pins");
       addSkill(tree, "alpha");
-      expect(addSkill(tree, "alpha", { personal: false })).toMatchObject({ moved: "shared", main: { path: repo, action: "removed" } });
+      expect(addSkill(tree, "alpha", { personal: false })).toMatchObject({ moved: "shared", main: { path: main(), action: "removed" } });
       expect(existsSync(join(repo, ".claude", "skills", "alpha"))).toBe(false);
       expect(readFileSync(join(repo, "skilllib.json"), "utf-8")).toBe(theirs);
       expect(status(repo)).toBe("");
